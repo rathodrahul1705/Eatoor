@@ -1,9 +1,7 @@
-# OSX
-#
+# macOS
 .DS_Store
 
 # Xcode
-#
 build/
 *.pbxuser
 !default.pbxuser
@@ -13,20 +11,21 @@ build/
 !default.mode2v3
 *.perspectivev3
 !default.perspectivev3
-xcuserdata
+xcuserdata/
 *.xccheckout
 *.moved-aside
-DerivedData
+DerivedData/
 *.hmap
 *.ipa
 *.xcuserstate
 **/.xcode.env.local
 
-# Android/IntelliJ
-#
-build/
-.idea
-.gradle
+# Android / IntelliJ
+android/.gradle/
+android/app/build/
+android/build/
+.idea/
+.gradle/
 local.properties
 *.iml
 *.hprof
@@ -35,41 +34,49 @@ local.properties
 !debug.keystore
 .kotlin/
 
-# node.js
-#
+# Node.js
 node_modules/
-npm-debug.log
-yarn-error.log
+npm-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
 
-# fastlane
-#
-# It is recommended to not store the screenshots in the git repo. Instead, use fastlane to re-generate the
-# screenshots whenever they are needed.
-# For more information about the recommended setup visit:
-# https://docs.fastlane.tools/best-practices/source-control/
-
+# Fastlane
 **/fastlane/report.xml
 **/fastlane/Preview.html
 **/fastlane/screenshots
 **/fastlane/test_output
 
-# Bundle artifact
+# Metro Bundler
 *.jsbundle
+.expo/
+.expo-shared/
+*.expo
+*.expo-shared
+.buckd/
+.babelrc
+babel.config.js
+metro.config.js
+.react-native
 
-# Ruby / CocoaPods
-**/Pods/
-/vendor/bundle/
+# Watchman
+.watchmanconfig
 
-# Temporary files created by Metro to check the health of the file watcher
-.metro-health-check*
+# Test / Coverage
+/coverage/
+jest-test-results.json
 
-# testing
-/coverage
+# CocoaPods
+ios/Pods/
+vendor/bundle/
 
-# Yarn
+# Yarn Plug'n'Play
 .yarn/*
 !.yarn/patches
 !.yarn/plugins
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# VSCode
+.vscode/
