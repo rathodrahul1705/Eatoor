@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useNavigation, StackActions } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
+import { updatePersonalDetails } from '../../../api/auth';
 
 const PersonalDetailsScreen = () => {
   const navigation = useNavigation();
@@ -31,17 +32,32 @@ const PersonalDetailsScreen = () => {
 
   const handleSubmit = async () => {
     if (!isFormValid) return;
-    
+
     setLoading(true);
     Keyboard.dismiss();
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    navigation.dispatch(
-      StackActions.replace('Home', { screen: 'HomeTabs' })
-    );
+
+    try {
+      const payload = {
+        full_name: name.trim(),
+        delivery_preference: deliveryPreference === 'veg' ? 1 : 2,
+        whatsapp_updates: whatsappUpdates ? 1 : 0,
+      };
+
+      const response = await updatePersonalDetails(payload);
+
+      if (response.status === 200) {
+        // Navigate to Home after successful update
+        navigation.dispatch(StackActions.replace('Home', { screen: 'HomeTabs' }));
+      } else {
+        console.error('Update failed', response.data);
+      }
+    } catch (error) {
+      console.error('Error updating personal details:', error);
+    } finally {
+      setLoading(false);
+    }
   };
+
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>

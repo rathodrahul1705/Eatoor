@@ -9,3 +9,11 @@ export const verifyOTP = (payload: { contact_number: string; otp: string }) =>
 
 export const resendOTP = (contact_number: string) =>
   API.post('/login/resend-otp/', contact_number);
+
+export const updatePersonalDetails = (payload: {
+  full_name: string;
+  delivery_preference: number;
+  whatsapp_updates: number;
+}) => {
+  return API.post('/user/personal-details-update/', payload);
+};
