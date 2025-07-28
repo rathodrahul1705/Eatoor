@@ -12,7 +12,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import * as Animatable from 'react-native-animatable';
-import { Address, MapLocationPickerParams } from './addressTypes';
+import { Address, AddressType, MapLocationPickerParams } from '../../../types/addressTypes';
 
 const AddressScreen = () => {
   const navigation = useNavigation();
@@ -50,34 +50,31 @@ const AddressScreen = () => {
 
   const getIconName = (type: AddressType) => {
     switch (type) {
-      case 'home':
-        return 'home-outline';
-      case 'work':
-        return 'briefcase-outline';
-      default:
-        return 'location-outline';
+      case 'home': return 'home-outline';
+      case 'work': return 'briefcase-outline';
+      default: return 'location-outline';
     }
   };
 
   const handleAddNewAddress = () => {
-    navigation.navigate('MapLocationPicker', {
+    const params: MapLocationPickerParams = {
       onLocationConfirmed: (newAddress: Address) => {
         setSavedAddresses([...savedAddresses, newAddress]);
       },
-    } as MapLocationPickerParams);
+    };
+    navigation.navigate('MapLocationPicker', params);
   };
 
   const handleEditAddress = (address: Address) => {
-    navigation.navigate('MapLocationPicker', {
+    const params: MapLocationPickerParams = {
       addressToEdit: address,
       onLocationConfirmed: (updatedAddress: Address) => {
-        setSavedAddresses(
-          savedAddresses.map((addr) =>
-            addr.id === updatedAddress.id ? updatedAddress : addr
-          )
-        );
+        setSavedAddresses(savedAddresses.map(addr => 
+          addr.id === updatedAddress.id ? updatedAddress : addr
+        ));
       },
-    } as MapLocationPickerParams);
+    };
+    navigation.navigate('MapLocationPicker', params);
   };
 
   const handleDeleteAddress = (id: string) => {
@@ -90,7 +87,7 @@ const AddressScreen = () => {
           text: "Delete", 
           style: "destructive",
           onPress: () => {
-            setSavedAddresses(savedAddresses.filter((addr) => addr.id !== id));
+            setSavedAddresses(savedAddresses.filter(addr => addr.id !== id));
           }
         }
       ]
@@ -98,12 +95,10 @@ const AddressScreen = () => {
   };
 
   const setAsDefaultAddress = (id: string) => {
-    setSavedAddresses(
-      savedAddresses.map((addr) => ({
-        ...addr,
-        isDefault: addr.id === id,
-      }))
-    );
+    setSavedAddresses(savedAddresses.map(addr => ({
+      ...addr,
+      isDefault: addr.id === id,
+    })));
   };
 
   const filteredAddresses = savedAddresses.filter(addr => 
@@ -198,7 +193,141 @@ const AddressScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  // ... [keep all existing styles from your original file]
+  container: {
+    flex: 1,
+    backgroundColor: '#f8f8f8',
+  },
+  contentContainer: {
+    paddingBottom: 30,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    marginHorizontal: 15,
+    marginVertical: 15,
+    paddingHorizontal: 15,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  searchIcon: {
+    marginRight: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#333',
+  },
+  sectionContainer: {
+    marginTop: 10,
+    backgroundColor: '#fff',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#555',
+    marginBottom: 15,
+    paddingLeft: 5,
+  },
+  addAddressOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  optionIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(230, 92, 0, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 15,
+  },
+  optionText: {
+    flex: 1,
+    fontSize: 15,
+    color: '#333',
+  },
+  addressCard: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 15,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  defaultAddressCard: {
+    borderColor: 'rgba(230, 92, 0, 0.3)',
+    backgroundColor: 'rgba(230, 92, 0, 0.05)',
+  },
+  addressHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  addressIconContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(230, 92, 0, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  addressName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+  },
+  defaultBadge: {
+    backgroundColor: 'rgba(230, 92, 0, 0.1)',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginLeft: 10,
+  },
+  defaultBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#E65C00',
+  },
+  addressText: {
+    fontSize: 14,
+    color: '#555',
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  addressActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    flexWrap: 'wrap',
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 15,
+    marginVertical: 5,
+  },
+  actionButtonText: {
+    fontSize: 13,
+    color: '#777',
+  },
+  deleteButtonText: {
+    color: '#ff4444',
+  },
+  setDefaultText: {
+    color: '#E65C00',
+    fontWeight: '600',
+  },
   noResultsText: {
     textAlign: 'center',
     color: '#777',

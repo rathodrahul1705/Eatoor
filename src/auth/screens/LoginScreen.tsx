@@ -1,51 +1,65 @@
 import React, { useState } from 'react';
 import {
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
+  Text,
+  TextInput,
+  TouchableOpacity,
   StyleSheet,
-  KeyboardAvoidingView, 
-  Platform, 
-  View, 
-  TouchableWithoutFeedback, 
-  Keyboard, 
-  Animated
+  KeyboardAvoidingView,
+  Platform,
+  View,
+  TouchableWithoutFeedback,
+  Keyboard,
+  Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { AuthStackParamList } from '../../navigation/AuthNavigator';
+import { sendOTP } from '../../api/auth';
 
 const LoginScreen = () => {
   const navigation = useNavigation<StackNavigationProp<AuthStackParamList, 'Login'>>();
-  const [input, setInput] = useState('');
+  const [mobileNumber, setMobileNumber] = useState('');
   const [error, setError] = useState('');
   const [isFocused, setIsFocused] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const shakeAnimation = new Animated.Value(0);
 
-  const handleContinue = () => {
-    if (!input.trim()) {
-      setError('Please enter mobile number or email');
+  const handleContinue = async () => {
+    if (!mobileNumber) {
+      setError('Please enter mobile number');
       shakeInput();
       return;
     }
 
-    if (input.includes('@')) {
-      if (!input.includes('.') || input.length < 5) {
-        setError('Please enter a valid email');
-        shakeInput();
-        return;
-      }
-    } else {
-      const digits = input.replace(/\D/g, '');
-      if (digits.length < 8) {
-        setError('Please enter a valid mobile number');
-        shakeInput();
-        return;
-      }
+    if (mobileNumber.length !== 10) {
+      setError('Mobile number must be 10 digits');
+      shakeInput();
+      return;
     }
 
     setError('');
-    navigation.navigate('OTP', { userInput: input });
+    setIsLoading(true);
+
+    try {
+      const response = await sendOTP(mobileNumber);
+      if (response?.status == 200) {
+        navigation.navigate('OTP', { userInput: mobileNumber });
+      } else {
+        setError(response?.data?.message || 'Failed to send OTP. Please try again.');
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Something went wrong. Try again.';
+      setError(msg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleInputChange = (text: string) => {
+    const numericText = text.replace(/[^0-9]/g, '');
+    setMobileNumber(numericText.slice(0, 10));
+    setError('');
   };
 
   const shakeInput = () => {
@@ -63,46 +77,55 @@ const LoginScreen = () => {
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <KeyboardAvoidingView 
-        style={styles.container} 
+      <KeyboardAvoidingView
+        style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.content}>
           <Text style={styles.heading}>Welcome Back!</Text>
-          <Text style={styles.sub}>Enter your mobile number or email to continue</Text>
+          <Text style={styles.sub}>Enter your 10-digit mobile number</Text>
 
           <Animated.View style={[styles.inputContainer, animatedStyle]}>
             <TextInput
-              placeholder="Enter your mobile number or email"
+              placeholder="Enter 10-digit mobile number"
               style={[
                 styles.input,
                 isFocused && styles.inputFocused,
-                error ? styles.inputError : null
+                error ? styles.inputError : null,
               ]}
               placeholderTextColor="#999"
-              value={input}
-              onChangeText={(text) => {
-                setInput(text);
-                setError('');
-              }}
-              keyboardType="email-address"
-              autoCapitalize="none"
+              value={mobileNumber}
+              onChangeText={handleInputChange}
+              keyboardType="number-pad"
+              autoComplete="tel"
+              textContentType="telephoneNumber"
               returnKeyType="done"
               onSubmitEditing={handleContinue}
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
               textAlignVertical="center"
+              maxLength={10}
+              editable={!isLoading}
             />
           </Animated.View>
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <TouchableOpacity
-            style={[styles.button, !input.trim() && styles.buttonDisabled]}
+            style={[
+              styles.button,
+              mobileNumber.length !== 10 && styles.buttonDisabled,
+              isLoading && styles.buttonLoading,
+            ]}
             onPress={handleContinue}
-            disabled={!input.trim()}
+            disabled={mobileNumber.length !== 10 || isLoading}
+            activeOpacity={0.8}
           >
-            <Text style={styles.buttonText}>Continue</Text>
+            {isLoading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>Continue</Text>
+            )}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -111,39 +134,39 @@ const LoginScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#fff' 
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
   },
-  content: { 
-    flex: 1, 
-    padding: 24, 
-    justifyContent: 'center' 
+  content: {
+    flex: 1,
+    padding: 24,
+    justifyContent: 'center',
   },
-  heading: { 
-    fontSize: 28, 
-    fontWeight: 'bold', 
-    textAlign: 'center', 
-    color: '#333', 
-    marginBottom: 8 
+  heading: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    color: '#333',
+    marginBottom: 8,
   },
-  sub: { 
-    fontSize: 16, 
-    color: '#666', 
-    textAlign: 'center', 
-    marginBottom: 32 
+  sub: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 32,
   },
-  inputContainer: { 
-    marginBottom: 16 
+  inputContainer: {
+    marginBottom: 16,
   },
   input: {
-    borderWidth: 1, 
-    borderColor: '#e0e0e0', 
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
     borderRadius: 10,
     paddingHorizontal: 16,
-    paddingVertical: 14, 
-    fontSize: 16, 
-    backgroundColor: '#fff', 
+    paddingVertical: 14,
+    fontSize: 16,
+    backgroundColor: '#fff',
     color: '#333',
     height: 52,
     includeFontPadding: false,
@@ -163,31 +186,34 @@ const styles = StyleSheet.create({
   inputError: {
     borderColor: '#ff4444',
   },
-  error: { 
-    color: '#ff4444', 
-    textAlign: 'center', 
+  error: {
+    color: '#ff4444',
+    textAlign: 'center',
     marginBottom: 16,
     fontSize: 14,
   },
   button: {
-    backgroundColor: '#E65C00', 
-    borderRadius: 10, 
-    padding: 16, 
+    backgroundColor: '#E65C00',
+    borderRadius: 10,
+    padding: 16,
     alignItems: 'center',
-    shadowColor: '#E65C00', 
-    shadowOffset: { width: 0, height: 4 }, 
+    shadowColor: '#E65C00',
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 6, 
+    shadowRadius: 6,
     elevation: 4,
   },
-  buttonDisabled: { 
-    backgroundColor: '#E65C0080', 
-    shadowOpacity: 0 
+  buttonDisabled: {
+    backgroundColor: '#E65C0080',
+    shadowOpacity: 0,
   },
-  buttonText: { 
-    color: '#fff', 
-    fontWeight: '600', 
-    fontSize: 16 
+  buttonLoading: {
+    opacity: 0.8,
+  },
+  buttonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
   },
 });
 

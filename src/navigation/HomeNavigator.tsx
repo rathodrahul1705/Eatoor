@@ -10,6 +10,9 @@ import KitchenScreen from '../auth/screens/home/KitchenScreen';
 import CartScreen from '../auth/screens/home/CartScreen';
 import RateOrderScreen from '../auth/screens/home/RateOrderScreen';
 import HomeKitchenDetails from '../auth/screens/home/HomeKitchenDetails';
+import MapLocationPicker from '../auth/screens/home/MapLocationPicker';
+import TrackOrder from '../auth/screens/home/TrackOrder';
+import PersonalDetailsScreen from '../auth/screens/home/PersonalDetailsScreen';
 import { HomeStackParamList } from '../types/navigation.d';
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();
@@ -24,8 +27,11 @@ const HomeNavigator = () => (
     <Stack.Screen name="OrdersScreen" component={OrdersScreen} />
     <Stack.Screen name="KitchenScreen" component={KitchenScreen} />
     <Stack.Screen name="HomeKitchenDetails" component={HomeKitchenDetails} />
+    <Stack.Screen name="PersonalDetailsScreen" component={PersonalDetailsScreen} />
     <Stack.Screen name="CartScreen" component={CartScreen} />
     <Stack.Screen name="RateOrderScreen" component={RateOrderScreen} />
+    <Stack.Screen name="MapLocationPicker" component={MapLocationPicker} />
+    <Stack.Screen name="TrackOrder" component={TrackOrder} />
   </Stack.Navigator>
 );
 

@@ -1,54 +1,117 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, TextInput, StyleSheet, TouchableOpacity, Keyboard,
-  TouchableWithoutFeedback, Animated, Platform, StatusBar, ActivityIndicator
+  View, Text, StyleSheet, TouchableOpacity, Keyboard,
+  TouchableWithoutFeedback, Animated, Platform, StatusBar, 
+  ActivityIndicator, TextInput, Alert, Clipboard
 } from 'react-native';
 import { useNavigation, StackActions } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { OTPScreenProps } from '../../types/navigation.d';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { verifyOTP, resendOTP } from '../../api/auth';
+
+const OTP_LENGTH = 6;
+const RESEND_COUNTDOWN = 30;
+const DIGIT_BOX_SIZE = 48;
+const DIGIT_BOX_MARGIN = 8;
 
 const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
   const navigation = useNavigation();
   const { userInput } = route.params;
-  const [otp, setOtp] = useState('');
+  const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(''));
+  const [manualOtp, setManualOtp] = useState('');
   const [error, setError] = useState('');
-  const [countdown, setCountdown] = useState(30);
-  const [canResend, setCanResend] = useState(false);
+  const [countdown, setCountdown] = useState(RESEND_COUNTDOWN);
   const [isLoading, setIsLoading] = useState(false);
-  const shakeAnimation = new Animated.Value(0);
+  const [activeInput, setActiveInput] = useState(0);
+  const shakeAnimation = useRef(new Animated.Value(0)).current;
+  const inputRefs = useRef<Array<TextInput | null>>([]);
+  const manualInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
-    if (countdown > 0) {
-      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
-      return () => clearTimeout(timer);
-    } else {
-      setCanResend(true);
-    }
+    const timer = countdown > 0 && setInterval(() => {
+      setCountdown(countdown - 1);
+    }, 1000);
+    return () => {
+      if (timer) clearInterval(timer);
+    };
   }, [countdown]);
 
+  // Sync manual OTP with box OTP
+  useEffect(() => {
+    if (manualOtp.length <= OTP_LENGTH) {
+      const newOtp = [...otp];
+      for (let i = 0; i < manualOtp.length; i++) {
+        newOtp[i] = manualOtp[i];
+      }
+      // Fill remaining boxes with empty string
+      for (let i = manualOtp.length; i < OTP_LENGTH; i++) {
+        newOtp[i] = '';
+      }
+      setOtp(newOtp);
+      
+      // Auto verify if complete
+      if (manualOtp.length === OTP_LENGTH) {
+        handleVerify();
+      }
+    }
+  }, [manualOtp]);
+
   const handleVerify = async () => {
-    if (otp.length === 6) {
-      setIsLoading(true);
-      Keyboard.dismiss();
-      
-      // Simulate API verification
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      navigation.dispatch(
-        StackActions.replace('Home', { screen: 'HomeTabs' })
-      );
-    } else {
+    const otpCode = manualOtp.length === OTP_LENGTH ? manualOtp : otp.join('');
+    
+    if (otpCode.length !== OTP_LENGTH) {
       setError('Please enter a valid 6-digit OTP');
       shakeInput();
+      return;
+    }
+
+    setIsLoading(true);
+    Keyboard.dismiss();
+
+    try {
+      const response = await verifyOTP({ contact_number: userInput, otp: otpCode });
+      await AsyncStorage.multiSet([
+        ['accessToken', response.data.tokens.access],
+        ['refreshToken', response.data.tokens.refresh],
+        ['user', JSON.stringify(response.data.user)]
+      ]);
+
+      navigation.dispatch(
+        StackActions.replace('Home', { screen: 'PersonalDetailsScreen' })
+      );
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Invalid OTP. Please try again.');
+      shakeInput();
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleResendOTP = () => {
-    if (!canResend) return;
-    setCountdown(30);
-    setCanResend(false);
-    setOtp('');
-    setError('');
+  const handleResendOTP = async () => {
+    if (countdown > 0) return;
+
+    try {
+      setCountdown(RESEND_COUNTDOWN);
+      setOtp(Array(OTP_LENGTH).fill(''));
+      setManualOtp('');
+      setError('');
+      setIsLoading(true);
+
+      const response = await resendOTP({ contact_number: userInput });
+      
+      if (response.status === 200) {
+        Alert.alert('Success', 'OTP has been resent successfully');
+        inputRefs.current[0]?.focus();
+      } else {
+        setError('Failed to resend OTP. Please try again.');
+      }
+    } catch (error: any) {
+      console.error('Resend OTP error:', error);
+      setError('Something went wrong. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const shakeInput = () => {
@@ -58,6 +121,80 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
       Animated.timing(shakeAnimation, { toValue: 10, duration: 50, useNativeDriver: true }),
       Animated.timing(shakeAnimation, { toValue: 0, duration: 50, useNativeDriver: true }),
     ]).start();
+  };
+
+  const handleBoxChangeText = (text: string, index: number) => {
+    if (/^[0-9]$/.test(text) || text === '') {
+      const newOtp = [...otp];
+      newOtp[index] = text;
+      setOtp(newOtp);
+      
+      // Update manual OTP to match
+      const newManualOtp = newOtp.join('').substring(0, OTP_LENGTH);
+      setManualOtp(newManualOtp);
+      
+      setError('');
+
+      if (text && index < OTP_LENGTH - 1) {
+        inputRefs.current[index + 1]?.focus();
+        setActiveInput(index + 1);
+      }
+
+      if (index === OTP_LENGTH - 1 && text) {
+        const completeOtp = newOtp.join('');
+        if (completeOtp.length === OTP_LENGTH) {
+          handleVerify();
+        }
+      }
+    }
+  };
+
+  const handleManualOtpChange = (text: string) => {
+    if (/^\d*$/.test(text)) { // Only allow numbers
+      setManualOtp(text);
+      setError('');
+      
+      // Focus the appropriate box
+      const newActiveInput = Math.min(text.length, OTP_LENGTH - 1);
+      setActiveInput(newActiveInput);
+      if (text.length < OTP_LENGTH) {
+        inputRefs.current[newActiveInput]?.focus();
+      }
+    }
+  };
+
+  const handleBoxFocus = (index: number) => {
+    setActiveInput(index);
+    // When focusing a box, position cursor at end of manual OTP
+    if (manualOtp.length > 0) {
+      manualInputRef.current?.setNativeProps({
+        selection: {
+          start: manualOtp.length,
+          end: manualOtp.length,
+        },
+      });
+    }
+  };
+
+  const handleKeyPress = (e: any, index: number) => {
+    if (e.nativeEvent.key === 'Backspace' && !otp[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+      setActiveInput(index - 1);
+    }
+  };
+
+  const handlePaste = async () => {
+    try {
+      const text = await Clipboard.getString();
+      if (/^\d+$/.test(text)) {
+        const pastedDigits = text.substring(0, OTP_LENGTH);
+        setManualOtp(pastedDigits);
+        inputRefs.current[OTP_LENGTH - 1]?.focus();
+        setActiveInput(OTP_LENGTH - 1);
+      }
+    } catch (error) {
+      console.error('Paste error:', error);
+    }
   };
 
   const animatedStyle = {
@@ -72,6 +209,7 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
         <TouchableOpacity 
           style={styles.backButton} 
           onPress={() => navigation.goBack()}
+          activeOpacity={0.7}
         >
           <Icon name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
@@ -83,32 +221,69 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
             <Text style={styles.phoneNumber}>{userInput}</Text>
           </Text>
 
-          <Animated.View style={[styles.inputContainer, animatedStyle]}>
-            <TextInput
-              style={styles.input}
-              placeholder="• • • • • •"
-              placeholderTextColor="#ccc"
-              keyboardType="number-pad"
-              value={otp}
-              onChangeText={(text) => {
-                setOtp(text);
-                setError('');
-              }}
-              maxLength={6}
-              textAlign="center"
-              autoFocus
-            />
+          {/* Hidden manual OTP input for better keyboard support */}
+          <TextInput
+            ref={manualInputRef}
+            style={styles.hiddenInput}
+            value={manualOtp}
+            onChangeText={handleManualOtpChange}
+            keyboardType="number-pad"
+            maxLength={OTP_LENGTH}
+            textContentType="oneTimeCode"
+            onPaste={handlePaste}
+            caretHidden={true}
+          />
+
+          {/* OTP Boxes */}
+          <Animated.View style={[styles.otpContainer, animatedStyle]}>
+            {Array(OTP_LENGTH).fill(0).map((_, index) => (
+              <TouchableOpacity
+                key={index}
+                activeOpacity={1}
+                onPress={() => {
+                  inputRefs.current[index]?.focus();
+                  setActiveInput(index);
+                }}
+              >
+                <TextInput
+                  ref={(ref) => (inputRefs.current[index] = ref)}
+                  style={[
+                    styles.otpInput,
+                    otp[index] ? styles.otpInputFilled : null,
+                    error ? styles.otpInputError : null,
+                    activeInput === index ? styles.otpInputActive : null
+                  ]}
+                  keyboardType="number-pad"
+                  value={otp[index]}
+                  onChangeText={(text) => handleBoxChangeText(text, index)}
+                  onKeyPress={(e) => handleKeyPress(e, index)}
+                  maxLength={1}
+                  onFocus={() => handleBoxFocus(index)}
+                  contextMenuHidden={true}
+                  selectTextOnFocus={false}
+                  caretHidden={true}
+                />
+              </TouchableOpacity>
+            ))}
           </Animated.View>
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? (
+            <Text style={styles.error}>
+              <Icon name="warning" size={14} color="#ff4444" /> {error}
+            </Text>
+          ) : null}
 
           <TouchableOpacity
-            style={[styles.button, (otp.length !== 6 || isLoading) && styles.buttonDisabled]}
+            style={[
+              styles.button, 
+              ((otp.join('').length !== OTP_LENGTH && manualOtp.length !== OTP_LENGTH) || isLoading) && styles.buttonDisabled
+            ]}
             onPress={handleVerify}
-            disabled={otp.length !== 6 || isLoading}
+            disabled={(otp.join('').length !== OTP_LENGTH && manualOtp.length !== OTP_LENGTH) || isLoading}
+            activeOpacity={0.8}
           >
             {isLoading ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color="#fff" size="small" />
             ) : (
               <Text style={styles.buttonText}>Verify & Continue</Text>
             )}
@@ -116,9 +291,16 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
 
           <View style={styles.resendContainer}>
             <Text style={styles.resendText}>Didn't receive the OTP?</Text>
-            <TouchableOpacity onPress={handleResendOTP} disabled={!canResend}>
-              <Text style={[styles.resendLink, !canResend && styles.resendDisabled]}>
-                {canResend ? 'Resend OTP' : `Resend in ${countdown}s`}
+            <TouchableOpacity 
+              onPress={handleResendOTP} 
+              disabled={countdown > 0}
+              activeOpacity={0.7}
+            >
+              <Text style={[
+                styles.resendLink, 
+                countdown > 0 && styles.resendDisabled
+              ]}>
+                {countdown > 0 ? `Resend in ${countdown}s` : 'Resend OTP'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -132,10 +314,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   backButton: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 44 : StatusBar.currentHeight,
+    top: Platform.OS === 'ios' ? 44 : 20,
     left: 20,
     zIndex: 10,
     padding: 8,
@@ -144,9 +327,9 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 24,
-    justifyContent: 'center',
-    marginTop: 40,
+    paddingHorizontal: 24,
+    paddingTop: 60,
+    justifyContent: 'flex-start',
   },
   title: {
     fontSize: 28,
@@ -166,24 +349,48 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
   },
-  inputContainer: {
+  otpContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     marginBottom: 24,
   },
-  input: {
-    fontSize: 24,
-    letterSpacing: 12,
-    padding: 16,
+  otpInput: {
+    width: DIGIT_BOX_SIZE,
+    height: DIGIT_BOX_SIZE,
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: 12,
     backgroundColor: '#f9f9f9',
     color: '#333',
     fontWeight: '600',
+    fontSize: 24,
+    textAlign: 'center',
+    marginHorizontal: DIGIT_BOX_MARGIN / 2,
+  },
+  otpInputFilled: {
+    borderColor: '#E65C00',
+    backgroundColor: '#FFF5EF',
+  },
+  otpInputError: {
+    borderColor: '#ff4444',
+  },
+  otpInputActive: {
+    borderColor: '#E65C00',
+  },
+  hiddenInput: {
+    position: 'absolute',
+    width: 0,
+    height: 0,
+    opacity: 0,
   },
   error: {
     color: '#ff4444',
     textAlign: 'center',
     marginBottom: 16,
+    fontSize: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   button: {
     backgroundColor: '#E65C00',
@@ -195,6 +402,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 4,
+    marginTop: 20,
   },
   buttonDisabled: {
     backgroundColor: '#E65C0080',

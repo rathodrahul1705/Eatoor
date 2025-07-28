@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,264 +7,393 @@ import {
   TouchableOpacity,
   Platform,
   KeyboardAvoidingView,
-  ActivityIndicator,
+  ScrollView,
   Alert,
+  StatusBar,
 } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import { useNavigation, RouteProp } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { Address, AddressType, MapLocationPickerParams } from './addressTypes';
+import MapView, { Marker } from 'react-native-maps';
+import { Address, AddressType, MapLocationPickerParams } from '../../../types/addressTypes';
 
-const dummyGeocode = async (latitude: number, longitude: number): Promise<{results: {formatted_address: string}[]}> => {
-  await new Promise(resolve => setTimeout(resolve, 500));
-  
-  const latDiff = latitude - 19.0760;
-  const lngDiff = longitude - 72.8777;
-  
-  const areas = [
-    {name: "Colaba", suffix: "Mumbai - 400005"},
-    {name: "Bandra West", suffix: "Mumbai - 400050"},
-    {name: "Andheri East", suffix: "Mumbai - 400069"},
-    {name: "Dadar West", suffix: "Mumbai - 400028"},
-    {name: "Powai", suffix: "Mumbai - 400076"}
-  ];
-  
-  const areaIndex = Math.min(
-    Math.floor(Math.abs(latDiff + lngDiff) * 10), 
-    areas.length - 1
-  );
-  
-  const selectedArea = areas[areaIndex];
-  const streetNumber = Math.floor(Math.random() * 500) + 1;
-  const streetTypes = ["Main Road", "Street", "Lane", "Avenue", "Marg"];
-  const streetType = streetTypes[Math.floor(Math.random() * streetTypes.length)];
-  
-  return {
-    results: [{
-      formatted_address: `${streetNumber}, ${selectedArea.name} ${streetType}, ${selectedArea.suffix}`
-    }]
-  };
+type RootStackParamList = {
+  MapLocationPicker: MapLocationPickerParams;
 };
 
-const MapLocationPicker = ({ navigation, route }: { navigation: any, route: { params?: MapLocationPickerParams } }) => {
-  const mapRef = useRef<MapView>(null);
+type MapLocationPickerRouteProp = RouteProp<RootStackParamList, 'MapLocationPicker'>;
+
+const MapLocationPicker = ({ route }: { route: MapLocationPickerRouteProp }) => {
+  const navigation = useNavigation();
+  const { addressToEdit, onLocationConfirmed } = route.params;
+  
+  const [address, setAddress] = useState<Omit<Address, 'id' | 'isDefault'>>({
+    type: 'home',
+    name: '',
+    address: '',
+    latitude: addressToEdit?.latitude || 19.0760,
+    longitude: addressToEdit?.longitude || 72.8777,
+  });
+  
   const [region, setRegion] = useState({
-    latitude: 19.0760,
-    longitude: 72.8777,
+    latitude: addressToEdit?.latitude || 19.0760,
+    longitude: addressToEdit?.longitude || 72.8777,
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
   });
-  const [address, setAddress] = useState('');
-  const [addressName, setAddressName] = useState('');
-  const [addressType, setAddressType] = useState<AddressType>('other');
-  const [isLoading, setIsLoading] = useState(false);
-
-  const { addressToEdit, onLocationConfirmed } = route.params || {};
 
   useEffect(() => {
     if (addressToEdit) {
-      setAddressName(addressToEdit.name);
-      setAddressType(addressToEdit.type);
-      setAddress(addressToEdit.address);
-      animateToRegion({
+      setAddress({
+        type: addressToEdit.type,
+        name: addressToEdit.name,
+        address: addressToEdit.address,
         latitude: addressToEdit.latitude,
         longitude: addressToEdit.longitude,
-        latitudeDelta: 0.005,
-        longitudeDelta: 0.005,
       });
-    } else {
-      getCurrentLocation();
     }
-  }, []);
 
-  const getCurrentLocation = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      const latitude = 19.0760 + (Math.random() * 0.1 - 0.05);
-      const longitude = 72.8777 + (Math.random() * 0.1 - 0.05);
-      updateAddressFromCoords(latitude, longitude);
-      animateToRegion({
-        latitude,
-        longitude,
-        latitudeDelta: 0.005,
-        longitudeDelta: 0.005,
-      });
-      setIsLoading(false);
-    }, 1000);
-  };
-
-  const animateToRegion = (newRegion: typeof region) => {
-    setRegion(newRegion);
-    mapRef.current?.animateToRegion(newRegion, 1000);
-  };
-
-  const handleMapDragEnd = async (e: any) => {
-    const { latitude, longitude } = e.nativeEvent.coordinate;
-    await updateAddressFromCoords(latitude, longitude);
-  };
-
-  const updateAddressFromCoords = async (latitude: number, longitude: number) => {
-    try {
-      setIsLoading(true);
-      const json = await dummyGeocode(latitude, longitude);
-      const formattedAddress = json.results[0]?.formatted_address || '';
-      setAddress(formattedAddress);
-      setRegion(prev => ({
-        ...prev,
-        latitude,
-        longitude,
-      }));
-    } catch (error) {
-      console.log('Geocoder error', error);
-      setAddress("Could not determine address");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSearchLocation = () => {
-    const newLat = 19.0760 + (Math.random() * 0.1 - 0.05);
-    const newLng = 72.8777 + (Math.random() * 0.1 - 0.05);
-    
-    animateToRegion({
-      latitude: newLat,
-      longitude: newLng,
-      latitudeDelta: 0.005,
-      longitudeDelta: 0.005,
+    navigation.setOptions({
+      title: addressToEdit ? 'Edit Address' : 'Add New Address',
+      headerLeft: () => (
+        <TouchableOpacity 
+          style={styles.headerButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Icon name="arrow-back" size={24} color="#E65C00" />
+        </TouchableOpacity>
+      ),
+      headerStyle: {
+        backgroundColor: '#fff',
+        elevation: 0,
+        shadowOpacity: 0,
+      },
+      headerTitleStyle: {
+        color: '#333',
+        fontWeight: '600',
+      },
     });
-    updateAddressFromCoords(newLat, newLng);
+  }, [addressToEdit, navigation]);
+
+  const handleRegionChangeComplete = (newRegion: {
+    latitude: number;
+    longitude: number;
+    latitudeDelta: number;
+    longitudeDelta: number;
+  }) => {
+    setRegion(newRegion);
+    setAddress(prev => ({
+      ...prev,
+      latitude: newRegion.latitude,
+      longitude: newRegion.longitude,
+    }));
   };
 
-  const validateInputs = () => {
-    if (!address) {
-      Alert.alert("Location Required", "Please select a location on the map");
-      return false;
+  const handleSaveAddress = () => {
+    if (!address.name.trim()) {
+      Alert.alert('Error', 'Please enter a name for this address');
+      return;
     }
-    if (!addressName.trim()) {
-      Alert.alert("Name Required", "Please provide a name for this address");
-      return false;
-    }
-    return true;
-  };
 
-  const handleConfirmLocation = () => {
-    if (!validateInputs()) return;
-    
+    if (!address.address.trim()) {
+      Alert.alert('Error', 'Please enter the full address');
+      return;
+    }
+
     const newAddress: Address = {
-      id: addressToEdit?.id || Date.now().toString(),
-      type: addressType,
-      name: addressName.trim(),
-      address,
-      latitude: region.latitude,
-      longitude: region.longitude,
+      ...address,
+      id: addressToEdit?.id || Math.random().toString(36).substring(7),
       isDefault: addressToEdit?.isDefault || false,
     };
 
-    onLocationConfirmed?.(newAddress);
+    onLocationConfirmed(newAddress);
     navigation.goBack();
   };
 
   return (
     <View style={styles.container}>
-      <View style={styles.searchContainer}>
+      <StatusBar backgroundColor="#fff" barStyle="dark-content" />
+      
+      {/* Map Section with Back Button */}
+      <View style={styles.mapContainer}>
+        <MapView
+          style={styles.map}
+          region={region}
+          onRegionChangeComplete={handleRegionChangeComplete}
+          showsUserLocation={true}
+          showsMyLocationButton={true}
+          zoomControlEnabled={true}
+          toolbarEnabled={false}
+        >
+          <Marker
+            coordinate={{
+              latitude: address.latitude,
+              longitude: address.longitude,
+            }}
+            pinColor="#E65C00"
+          />
+        </MapView>
+        
+        {/* Floating Back Button */}
         <TouchableOpacity 
-          style={styles.searchInput}
-          onPress={handleSearchLocation}
+          style={styles.floatingBackButton}
+          onPress={() => navigation.goBack()}
+          activeOpacity={0.8}
         >
-          <Icon name="search-outline" size={20} color="#777" style={styles.searchIcon} />
-          <Text style={styles.searchPlaceholder}>Search for area, street name...</Text>
+          <Icon name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
+        
+        {/* Center Marker */}
+        <View style={styles.mapMarkerFixed}>
+          <Icon name="location-sharp" size={32} color="#E65C00" />
+        </View>
       </View>
-
-      <MapView
-        ref={mapRef}
-        style={styles.map}
-        region={region}
-        onRegionChangeComplete={handleMapDragEnd}
-        showsUserLocation={false}
-        showsMyLocationButton={false}
-        followsUserLocation={false}
-      >
-        <Marker
-          coordinate={{
-            latitude: region.latitude,
-            longitude: region.longitude,
-          }}
-        >
-          <View style={styles.marker}>
-            <View style={styles.markerRing}>
-              <Icon name="location-sharp" size={24} color="#E65C00" />
-            </View>
-            <View style={styles.markerPointer} />
-          </View>
-        </Marker>
-      </MapView>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.confirmationCard}
+        style={styles.keyboardAvoidingView}
       >
-        <View style={styles.locationInfo}>
-          <Icon name="location-sharp" size={20} color="#E65C00" style={styles.locationIcon} />
-          <Text style={styles.locationText}>Order will be delivered here</Text>
-        </View>
-
-        <Text style={styles.addressText}>
-          {isLoading ? "Loading address..." : address || "Drag the map to select location"}
-        </Text>
-
-        <TextInput
-          style={styles.input}
-          placeholder="Save as (e.g., Home, Office)"
-          value={addressName}
-          onChangeText={setAddressName}
-          placeholderTextColor="#999"
-        />
-
-        <View style={styles.addressTypeContainer}>
-          {(['home', 'work', 'other'] as AddressType[]).map((type) => (
-            <TouchableOpacity
-              key={type}
-              style={[styles.addressTypeButton, addressType === type && styles.addressTypeButtonActive]}
-              onPress={() => setAddressType(type)}
-            >
-              <Icon 
-                name={
-                  type === 'home' ? 'home-outline' :
-                  type === 'work' ? 'briefcase-outline' :
-                  'location-outline'
-                } 
-                size={18} 
-                color={addressType === type ? '#E65C00' : '#777'} 
-              />
-              <Text style={[styles.addressTypeText, addressType === type && styles.addressTypeTextActive]}>
-                {type === 'home' ? 'Home' : type === 'work' ? 'Work' : 'Other'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <TouchableOpacity
-          style={[styles.confirmButton, (isLoading || !address) && styles.confirmButtonDisabled]}
-          onPress={handleConfirmLocation}
-          disabled={isLoading || !address}
+        <ScrollView 
+          contentContainerStyle={styles.scrollContainer}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          {isLoading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.confirmButtonText}>
+          {/* Form Section */}
+          <View style={styles.formContainer}>
+            <Text style={styles.sectionTitle}>Address Details</Text>
+            
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Address Type</Text>
+              <View style={styles.typeOptions}>
+                {(['home', 'work', 'other'] as AddressType[]).map((type) => (
+                  <TouchableOpacity
+                    key={type}
+                    style={[
+                      styles.typeOption,
+                      address.type === type && styles.selectedTypeOption,
+                    ]}
+                    onPress={() => setAddress({ ...address, type })}
+                    activeOpacity={0.7}
+                  >
+                    <Icon
+                      name={
+                        type === 'home' ? 'home-outline' :
+                        type === 'work' ? 'briefcase-outline' : 'location-outline'
+                      }
+                      size={20}
+                      color={address.type === type ? '#E65C00' : '#777'}
+                    />
+                    <Text
+                      style={[
+                        styles.typeOptionText,
+                        address.type === type && styles.selectedTypeOptionText,
+                      ]}
+                    >
+                      {type.charAt(0).toUpperCase() + type.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Name this location</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. Home, Office, etc."
+                placeholderTextColor="#999"
+                value={address.name}
+                onChangeText={(text) => setAddress({ ...address, name: text })}
+                returnKeyType="next"
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Full Address</Text>
+              <TextInput
+                style={[styles.input, styles.multilineInput]}
+                placeholder="Enter complete address"
+                placeholderTextColor="#999"
+                multiline
+                numberOfLines={4}
+                value={address.address}
+                onChangeText={(text) => setAddress({ ...address, address: text })}
+                returnKeyType="done"
+              />
+            </View>
+          </View>
+        </ScrollView>
+
+        {/* Footer with Save Button */}
+        <View style={styles.footer}>
+          <TouchableOpacity
+            style={styles.saveButton}
+            onPress={handleSaveAddress}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.saveButtonText}>
               {addressToEdit ? 'Update Address' : 'Save Address'}
             </Text>
-          )}
-        </TouchableOpacity>
+            <Icon name="checkmark" size={20} color="#fff" style={styles.saveButtonIcon} />
+          </TouchableOpacity>
+        </View>
       </KeyboardAvoidingView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  // ... [keep all existing styles from your original file]
-  confirmButtonDisabled: {
-    opacity: 0.6,
+  container: {
+    flex: 1,
+    backgroundColor: '#f8f8f8',
+  },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    paddingBottom: 10,
+  },
+  mapContainer: {
+    height: '40%',
+    width: '100%',
+    position: 'relative',
+  },
+  map: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  floatingBackButton: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 50 : 20,
+    left: 15,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
+    zIndex: 10,
+  },
+  mapMarkerFixed: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginLeft: -16,
+    marginTop: -32,
+    zIndex: 1,
+  },
+  formContainer: {
+    padding: 20,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    margin: 15,
+    marginTop: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 20,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#444',
+    marginBottom: 10,
+  },
+  input: {
+    backgroundColor: '#f9f9f9',
+    borderRadius: 12,
+    padding: 15,
+    fontSize: 16,
+    color: '#333',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  multilineInput: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  typeOptions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 5,
+    gap: 10,
+  },
+  typeOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#f9f9f9',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  selectedTypeOption: {
+    backgroundColor: 'rgba(230, 92, 0, 0.1)',
+    borderColor: 'rgba(230, 92, 0, 0.5)',
+  },
+  typeOptionText: {
+    marginLeft: 8,
+    fontSize: 15,
+    color: '#777',
+  },
+  selectedTypeOptionText: {
+    color: '#E65C00',
+    fontWeight: '600',
+  },
+  footer: {
+    padding: 20,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  saveButton: {
+    backgroundColor: '#E65C00',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    shadowColor: '#E65C00',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  saveButtonIcon: {
+    marginLeft: 8,
+  },
+  headerButton: {
+    paddingHorizontal: 15,
+    paddingVertical: 5,
   },
 });
 

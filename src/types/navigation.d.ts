@@ -4,6 +4,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 export type AuthStackParamList = {
   Login: undefined;
   OTP: { userInput: string };
+  PersonalDetails: undefined;
 };
 
 // Home Stack
@@ -14,6 +15,7 @@ export type HomeStackParamList = {
   Eatmart: undefined; // Add this line
   HomeKitchenDetails: { kitchenId: string };
   KitchenScreen: undefined;
+  PersonalDetailsScreen: undefined;
 };
 
 // Tab Navigator
@@ -38,6 +40,9 @@ export type ProfileScreenProps = NativeStackScreenProps<HomeStackParamList, 'Pro
 export type EditProfileScreen = NativeStackScreenProps<HomeStackParamList, 'EditProfileScreen'>;
 export type FavoritesScreen = NativeStackScreenProps<HomeStackParamList, 'FavoritesScreen'>;
 export type OrdersScreen = NativeStackScreenProps<HomeStackParamList, 'OrdersScreen'>;
+export type MapLocationPicker = NativeStackScreenProps<HomeStackParamList, 'MapLocationPicker'>;
+export type TrackOrder = NativeStackScreenProps<HomeStackParamList, 'TrackOrder'>;
+export type PersonalDetailsScreen = NativeStackScreenProps<HomeStackParamList, 'PersonalDetailsScreen'>;
 export type EatmartScreenProps = NativeStackScreenProps<HomeTabParamList, 'Eatmart'>;
 
 // For useNavigation hook

@@ -1,18 +1,38 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Image, FlatList, TextInput, ScrollView } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  SafeAreaView, 
+  TouchableOpacity, 
+  Image, 
+  FlatList, 
+  TextInput, 
+  ScrollView 
+} from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
+
+// Dummy images configuration
+const DUMMY_IMAGES = {
+  KITCHENS: [
+    'https://images.unsplash.com/photo-1601050690597-df0568f70950?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60',
+    'https://images.unsplash.com/photo-1556911220-bff31c812dba?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60',
+    'https://images.unsplash.com/photo-1606787366850-de6330128bfc?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60'
+  ],
+  DEFAULT_KITCHEN: 'https://cdn-icons-png.flaticon.com/512/1261/1261161.png'
+};
 
 const PastOrdersScreen = () => {
   const navigation = useNavigation();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
 
-  // Dummy data for past orders
+  // Enhanced dummy data for past orders
   const pastOrders = [
     {
       id: '1',
-      kitchenImage: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60',
+      kitchenImage: DUMMY_IMAGES.KITCHENS[0],
       kitchenName: 'Grandma\'s Kitchen',
       orderDate: '15 July 2023, 12:30 PM',
       orderPrice: '₹450',
@@ -22,11 +42,22 @@ const PastOrdersScreen = () => {
         { name: 'Butter Chicken', type: 'non-veg', quantity: 2 },
         { name: 'Dal Makhani', type: 'veg', quantity: 1 },
         { name: 'Garlic Naan', type: 'veg', quantity: 4 }
-      ]
+      ],
+      deliveryPartner: {
+        name: 'Rahul Kumar',
+        phone: '+919876543210',
+        vehicle: 'Bike',
+        rating: 4.8,
+        image: 'https://randomuser.me/api/portraits/men/42.jpg'
+      },
+      coordinates: {
+        restaurant: { latitude: 12.9716, longitude: 77.5946 },
+        delivery: { latitude: 12.9685, longitude: 77.5873 }
+      }
     },
     {
       id: '2',
-      kitchenImage: 'https://images.unsplash.com/photo-1556911220-bff31c812dba?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60',
+      kitchenImage: DUMMY_IMAGES.KITCHENS[1],
       kitchenName: 'Spice Delight',
       orderDate: '10 July 2023, 7:15 PM',
       orderPrice: '₹320',
@@ -36,11 +67,22 @@ const PastOrdersScreen = () => {
         { name: 'Paneer Tikka', type: 'veg', quantity: 1 },
         { name: 'Veg Biryani', type: 'veg', quantity: 2 },
         { name: 'Raita', type: 'veg', quantity: 2 }
-      ]
+      ],
+      deliveryPartner: {
+        name: 'Priya Sharma',
+        phone: '+919876543211',
+        vehicle: 'Scooter',
+        rating: 4.5,
+        image: 'https://randomuser.me/api/portraits/women/63.jpg'
+      },
+      coordinates: {
+        restaurant: { latitude: 12.9716, longitude: 77.5946 },
+        delivery: { latitude: 12.9685, longitude: 77.5873 }
+      }
     },
     {
       id: '3',
-      kitchenImage: 'https://images.unsplash.com/photo-1606787366850-de6330128bfc?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60',
+      kitchenImage: DUMMY_IMAGES.KITCHENS[2],
       kitchenName: 'Coastal Flavors',
       orderDate: '5 July 2023, 1:45 PM',
       orderPrice: '₹580',
@@ -50,7 +92,18 @@ const PastOrdersScreen = () => {
         { name: 'Prawn Fry', type: 'non-veg', quantity: 1 },
         { name: 'Steamed Rice', type: 'veg', quantity: 2 },
         { name: 'Kokum Juice', type: 'veg', quantity: 2 }
-      ]
+      ],
+      deliveryPartner: {
+        name: 'Arjun Patel',
+        phone: '+919876543212',
+        vehicle: 'Bike',
+        rating: 4.7,
+        image: 'https://randomuser.me/api/portraits/men/22.jpg'
+      },
+      coordinates: {
+        restaurant: { latitude: 12.9716, longitude: 77.5946 },
+        delivery: { latitude: 12.9685, longitude: 77.5873 }
+      }
     }
   ];
 
@@ -67,10 +120,20 @@ const PastOrdersScreen = () => {
   });
 
   const handleReorder = (order) => {
-    navigation.navigate('CartScreen', { 
+    navigation.navigate('Cart', { 
       reorderedItems: order.items,
       kitchenName: order.kitchenName,
       kitchenImage: order.kitchenImage
+    });
+  };
+
+  const handleTrackOrder = (order) => {
+    navigation.navigate('TrackOrder', { 
+      order: {
+        ...order,
+        deliveryStatus: order.status === 'On the way' ? 'on_the_way' : 'preparing',
+        eta: order.status === 'On the way' ? '15-20 mins' : '25-30 mins'
+      }
     });
   };
 
@@ -89,31 +152,36 @@ const PastOrdersScreen = () => {
   const renderOrderItem = ({ item }) => (
     <View style={styles.orderCard}>
       <View style={styles.kitchenHeader}>
-        <Image source={{ uri: item.kitchenImage }} style={styles.kitchenImage} />
+        <Image 
+          source={{ uri: item.kitchenImage }} 
+          style={styles.kitchenImage}
+          defaultSource={{ uri: DUMMY_IMAGES.DEFAULT_KITCHEN }}
+        />
         <View style={styles.kitchenInfo}>
           <Text style={styles.kitchenName}>{item.kitchenName}</Text>
           <Text style={styles.orderDate}>{item.orderDate}</Text>
-          </View>
-            {item.rating ? (
-              <View style={styles.ratedStars}>
-                {[...Array(5)].map((_, i) => (
-                  <Icon 
-                    key={i} 
-                    name={i < item.rating ? 'star' : 'star-outline'} 
-                    size={14} 
-                    color="#FFD700" 
-                  />
-                ))}
-              </View>
-            ) : (
-              <TouchableOpacity 
-                style={styles.rateButton}
-                onPress={() => navigation.navigate('RateOrderScreen', { item })}
-              >
-                <Text style={styles.rateButtonText}>Rate Order</Text>
-              </TouchableOpacity>
-            )}
         </View>
+        {item.rating ? (
+          <View style={styles.ratedStars}>
+            {[...Array(5)].map((_, i) => (
+              <Icon 
+                key={i} 
+                name={i < item.rating ? 'star' : 'star-outline'} 
+                size={14} 
+                color="#FFD700" 
+              />
+            ))}
+          </View>
+        ) : (
+          <TouchableOpacity 
+            style={styles.rateButton}
+            onPress={() => navigation.navigate('RateOrder', { order: item })}
+          >
+            <Text style={styles.rateButtonText}>Rate Order</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+      
       <ScrollView 
         horizontal 
         showsHorizontalScrollIndicator={false}
@@ -140,7 +208,11 @@ const PastOrdersScreen = () => {
 
         <View style={styles.actionButtons}>
           {item.status !== 'Delivered' ? (
-            <TouchableOpacity style={styles.trackButton}>
+            <TouchableOpacity 
+              style={styles.trackButton}
+              onPress={() => handleTrackOrder(item)}
+            >
+              <Icon name="navigate" size={16} color="#333" style={styles.buttonIcon} />
               <Text style={styles.trackButtonText}>Track Order</Text>
             </TouchableOpacity>
           ) : (
@@ -148,14 +220,16 @@ const PastOrdersScreen = () => {
               style={styles.reorderButton}
               onPress={() => handleReorder(item)}
             >
+              <Icon name="refresh" size={16} color="#E65C00" style={styles.buttonIcon} />
               <Text style={styles.reorderButtonText}>Reorder</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity 
             style={styles.viewButton}
-            onPress={() => navigation.navigate('OrderDetailsScreen', { order: item })}
+            onPress={() => navigation.navigate('OrderDetails', { order: item })}
           >
-            <Text style={styles.viewButtonText}>View Details</Text>
+            <Icon name="document-text" size={16} color="#fff" style={styles.buttonIcon} />
+            <Text style={styles.viewButtonText}>Details</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -238,6 +312,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     padding: 16,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
@@ -335,6 +410,7 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 10,
     marginRight: 12,
+    backgroundColor: '#f0f0f0',
   },
   kitchenInfo: {
     flex: 1,
@@ -348,9 +424,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#888',
     marginTop: 4,
-  },
-  ratingBadge: {
-    alignItems: 'flex-end',
   },
   ratedStars: {
     flexDirection: 'row',
@@ -451,11 +524,14 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginRight: 8,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
   trackButtonText: {
     color: '#333',
     fontWeight: '600',
     fontSize: 14,
+    marginLeft: 6,
   },
   reorderButton: {
     flex: 1,
@@ -464,11 +540,14 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginRight: 8,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
   reorderButtonText: {
     color: '#E65C00',
     fontWeight: '600',
     fontSize: 14,
+    marginLeft: 6,
   },
   viewButton: {
     flex: 1,
@@ -476,12 +555,18 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 8,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
   viewButtonText: {
     color: '#fff',
     fontWeight: '600',
     fontSize: 14,
+    marginLeft: 6,
   },
+  buttonIcon: {
+    marginRight: 4,
+  }
 });
 
 export default PastOrdersScreen;
