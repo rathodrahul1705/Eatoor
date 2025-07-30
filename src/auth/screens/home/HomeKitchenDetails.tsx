@@ -352,7 +352,9 @@ const HomeKitchenDetails = ({ route }) => {
               <View style={styles.offerBadge}>
                 <Icon name="pricetag" size={12} color="#fff" />
                 <Text style={styles.offerText}>
-                  {item.buy_one_get_one_free ? 'BOGO' : `${item.discount_percent}% OFF`}
+                  {item.buy_one_get_one_free 
+                    ? 'BOGO' 
+                    : `${parseFloat(item.discount_percent).toFixed(0)}% OFF`}
                 </Text>
               </View>
             )}
@@ -471,8 +473,7 @@ const HomeKitchenDetails = ({ route }) => {
     return null;
   }
 
-  // Calculate delivery time and open status
-  const deliveryTime = `${kitchenDetails.delivery_timings[0]?.start_time || '30'}-${kitchenDetails.delivery_timings[0]?.end_time || '45'} mins`;
+  const deliveryTime = `40-45 mins`;
   const isOpen = kitchenDetails.restaurant_current_status?.is_open;
 
   return (
@@ -526,7 +527,7 @@ const HomeKitchenDetails = ({ route }) => {
             <View style={styles.minOrderInfo}>
               <Icon name="basket-outline" size={16} color="#fff" />
               <Text style={styles.minOrderText}>
-                {kitchenDetails.min_order > 0 ? `₹${kitchenDetails.min_order}` : 'No min'}
+                {kitchenDetails.min_order > 0 ? `₹${kitchenDetails.min_order}` : '100'}
               </Text>
             </View>
           </View>
@@ -806,7 +807,7 @@ const styles = StyleSheet.create({
   },
   kitchenInfoContainer: {
     position: 'absolute',
-    bottom: 40,
+    bottom: 55,
     left: 20,
     right: 20,
     zIndex: 10,
@@ -1223,8 +1224,8 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
   menuContainer: {
-    paddingHorizontal: 15,
-    paddingBottom: 20,
+    paddingHorizontal: 5,
+    paddingBottom: 5,
   },
   modalOverlay: {
     flex: 1,
