@@ -78,8 +78,9 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
       ]);
 
       navigation.dispatch(
-        StackActions.replace('Home', { screen: 'PersonalDetailsScreen' })
+        StackActions.replace('Home', { screen: response.data.navigate_to })
       );
+
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Invalid OTP. Please try again.');
       shakeInput();
@@ -328,7 +329,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingTop: 60,
+    paddingTop: 280,
     justifyContent: 'flex-start',
   },
   title: {

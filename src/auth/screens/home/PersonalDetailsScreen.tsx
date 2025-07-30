@@ -16,6 +16,7 @@ import {
 import { useNavigation, StackActions } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { updatePersonalDetails } from '../../../api/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const PersonalDetailsScreen = () => {
   const navigation = useNavigation();
@@ -46,7 +47,9 @@ const PersonalDetailsScreen = () => {
       const response = await updatePersonalDetails(payload);
 
       if (response.status === 200) {
-        // Navigate to Home after successful update
+        await AsyncStorage.multiSet([
+          ['user', JSON.stringify(response.data.user)]
+        ]);
         navigation.dispatch(StackActions.replace('Home', { screen: 'HomeTabs' }));
       } else {
         console.error('Update failed', response.data);

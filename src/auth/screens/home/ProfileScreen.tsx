@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -10,26 +10,45 @@ import {
   StatusBar,
   Dimensions,
   ScrollView,
-  Image
+  Image,
+  ActivityIndicator
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { StackActions } from '@react-navigation/native';
-
-// Dummy image URL for avatar
-const USER_AVATAR = 'https://randomuser.me/api/portraits/men/1.jpg';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const ProfileScreen = ({ navigation }) => {
   const [modalVisible, setModalVisible] = useState(false);
   const [modalPosition, setModalPosition] = useState({ top: 0, right: 0 });
-  const [user] = useState({
-    name: 'John Doe',
-    email: 'john.doe@example.com',
-    orders: 5,
-    favorites: 12,
-    memberSince: 'March 2023',
-    rating: 4.9,
-    avatar: USER_AVATAR
-  });
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const userData = await AsyncStorage.getItem('user');
+        if (userData) {
+          const parsedUser = JSON.parse(userData);
+          setUser({
+            name: parsedUser.full_name || 'User Name',
+            email: parsedUser.email || 'user@example.com',
+            avatar: parsedUser.avatar || 'https://randomuser.me/api/portraits/men/1.jpg',
+            orders: parsedUser.orders || 0,
+            favorites: parsedUser.favorites || 0,
+            memberSince: parsedUser.created_at ? new Date(parsedUser.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'Joined recently',
+            rating: parsedUser.rating || 0,
+            contact: parsedUser.contact_number || 'Not provided'
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUserData();
+  }, [user]);
 
   const handleMenuPress = (event) => {
     const { pageY, pageX } = event.nativeEvent;
@@ -42,26 +61,46 @@ const ProfileScreen = ({ navigation }) => {
     setModalVisible(true);
   };
 
-  const handleLogout = () => {
-    setModalVisible(false);
-    navigation.dispatch(StackActions.replace('Auth', { screen: 'Login' }));
+  const handleLogout = async () => {
+    try {
+      setModalVisible(false);
+      await AsyncStorage.multiRemove([
+        'accessToken',
+        'refreshToken',
+        'user',
+      ]);
+      navigation.dispatch(StackActions.replace('Auth', { screen: 'Login' }));
+    } catch (error) {
+      console.error('Error during logout:', error);
+    }
   };
 
   const handleEditProfile = () => {
-  setModalVisible(false);
-  navigation.navigate('EditProfileScreen', { 
-    user: {
-      name: user.name,
-      email: user.email,
-      contact: user.contact
-    }
-  });
-};
+    setModalVisible(false);
+    navigation.navigate('EditProfileScreen', { 
+      user: {
+        name: user.name,
+        email: user.email,
+        contact: user.contact,
+        avatar: user.avatar
+      }
+    });
+  };
 
   const handleSettings = () => {
     setModalVisible(false);
     navigation.navigate('Settings');
   };
+
+  if (loading || !user) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#FF5E00" />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -87,18 +126,17 @@ const ProfileScreen = ({ navigation }) => {
       <View style={styles.profileSection}>
         <View style={styles.avatarContainer}>
           <View style={styles.avatarBorder}>
-            <Image 
-              source={{ uri: user.avatar }}
-              style={styles.avatarImage}
-              resizeMode="cover"
-            />
+            <Icon name="person" size={60} color="#FF5E00" />
           </View>
         </View>
         
         <View style={styles.userInfo}>
           <Text style={styles.userName}>{user.name}</Text>
-          <Text style={styles.userDetail}>{user.email}</Text>
-          <Text style={styles.memberSince}>Member since {user.memberSince}</Text>
+          {user.email && user.email.includes('@eatoor.com') ? (
+            <Text style={styles.userDetail}>{user?.contact}</Text>
+          ) : (
+            <Text style={styles.userDetail}>{user.email}</Text>
+          )}
         </View>
       </View>
 
@@ -168,72 +206,6 @@ const ProfileScreen = ({ navigation }) => {
             <Icon name="chevron-forward" size={20} color="#999" />
           </TouchableOpacity>
         </View>
-
-        {/* Settings Section */}
-        {/* <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Settings</Text>
-          
-          <TouchableOpacity 
-            style={styles.actionCard}
-            onPress={handleSettings}
-          >
-            <View style={[styles.actionIconContainer, { backgroundColor: 'rgba(255, 94, 0, 0.1)' }]}>
-              <Icon name="settings-outline" size={22} color="#FF5E00" />
-            </View>
-            <View style={styles.actionTextContainer}>
-              <Text style={styles.actionTitle}>App Settings</Text>
-              <Text style={styles.actionSubtitle}>Notifications, theme, etc.</Text>
-            </View>
-            <Icon name="chevron-forward" size={20} color="#999" />
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.actionCard}
-            onPress={() => navigation.navigate('PaymentMethods')}
-          >
-            <View style={[styles.actionIconContainer, { backgroundColor: 'rgba(255, 94, 0, 0.1)' }]}>
-              <Icon name="card-outline" size={22} color="#FF5E00" />
-            </View>
-            <View style={styles.actionTextContainer}>
-              <Text style={styles.actionTitle}>Payment Methods</Text>
-              <Text style={styles.actionSubtitle}>Manage your cards</Text>
-            </View>
-            <Icon name="chevron-forward" size={20} color="#999" />
-          </TouchableOpacity>
-        </View> */}
-
-        {/* Support Section */}
-        {/* <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Support</Text>
-          
-          <TouchableOpacity 
-            style={styles.actionCard}
-            onPress={() => navigation.navigate('ContactUs')}
-          >
-            <View style={[styles.actionIconContainer, { backgroundColor: 'rgba(255, 94, 0, 0.1)' }]}>
-              <Icon name="mail-outline" size={22} color="#FF5E00" />
-            </View>
-            <View style={styles.actionTextContainer}>
-              <Text style={styles.actionTitle}>Contact Us</Text>
-              <Text style={styles.actionSubtitle}>Get in touch with our team</Text>
-            </View>
-            <Icon name="chevron-forward" size={20} color="#999" />
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.actionCard}
-            onPress={() => navigation.navigate('About')}
-          >
-            <View style={[styles.actionIconContainer, { backgroundColor: 'rgba(255, 94, 0, 0.1)' }]}>
-              <Icon name="information-circle-outline" size={22} color="#FF5E00" />
-            </View>
-            <View style={styles.actionTextContainer}>
-              <Text style={styles.actionTitle}>About App</Text>
-              <Text style={styles.actionSubtitle}>Version 1.0.0</Text>
-            </View>
-            <Icon name="chevron-forward" size={20} color="#999" />
-          </TouchableOpacity>
-        </View> */}
       </ScrollView>
 
       {/* Options Modal */}
@@ -281,6 +253,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
     flexDirection: 'row',

@@ -10,10 +10,20 @@ export const verifyOTP = (payload: { contact_number: string; otp: string }) =>
 export const resendOTP = (contact_number: string) =>
   API.post('/login/resend-otp/', contact_number);
 
-export const updatePersonalDetails = (payload: {
+interface PersonalDetailsPayload {
   full_name: string;
-  delivery_preference: number;
-  whatsapp_updates: number;
-}) => {
-  return API.post('/user/personal-details-update/', payload);
+  delivery_preference?: number;
+  whatsapp_updates?: number;
+  contact_number?: string;
+  email?: string;
+}
+
+export const updatePersonalDetails = (payload: PersonalDetailsPayload) => {
+  return API.put('/user/personal-details-update/', payload);
 };
+
+export const sendEmailOTP = (email: string) =>
+  API.post('/send-email-otp/', { email });
+
+export const verifyEmailOTP = (payload: { email: string; otp: string }) =>
+  API.post('/verify-email-otp/', payload);

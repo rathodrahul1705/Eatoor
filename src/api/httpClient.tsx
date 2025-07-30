@@ -22,7 +22,7 @@ API.interceptors.request.use(
 API.interceptors.response.use(
   response => response,
   error => {
-    console.log("error.response?.status",error.response?.status)
+    console.log("error.response",error)
 
     if (error.response?.status === 401) {
       // handle token expiration or logout

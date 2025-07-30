@@ -1,405 +1,537 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
   View, StyleSheet, SafeAreaView, Text, TextInput,
-  FlatList, TouchableOpacity, Image, Animated, Dimensions, ScrollView
+  FlatList, TouchableOpacity, Image, Animated, Dimensions, 
+  ScrollView, ActivityIndicator, Alert, RefreshControl, Platform
 } from 'react-native';
-import { SwiperFlatList } from 'react-native-swiper-flatlist';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
+import LinearGradient from 'react-native-linear-gradient';
+import { getKitchenList } from '../../../api/home';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
+const isIOS = Platform.OS === 'ios';
 
 // Enhanced Color Palette
 const COLORS = {
-  primary: '#FF6D28',       // Vibrant orange
-  secondary: '#FF9F45',     // Lighter orange
-  accent: '#FAC213',        // Yellow accent
-  background: '#FFFBF5',    // Light cream background
-  card: '#FFFFFF',          // White cards
-  textDark: '#2D2727',      // Dark text
-  textMedium: '#5C5C5C',    // Medium text
-  textLight: '#8D8D8D',     // Light text
-  success: '#4ECDC4',       // Teal for offers
-  danger: '#EF4444',        // Red for badges
-  info: '#3B82F6',          // Blue for info
-  lightGray: '#F3F4F6',     // Light gray
-  border: '#E5E7EB',        // Border color
-  rating: '#FFD700',        // Gold for ratings
+  primary: '#FF6B35',
+  primaryLight: '#FF9F5B',  
+  secondary: '#FFD166',     
+  background: '#F8F9FA',    
+  card: '#FFFFFF',          
+  textDark: '#1E2329',      
+  textMedium: '#5E6770',    
+  textLight: '#8A939C',     
+  success: '#06C167',       
+  danger: '#FF3B30',        
+  info: '#5AC8FA',          
+  lightGray: '#F1F3F5',     
+  border: '#E1E4E8',        
+  rating: '#FFC120',        
+  darkOverlay: 'rgba(0,0,0,0.6)', 
+  lightOverlay: 'rgba(255,255,255,0.4)',
+  searchBg: '#FFFFFF',      
+  categoryBg: '#FFFFFF',    
+  searchBorder: '#E1E4E8',  
 };
 
-interface Offer {
-  id: string;
-  text: string;
-  color: string;
-  icon: string;
-}
+// Typography
+const FONTS = {
+  bold: 'Inter-Bold',
+  semiBold: 'Inter-SemiBold',
+  medium: 'Inter-Medium',
+  regular: 'Inter-Regular',
+};
 
 interface Kitchen {
-  id: string;
-  name: string;
-  rating: string;
-  time: string;
-  cuisine: string;
-  image: string;
-  offer: string;
-  distance: string;
-  deliveryFee: string;
-  minOrder: string;
+  restaurant_id: string;
+  restaurant_name: string;
+  restaurant_slug: string;
+  restaurant_image: string | null;
+  restaurant_location: string;
+  item_cuisines: string;
+  avg_price_range: number;
+  restaurant_city: string;
+  restaurant_status: number;
 }
 
 interface Category {
-  id: string;
+  id: number;
   name: string;
-  icon?: string; // For vector icons (e.g., 'pizza')
-  image?: string; // For image URLs
+  icon: string;
 }
 
 interface Filter {
   id: string;
   name: string;
   icon: string;
+  type: 'rating' | 'veg' | 'offer' | 'fastDelivery';
+  active: boolean;
+}
+
+interface ApiResponse {
+  success: boolean;
+  data: {
+    FeatureKitchenList: Kitchen[];
+    KitchenList: Kitchen[];
+    CategoryList: Category[];
+  };
 }
 
 const KitchenScreen: React.FC = () => {
-  const scrollY = useRef(new Animated.Value(0)).current;
   const navigation = useNavigation();
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [apiData, setApiData] = useState<ApiResponse | null>(null);
+  const [filteredKitchens, setFilteredKitchens] = useState<Kitchen[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filters, setFilters] = useState<Filter[]>([
+    { id: '1', name: '4.0+', icon: 'star', type: 'rating', active: false },
+    { id: '2', name: 'Pure Veg', icon: 'leaf', type: 'veg', active: false },
+    { id: '3', name: 'Offers', icon: 'pricetag', type: 'offer', active: false },
+    { id: '4', name: 'Fast', icon: 'flash', type: 'fastDelivery', active: false },
+  ]);
 
-  const headerTranslateY = scrollY.interpolate({
-    inputRange: [0, 50],
-    outputRange: [0, -50],
-    extrapolate: 'clamp',
-  });
+  const searchAnim = useRef(new Animated.Value(0)).current;
 
-  // Enhanced Offers Data
-  const offers: Offer[] = [
-    { id: '1', text: '50% OFF\nFirst Order', color: COLORS.primary, icon: 'flash' },
-    { id: '2', text: '₹100 Cashback', color: COLORS.success, icon: 'cash' },
-    { id: '3', text: 'Free Delivery\nOver ₹299', color: COLORS.accent, icon: 'car' },
-    { id: '4', text: 'Combo Deals', color: COLORS.info, icon: 'fast-food' },
-  ];
-
-  const featuredKitchens: Kitchen[] = [
-    {
-      id: '1',
-      name: 'Grand Kitchen',
-      rating: '4.5',
-      time: '25 mins',
-      cuisine: 'North Indian, Chinese',
-      image: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60',
-      offer: '50% OFF up to ₹100',
-      distance: '1.2 km',
-      deliveryFee: '₹30',
-      minOrder: '₹150'
-    },
-    {
-      id: '2',
-      name: 'Spice Valley',
-      rating: '4.2',
-      time: '30 mins',
-      cuisine: 'South Indian, Biryani',
-      image: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60',
-      offer: '40% OFF up to ₹80',
-      distance: '1.5 km',
-      deliveryFee: 'Free',
-      minOrder: '₹200'
-    },
-    {
-      id: '3',
-      name: 'Burger King',
-      rating: '4.3',
-      time: '20 mins',
-      cuisine: 'Burgers, Fast Food',
-      image: 'https://images.unsplash.com/photo-1571091718767-18b5b1457add?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60',
-      offer: 'Buy 1 Get 1 Free',
-      distance: '0.8 km',
-      deliveryFee: '₹25',
-      minOrder: '₹99'
+  const fetchKitchens = async () => {
+    try {
+      const response = await getKitchenList();
+      setApiData(response.data);
+      setFilteredKitchens(response.data.data.KitchenList);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to fetch kitchens. Please try again later.');
+      console.error('Error fetching kitchens:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-  ];
-
-  interface Category {
-  id: string;
-  name: string;
-  icon: string; // URL or local asset path
-}
-
-const categories: Category[] = [
-  {
-    id: '1',
-    name: 'Pizza',
-    icon: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80',
-  },
-  {
-    id: '2',
-    name: 'Burger',
-    icon: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80',
-  },
-  {
-    id: '3',
-    name: 'Sushi',
-    icon: 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80',
-  },
-  {
-    id: '4',
-    name: 'Pasta',
-    icon: 'https://images.unsplash.com/photo-1555949258-eb67b1ef0ceb?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80',
-  },
-  {
-    id: '5',
-    name: 'Salad',
-    icon: 'https://images.unsplash.com/photo-1546793665-c74683f339c1?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80',
-  },
-  {
-    id: '6',
-    name: 'Dessert',
-    icon: 'https://images.unsplash.com/photo-1551024506-0bccd828d307?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80',
-  },
-  {
-    id: '7',
-    name: 'Indian',
-    icon: 'https://images.unsplash.com/photo-1585937421612-70a008356fbe?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80',
-  },
-  {
-    id: '8',
-    name: 'Chinese',
-    icon: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80',
-  },
-];
-
-  const filters: Filter[] = [
-    { id: '1', name: 'Rating: 4.0+', icon: 'star' },
-    { id: '2', name: 'Pure Veg', icon: 'leaf' },
-    { id: '3', name: 'Offers', icon: 'pricetag' },
-    { id: '4', name: 'Fast Delivery', icon: 'rocket' },
-  ];
-
-  const kitchens: Kitchen[] = [
-    {
-      id: '1',
-      name: 'Grand Kitchen',
-      rating: '4.5',
-      time: '25 mins',
-      cuisine: 'North Indian, Chinese',
-      image: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60',
-      offer: '50% OFF up to ₹100',
-      distance: '1.2 km',
-      deliveryFee: '₹30',
-      minOrder: '₹150'
-    },
-    {
-      id: '2',
-      name: 'Spice Valley',
-      rating: '4.2',
-      time: '30 mins',
-      cuisine: 'South Indian, Biryani',
-      image: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60',
-      offer: '40% OFF up to ₹80',
-      distance: '1.5 km',
-      deliveryFee: 'Free',
-      minOrder: '₹200'
-    },
-    {
-      id: '3',
-      name: 'Burger King',
-      rating: '4.3',
-      time: '20 mins',
-      cuisine: 'Burgers, Fast Food',
-      image: 'https://images.unsplash.com/photo-1571091718767-18b5b1457add?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60',
-      offer: 'Buy 1 Get 1 Free',
-      distance: '0.8 km',
-      deliveryFee: '₹25',
-      minOrder: '₹99'
-    }
-  ];
-
-  const handleKitchenPress = (kitchen: Kitchen) => {
-    navigation.navigate('HomeKitchenDetails', { kitchenId: kitchen.id });
   };
 
-  const renderOffer = ({ item }: { item: Offer }) => (
-    <View style={[styles.offerCard, { backgroundColor: item.color }]}>
-      <View style={styles.offerIconContainer}>
-        <Icon name={item.icon} size={24} color="#fff" />
-      </View>
-      <Text style={styles.offerText}>{item.text}</Text>
-      <View style={styles.offerDecoration} />
-    </View>
-  );
+  useEffect(() => {
+    fetchKitchens();
+  }, []);
 
-const renderCategory = ({ item }: { item: Category }) => {
-  
-  return (
-    <TouchableOpacity style={styles.categoryCard}>
-      <View style={[styles.categoryIconContainer]}>
-        <View style={[styles.categoryIconCircle]}>
-          <Image 
-            source={{ uri: item.icon }} 
-            style={styles.categoryImage} 
-            resizeMode="cover"
-          />
-        </View>
+  useEffect(() => {
+    applyFilters();
+  }, [filters, searchQuery, apiData]);
+
+  const applyFilters = () => {
+    if (!apiData) return;
+
+    let result = [...apiData.data.KitchenList];
+
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(kitchen => 
+        kitchen.restaurant_name.toLowerCase().includes(query) ||
+        (kitchen.item_cuisines && kitchen.item_cuisines.toLowerCase().includes(query))
+      );
+    }
+
+    // Note: Some filters may not work as expected since the API response doesn't contain all the fields
+    // You may need to adjust these based on actual available data
+    filters.forEach(filter => {
+      if (filter.active) {
+        switch (filter.type) {
+          case 'rating':
+            // Rating filter may not work as rating isn't in the API response
+            break;
+          case 'veg':
+            // Veg filter may not work as is_veg_only isn't in the API response
+            break;
+          case 'offer':
+            // Offer filter may not work as offers aren't in the API response
+            break;
+          case 'fastDelivery':
+            // Delivery time filter may not work as delivery_time isn't in the API response
+            break;
+        }
+      }
+    });
+
+    setFilteredKitchens(result);
+  };
+
+  const handleFilterPress = (filterId: string) => {
+    setFilters(filters.map(filter => 
+      filter.id === filterId ? { ...filter, active: !filter.active } : filter
+    ));
+  };
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchKitchens();
+  };
+
+  const handleKitchenPress = (kitchen: Kitchen) => {
+    navigation.navigate('HomeKitchenDetails', { kitchenId: kitchen.restaurant_id });
+  };
+
+  const handleSearchFocus = () => {
+    Animated.timing(searchAnim, {
+      toValue: 1,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+  };
+
+  const handleSearchBlur = () => {
+    Animated.timing(searchAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+  };
+
+  const renderCategory = ({ item }: { item: Category }) => (
+    <TouchableOpacity style={styles.categoryCard} activeOpacity={0.8}>
+      <View style={styles.categoryIconContainer}>
+        <Image 
+          source={{ uri: item.icon }} 
+          style={styles.categoryImage} 
+          resizeMode="contain"
+        />
       </View>
-      <Text style={styles.categoryName}>{item.name}</Text>
+      <Text style={styles.categoryName} numberOfLines={1}>{item.name}</Text>
     </TouchableOpacity>
   );
-};
 
   const renderFilter = ({ item }: { item: Filter }) => (
-    <TouchableOpacity style={styles.filterCard}>
-      <Icon name={item.icon} size={16} color={COLORS.primary} />
-      <Text style={styles.filterText}>{item.name}</Text>
+    <TouchableOpacity 
+      style={[
+        styles.filterCard,
+        item.active && styles.activeFilterCard
+      ]}
+      onPress={() => handleFilterPress(item.id)}
+      activeOpacity={0.7}
+    >
+      <Icon 
+        name={item.icon} 
+        size={16} 
+        color={item.active ? '#fff' : COLORS.textMedium} 
+      />
+      <Text style={[
+        styles.filterText,
+        item.active && styles.activeFilterText
+      ]}>
+        {item.name}
+      </Text>
     </TouchableOpacity>
   );
+
+  const renderKitchenItem = ({ item }: { item: Kitchen }) => {
+    // Default values for fields not in API response
+    const deliveryTime = '30-40 min';
+    const [minTime, maxTime] = deliveryTime.split('-').map(t => parseInt(t.trim()) || 30);
+    const avgTime = Math.floor((minTime + maxTime) / 2);
+    
+    const distance = '1.5 km';
+    const deliveryFee = '₹30';
+    const minOrder = item.avg_price_range ? `₹${item.avg_price_range}` : '₹100';
+
+    // Split cuisines string into array
+    const cuisines = item.item_cuisines ? item.item_cuisines.split(', ') : [];
+
+    return (
+      <TouchableOpacity
+        style={styles.kitchenCard}
+        onPress={() => handleKitchenPress(item)}
+        activeOpacity={0.9}
+      >
+        <View style={styles.kitchenImageContainer}>
+          {item.restaurant_image ? (
+            <Image 
+              source={{ uri: item.restaurant_image }} 
+              style={styles.kitchenImage} 
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={[styles.kitchenImage, { backgroundColor: COLORS.lightGray }]}>
+              <Icon name="restaurant-outline" size={40} color={COLORS.textLight} />
+            </View>
+          )}
+          
+          <View style={styles.kitchenBadgeContainer}>
+            {/* Offer badge removed since offers aren't in API response */}
+            {/* Veg badge removed since is_veg_only isn't in API response */}
+          </View>
+          
+          <TouchableOpacity style={styles.favoriteButton}>
+            <Icon name="heart" size={20} color="#fff" />
+          </TouchableOpacity>
+          
+          <View style={styles.deliveryInfoContainer}>
+            <Text style={styles.deliveryInfoText}>{avgTime} min • {deliveryFee}</Text>
+          </View>
+        </View>
+        
+        <View style={styles.kitchenContent}>
+          <View style={styles.kitchenHeader}>
+            <Text style={styles.kitchenName} numberOfLines={1}>{item.restaurant_name}</Text>
+            <View style={styles.ratingContainer}>
+              <Icon name="star" size={14} color={COLORS.rating} />
+              {/* Rating text removed since rating isn't in API response */}
+              <Text style={styles.ratingText}>4.0</Text>
+            </View>
+          </View>
+          
+          <Text style={styles.kitchenCuisine} numberOfLines={1}>
+            {cuisines.join(' • ')}
+          </Text>
+          
+          <View style={styles.kitchenFooter}>
+            <Text style={styles.minOrder}>Min. {minOrder}</Text>
+            <View style={styles.dotSeparator} />
+            <Text style={styles.distanceText}>{distance}</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderFeaturedKitchenPair = (index: number) => {
+    if (!apiData) return null;
+    
+    const pair = apiData.data.FeatureKitchenList.slice(index * 2, index * 2 + 2);
+    if (pair.length === 0) return null;
+
+    return (
+      <View key={`pair-${index}`} style={styles.featuredPairContainer}>
+        {pair.map((item) => {
+          const deliveryTime = '25-35 min';
+          const [minTime, maxTime] = deliveryTime.split('-').map(t => parseInt(t.trim()) || 30);
+          const avgTime = Math.floor((minTime + maxTime) / 2);
+
+          // Split cuisines string into array
+          const cuisines = item.item_cuisines ? item.item_cuisines.split(', ') : [];
+
+          return (
+            <TouchableOpacity 
+              key={item.restaurant_id}
+              style={styles.featuredCard}
+              onPress={() => handleKitchenPress(item)}
+              activeOpacity={0.9}
+            >
+              {item.restaurant_image ? (
+                <Image 
+                  source={{ uri: item.restaurant_image }} 
+                  style={styles.featuredImage} 
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={[styles.featuredImage, { backgroundColor: COLORS.lightGray, justifyContent: 'center', alignItems: 'center' }]}>
+                  <Icon name="restaurant-outline" size={40} color={COLORS.textLight} />
+                </View>
+              )}
+              <View style={styles.featuredContent}>
+                <View style={styles.featuredHeader}>
+                  <Text style={styles.featuredName} numberOfLines={1}>{item.restaurant_name}</Text>
+                  <View style={styles.featuredRating}>
+                    <Icon name="star" size={14} color={COLORS.rating} />
+                    {/* Rating text removed since rating isn't in API response */}
+                    <Text style={styles.featuredRatingText}>4.0</Text>
+                  </View>
+                </View>
+                <Text style={styles.featuredInfo} numberOfLines={1}>
+                  {cuisines.join(' • ')}
+                </Text>
+                <View style={styles.featuredFooter}>
+                  <Text style={styles.featuredDeliveryText}>
+                    <Icon name="time" size={12} color={COLORS.textMedium} /> {avgTime} mins • ₹30
+                  </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
+  };
+
+  if (loading && !refreshing) {
+    return (
+      <SafeAreaView style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </SafeAreaView>
+    );
+  }
+
+  if (!apiData) {
+    return (
+      <SafeAreaView style={[styles.container, styles.emptyContainer]}>
+        <Icon name="alert-circle-outline" size={60} color={COLORS.textLight} />
+        <Text style={styles.emptyText}>No data available</Text>
+        <TouchableOpacity 
+          style={styles.retryButton}
+          onPress={fetchKitchens}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.retryButtonText}>Retry</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  const featuredPairsCount = Math.ceil(apiData.data.FeatureKitchenList.length / 2);
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Fixed Header */}
-      <View style={styles.header}>
+      {/* Header with Search */}
+      <Animated.View style={[
+        styles.headerContainer,
+        {
+          backgroundColor: searchAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [COLORS.background, COLORS.card]
+          }),
+          borderBottomWidth: searchAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, 1]
+          }),
+          borderBottomColor: COLORS.searchBorder,
+          shadowOpacity: searchAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, 0.1]
+          }),
+          elevation: searchAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, 3]
+          }),
+        }
+      ]}>
         <View style={styles.searchContainer}>
           <View style={styles.searchInputContainer}>
             <Icon name="search" size={20} color={COLORS.textLight} style={styles.searchIcon} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Search kitchens, cuisines"
+              placeholder="Search for restaurants or cuisines"
               placeholderTextColor={COLORS.textLight}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onFocus={handleSearchFocus}
+              onBlur={handleSearchBlur}
             />
+            {searchQuery ? (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Icon name="close-circle" size={20} color={COLORS.textLight} />
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
-      </View>
 
-      {/* Scrollable Content */}
+        {/* Categories */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoryListContainer}
+        >
+          {apiData.data.CategoryList.map(category => (
+            <TouchableOpacity 
+              key={category.id} 
+              style={styles.categoryCard}
+              activeOpacity={0.8}
+            >
+              <View style={styles.categoryIconContainer}>
+                <Image 
+                  source={{ uri: category.icon }} 
+                  style={styles.categoryImage} 
+                  resizeMode="contain"
+                />
+              </View>
+              <Text style={styles.categoryName} numberOfLines={1}>{category.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </Animated.View>
+
+      {/* Main Content */}
       <ScrollView
         style={styles.scrollContainer}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[COLORS.primary]}
+            tintColor={COLORS.primary}
+          />
+        }
       >
-        {/* Categories Section */}
+        {/* Quick Filters */}
         <View style={styles.sectionContainer}>
-          <FlatList
-            data={categories}
-            renderItem={renderCategory}
-            keyExtractor={item => item.id}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoryList}
-          />
-        </View>
-
-        {/* Offers Section */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Special Offers</Text>
-          </View>
-          <FlatList
-            data={offers}
-            renderItem={renderOffer}
-            keyExtractor={item => item.id}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.offerList}
-          />
-        </View>
-
-        {/* Featured Kitchens */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Featured Kitchens</Text>
-          </View>
-          <SwiperFlatList
-            autoplay
-            autoplayDelay={4}
-            autoplayLoop
-            showPagination={false}
-            data={featuredKitchens}
-            renderItem={({ item }) => (
-              <TouchableOpacity 
-                style={styles.featuredCard}
-                onPress={() => handleKitchenPress(item)}
-              >
-                <Image source={{ uri: item.image }} style={styles.featuredImage} />
-                <View style={styles.featuredOverlay} />
-                <View style={styles.featuredContent}>
-                  <Text style={styles.featuredName}>{item.name}</Text>
-                  <View style={styles.featuredRating}>
-                    <Icon name="star" size={16} color={COLORS.rating} />
-                    <Text style={styles.featuredRatingText}>{item.rating}</Text>
-                  </View>
-                  <Text style={styles.featuredInfo}>{item.cuisine}</Text>
-                  <View style={styles.featuredOfferBadge}>
-                    <Text style={styles.featuredOfferText}>{item.offer}</Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            )}
-            style={styles.swiper}
-          />
-        </View>
-
-        {/* Filters */}
-        <View style={styles.sectionContainer}>
-          <FlatList
-            data={filters}
-            renderItem={renderFilter}
-            keyExtractor={item => item.id}
+          <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.filterList}
-          />
+          >
+            {filters.map(filter => (
+              <TouchableOpacity 
+                key={filter.id}
+                style={[
+                  styles.filterCard,
+                  filter.active && styles.activeFilterCard
+                ]}
+                onPress={() => handleFilterPress(filter.id)}
+                activeOpacity={0.7}
+              >
+                <Icon 
+                  name={filter.icon} 
+                  size={16} 
+                  color={filter.active ? '#fff' : COLORS.textMedium} 
+                />
+                <Text style={[
+                  styles.filterText,
+                  filter.active && styles.activeFilterText
+                ]}>
+                  {filter.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
+
+        {/* Featured Kitchens - Horizontal Scroll with 2 per screen */}
+        {apiData.data.FeatureKitchenList.length > 0 && (
+          <View style={styles.featuredSectionContainer}>
+            <Text style={styles.sectionTitle}>Top-rated in your area</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.featuredList}
+              snapToInterval={width - 32}
+              decelerationRate="fast"
+              snapToAlignment="start"
+            >
+              {[...Array(featuredPairsCount)].map((_, index) => (
+                renderFeaturedKitchenPair(index)
+              ))}
+            </ScrollView>
+          </View>
+        )}
 
         {/* Kitchens Near You */}
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Nearby Kitchens</Text>
+            <Text style={styles.sectionTitle}>Home Kitchens near you</Text>
           </View>
-          <View style={styles.kitchenList}>
-            {kitchens.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                style={styles.kitchenCard}
-                onPress={() => handleKitchenPress(item)}
-              >
-                <View style={styles.kitchenImageContainer}>
-                  <Image source={{ uri: item.image }} style={styles.kitchenImage} />
-                  <View style={styles.kitchenBadge}>
-                    <Text style={styles.kitchenBadgeText}>{item.offer}</Text>
-                  </View>
+          
+          {filteredKitchens.length === 0 ? (
+            <View style={styles.emptyResultContainer}>
+              <Icon name="restaurant-outline" size={60} color={COLORS.textLight} />
+              <Text style={styles.emptyText}>No restaurants found</Text>
+              <Text style={styles.emptySubText}>Try adjusting your filters or search</Text>
+            </View>
+          ) : (
+            <View style={styles.kitchenList}>
+              {filteredKitchens.map(item => (
+                <View key={item.restaurant_id} style={styles.kitchenCardWrapper}>
+                  {renderKitchenItem({ item })}
                 </View>
-                <View style={styles.kitchenContent}>
-                  <View style={styles.kitchenHeader}>
-                    <Text style={styles.kitchenName}>{item.name}</Text>
-                    <View style={styles.ratingContainer}>
-                      <Icon name="star" size={14} color={COLORS.rating} />
-                      <Text style={styles.ratingText}>{item.rating}</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.kitchenCuisine}>{item.cuisine}</Text>
-                  
-                  <View style={styles.kitchenDetails}>
-                    <View style={styles.detailItem}>
-                      <Icon name="time" size={14} color={COLORS.textLight} />
-                      <Text style={styles.detailText}>{item.time}</Text>
-                    </View>
-                    <View style={styles.detailItem}>
-                      <Icon name="location" size={14} color={COLORS.textLight} />
-                      <Text style={styles.detailText}>{item.distance}</Text>
-                    </View>
-                    <View style={styles.detailItem}>
-                      <Icon name="bicycle" size={14} color={COLORS.textLight} />
-                      <Text style={styles.detailText}>{item.deliveryFee}</Text>
-                    </View>
-                  </View>
-                  
-                  <View style={styles.kitchenFooter}>
-                    <Text style={styles.minOrder}>Min. order: {item.minOrder}</Text>
-                    <TouchableOpacity style={styles.favoriteButton}>
-                      <Icon name="heart-outline" size={20} color={COLORS.danger} />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
+              ))}
+            </View>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -409,59 +541,76 @@ const renderCategory = ({ item }: { item: Category }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerContainer: {
+    paddingTop: 10,
+    paddingBottom: 10,
+    zIndex: 100,
   },
   scrollContainer: {
     flex: 1,
-    marginTop: 70,
   },
   scrollContent: {
     paddingBottom: 30,
   },
-  
-  // Header Styles
-  categoryImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 25, // Adjust as needed
-  },
-  categoryIconCircle: {
-    width: 50, // Ensure this matches your design
-    height: 50,
-    borderRadius: 25,
+  emptyContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    overflow: 'hidden', // Ensures the image respects border radius
+    padding: 20,
   },
-  header: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
-    backgroundColor: COLORS.card,
-    paddingTop: 10,
-    paddingBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  searchContainer: {
-    flexDirection: 'row',
+  emptyResultContainer: {
+    justifyContent: 'center',
     alignItems: 'center',
+    padding: 40,
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    marginTop: 16,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontFamily: FONTS.semiBold,
+    color: COLORS.textDark,
+    marginTop: 16,
+  },
+  emptySubText: {
+    fontSize: 14,
+    fontFamily: FONTS.regular,
+    color: COLORS.textLight,
+    marginTop: 8,
+  },
+  retryButton: {
+    marginTop: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: COLORS.primary,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontFamily: FONTS.semiBold,
+  },
+  
+  // Search Bar
+  searchContainer: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    marginBottom: 12,
   },
   searchInputContainer: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.lightGray,
     borderRadius: 12,
-    paddingHorizontal: 15,
+    paddingHorizontal: 16,
     height: 48,
-    marginRight: 12,
+    borderWidth: 1,
+    borderColor: COLORS.searchBorder,
   },
   searchIcon: {
     marginRight: 10,
@@ -470,28 +619,46 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     color: COLORS.textDark,
-    paddingVertical: 12,
-    fontFamily: 'Inter-Medium',
-    letterSpacing: 0.2
+    fontFamily: FONTS.medium,
+    height: '100%',
   },
-  filterButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: COLORS.primary,
+  
+  // Categories - Updated to remove background
+  categoryListContainer: {
+    paddingHorizontal: 8,
+  },
+  categoryCard: {
+    width: 80,
+    alignItems: 'center',
+    marginHorizontal: 8,
+  },
+  categoryIconContainer: {
+    width: 64,
+    height: 64,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 5,
+    marginBottom: 8,
+    backgroundColor: 'transparent', // Remove background color
+  },
+  categoryImage: {
+    width: 62,
+    height: 62,
+    borderRadius: 31, // Make it circular if needed
+  },
+  categoryName: {
+    fontSize: 12,
+    fontFamily: FONTS.medium,
+    color: COLORS.textDark,
+    textAlign: 'center',
   },
   
   // Section Styles
   sectionContainer: {
+    marginTop: 10,
+    paddingHorizontal: 10,
+  },
+  featuredSectionContainer: {
     marginTop: 24,
-    paddingHorizontal: 16,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -501,170 +668,20 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 20,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.textDark,
-    fontFamily: 'Inter-Bold',
+    paddingHorizontal: 16,
+    marginBottom: 12,
   },
   seeAll: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: FONTS.semiBold,
     color: COLORS.primary,
-    fontFamily: 'Inter-SemiBold',
-  },
-  
-  // Category Styles
-  categoryList: {
-    paddingRight: 16,
-  },
-  categoryCard: {
-    width: 80,
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  categoryIconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  categoryIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  categoryName: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: COLORS.textDark,
-    textAlign: 'center',
-    fontFamily: 'Inter-Medium',
-    marginTop: 4,
-  },
-  
-  // Offer Styles
-  offerList: {
-    paddingRight: 16,
-  },
-  offerCard: {
-    width: 160,
-    borderRadius: 16,
-    padding: 16,
-    marginRight: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
-    overflow: 'hidden',
-  },
-  offerIconContainer: {
-    marginRight: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  offerText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-    flex: 1,
-    fontFamily: 'Inter-SemiBold',
-    lineHeight: 18,
-  },
-  offerDecoration: {
-    position: 'absolute',
-    right: -30,
-    top: -30,
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-  },
-
-  // Featured Kitchen Styles
-  swiper: {
-    height: 220,
-    borderRadius: 16,
-  },
-  featuredCard: {
-    width: width - 48,
-    height: 200,
-    borderRadius: 16,
-    marginHorizontal: 8,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  featuredImage: {
-    width: '100%',
-    height: '100%',
-  },
-  featuredOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
-  featuredContent: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 16,
-  },
-  featuredName: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 6,
-    fontFamily: 'Inter-Bold',
-  },
-  featuredRating: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  featuredRatingText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-    marginLeft: 4,
-    fontFamily: 'Inter-SemiBold',
-  },
-  featuredInfo: {
-    fontSize: 14,
-    color: '#E5E7EB',
-    marginBottom: 8,
-    fontFamily: 'Inter-Regular',
-  },
-  featuredOfferBadge: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  featuredOfferText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.accent,
-    fontFamily: 'Inter-Bold',
   },
   
   // Filter Styles
   filterList: {
-    paddingRight: 16,
+    paddingHorizontal: 16,
   },
   filterCard: {
     flexDirection: 'row',
@@ -677,22 +694,101 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
+  activeFilterCard: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
   filterText: {
     fontSize: 13,
-    fontWeight: '500',
+    fontFamily: FONTS.medium,
     color: COLORS.textDark,
     marginLeft: 6,
-    fontFamily: 'Inter-Medium',
+  },
+  activeFilterText: {
+    color: '#fff',
   },
   
-  // Kitchen Card Styles
+  // Featured Kitchens
+  featuredList: {
+    paddingLeft: 16,
+    paddingRight: 8,
+    paddingBottom: 16,
+  },
+  featuredPairContainer: {
+    width: width - 32,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginRight: 16,
+  },
+  featuredCard: {
+    width: (width - 48) / 2,
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  featuredImage: {
+    width: '100%',
+    height: 120,
+  },
+  featuredContent: {
+    padding: 12,
+  },
+  featuredHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 6,
+  },
+  featuredName: {
+    fontSize: 15,
+    fontFamily: FONTS.semiBold,
+    color: COLORS.textDark,
+    flex: 1,
+    marginRight: 8,
+  },
+  featuredRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  featuredRatingText: {
+    fontSize: 12,
+    fontFamily: FONTS.semiBold,
+    color: '#92400E',
+    marginLeft: 4,
+  },
+  featuredInfo: {
+    fontSize: 13,
+    fontFamily: FONTS.regular,
+    color: COLORS.textMedium,
+    marginBottom: 8,
+  },
+  featuredFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  featuredDeliveryText: {
+    fontSize: 12,
+    fontFamily: FONTS.regular,
+    color: COLORS.textMedium,
+  },
+  
+  // Kitchen List
   kitchenList: {
-    paddingRight: 16,
+    paddingHorizontal: 0,
+  },
+  kitchenCardWrapper: {
+    paddingHorizontal: 16,
+    marginBottom: 16,
   },
   kitchenCard: {
     backgroundColor: COLORS.card,
     borderRadius: 16,
-    marginBottom: 20,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -701,27 +797,58 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   kitchenImageContainer: {
-    height: 180,
+    height: 160,
     position: 'relative',
   },
   kitchenImage: {
     width: '100%',
     height: '100%',
   },
-  kitchenBadge: {
+  kitchenBadgeContainer: {
     position: 'absolute',
     top: 12,
     left: 12,
+    flexDirection: 'row',
+  },
+  kitchenBadge: {
     backgroundColor: COLORS.danger,
-    borderRadius: 20,
+    borderRadius: 4,
     paddingVertical: 4,
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
+    marginRight: 8,
+  },
+  vegBadge: {
+    backgroundColor: COLORS.success,
   },
   kitchenBadgeText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: '#fff',
-    fontFamily: 'Inter-Bold',
+  },
+  favoriteButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: COLORS.darkOverlay,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deliveryInfoContainer: {
+    position: 'absolute',
+    bottom: 12,
+    left: 12,
+    backgroundColor: COLORS.darkOverlay,
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  deliveryInfoText: {
+    fontSize: 12,
+    fontFamily: FONTS.medium,
+    color: '#fff',
   },
   kitchenContent: {
     padding: 16,
@@ -733,67 +860,54 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   kitchenName: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 16,
+    fontFamily: FONTS.bold,
     color: COLORS.textDark,
-    fontFamily: 'Inter-Bold',
+    flex: 1,
   },
   ratingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FEF3C7',
-    borderRadius: 20,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
   ratingText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: '#92400E',
     marginLeft: 4,
-    fontFamily: 'Inter-Bold',
   },
   kitchenCuisine: {
     fontSize: 14,
+    fontFamily: FONTS.regular,
     color: COLORS.textMedium,
     marginBottom: 12,
-    fontFamily: 'Inter-Regular',
-  },
-  kitchenDetails: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  detailText: {
-    fontSize: 12,
-    color: COLORS.textLight,
-    marginLeft: 4,
-    fontFamily: 'Inter-Regular',
   },
   kitchenFooter: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
-    paddingTop: 12,
   },
   minOrder: {
     fontSize: 13,
-    color: COLORS.textLight,
-    fontFamily: 'Inter-Regular',
+    fontFamily: FONTS.regular,
+    color: COLORS.textMedium,
   },
-  favoriteButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#FEE2E2',
-    justifyContent: 'center',
-    alignItems: 'center',
+  dotSeparator: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.textLight,
+    marginHorizontal: 8,
+  },
+  distanceText: {
+    fontSize: 13,
+    fontFamily: FONTS.regular,
+    color: COLORS.textMedium,
   },
 });
 
