@@ -1,14 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Keyboard,
   TouchableWithoutFeedback, Animated, Platform, StatusBar, 
-  ActivityIndicator, TextInput, Alert, Clipboard
+  ActivityIndicator, TextInput, Alert
 } from 'react-native';
 import { useNavigation, StackActions } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { OTPScreenProps } from '../../types/navigation.d';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { verifyOTP, resendOTP } from '../../api/auth';
+import Clipboard from '@react-native-clipboard/clipboard';
 
 const OTP_LENGTH = 6;
 const RESEND_COUNTDOWN = 30;
@@ -24,10 +25,12 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
   const [countdown, setCountdown] = useState(RESEND_COUNTDOWN);
   const [isLoading, setIsLoading] = useState(false);
   const [activeInput, setActiveInput] = useState(0);
+  const [shouldVerify, setShouldVerify] = useState(false);
   const shakeAnimation = useRef(new Animated.Value(0)).current;
   const inputRefs = useRef<Array<TextInput | null>>([]);
   const manualInputRef = useRef<TextInput>(null);
 
+  // Countdown timer for resend OTP
   useEffect(() => {
     const timer = countdown > 0 && setInterval(() => {
       setCountdown(countdown - 1);
@@ -37,29 +40,19 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
     };
   }, [countdown]);
 
-  // Sync manual OTP with box OTP
+  // Handle OTP verification when shouldVerify is true and OTP is complete
   useEffect(() => {
-    if (manualOtp.length <= OTP_LENGTH) {
-      const newOtp = [...otp];
-      for (let i = 0; i < manualOtp.length; i++) {
-        newOtp[i] = manualOtp[i];
-      }
-      // Fill remaining boxes with empty string
-      for (let i = manualOtp.length; i < OTP_LENGTH; i++) {
-        newOtp[i] = '';
-      }
-      setOtp(newOtp);
-      
-      // Auto verify if complete
-      if (manualOtp.length === OTP_LENGTH) {
-        handleVerify();
-      }
+    if (shouldVerify && manualOtp.length === OTP_LENGTH) {
+      handleVerify();
+      setShouldVerify(false);
     }
-  }, [manualOtp]);
+  }, [shouldVerify, manualOtp]);
 
-  const handleVerify = async () => {
-    const otpCode = manualOtp.length === OTP_LENGTH ? manualOtp : otp.join('');
+  const handleVerify = useCallback(async () => {
+    if (isLoading) return;
     
+    const otpCode = manualOtp.length === OTP_LENGTH ? manualOtp : otp.join('');
+
     if (otpCode.length !== OTP_LENGTH) {
       setError('Please enter a valid 6-digit OTP');
       shakeInput();
@@ -76,7 +69,7 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
         ['refreshToken', response.data.tokens.refresh],
         ['user', JSON.stringify(response.data.user)]
       ]);
-
+      
       navigation.dispatch(
         StackActions.replace('Home', { screen: response.data.navigate_to })
       );
@@ -84,10 +77,14 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Invalid OTP. Please try again.');
       shakeInput();
+      // Clear OTP on invalid verification
+      setOtp(Array(OTP_LENGTH).fill(''));
+      setManualOtp('');
+      inputRefs.current[0]?.focus();
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [otp, manualOtp, userInput, navigation, isLoading]);
 
   const handleResendOTP = async () => {
     if (countdown > 0) return;
@@ -141,25 +138,39 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
         setActiveInput(index + 1);
       }
 
+      // Set shouldVerify when last digit is entered
       if (index === OTP_LENGTH - 1 && text) {
-        const completeOtp = newOtp.join('');
-        if (completeOtp.length === OTP_LENGTH) {
-          handleVerify();
-        }
+        setShouldVerify(true);
       }
     }
   };
 
   const handleManualOtpChange = (text: string) => {
-    if (/^\d*$/.test(text)) { // Only allow numbers
+    if (/^\d*$/.test(text)) {
       setManualOtp(text);
       setError('');
+      
+      // Update individual boxes
+      const newOtp = [...otp];
+      for (let i = 0; i < text.length && i < OTP_LENGTH; i++) {
+        newOtp[i] = text[i];
+      }
+      // Clear remaining boxes if text is shorter
+      for (let i = text.length; i < OTP_LENGTH; i++) {
+        newOtp[i] = '';
+      }
+      setOtp(newOtp);
       
       // Focus the appropriate box
       const newActiveInput = Math.min(text.length, OTP_LENGTH - 1);
       setActiveInput(newActiveInput);
       if (text.length < OTP_LENGTH) {
         inputRefs.current[newActiveInput]?.focus();
+      }
+
+      // Set shouldVerify when OTP is complete
+      if (text.length === OTP_LENGTH) {
+        setShouldVerify(true);
       }
     }
   };
@@ -231,8 +242,14 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
             keyboardType="number-pad"
             maxLength={OTP_LENGTH}
             textContentType="oneTimeCode"
+            autoComplete={Platform.OS === 'android' ? 'sms-otp' : 'one-time-code'}
+            importantForAutofill="yes"
             onPaste={handlePaste}
             caretHidden={true}
+            autoFocus={true}
+            autoCorrect={false}
+            spellCheck={false}
+            dataDetectorTypes="none"
           />
 
           {/* OTP Boxes */}
@@ -279,7 +296,7 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
               styles.button, 
               ((otp.join('').length !== OTP_LENGTH && manualOtp.length !== OTP_LENGTH) || isLoading) && styles.buttonDisabled
             ]}
-            onPress={handleVerify}
+            onPress={() => setShouldVerify(true)}
             disabled={(otp.join('').length !== OTP_LENGTH && manualOtp.length !== OTP_LENGTH) || isLoading}
             activeOpacity={0.8}
           >
@@ -329,7 +346,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingTop: 280,
+    paddingTop:180,
     justifyContent: 'flex-start',
   },
   title: {

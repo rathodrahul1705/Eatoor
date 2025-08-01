@@ -129,7 +129,7 @@ const LoginScreen = () => {
         >
           <View style={styles.header}>
             <Image
-              source={require('../../../assets/eatoorweb.png')}
+              source={require('../../../assets/eatoormob.png')}
               style={styles.logo}
               resizeMode="contain"
             />
@@ -251,9 +251,9 @@ const styles = StyleSheet.create({
     marginTop: height * 0.05,
   },
   logo: {
-    width: width * 0.6,
-    height: width * 0.2,
-    marginBottom: 10,
+    width: width * 0.3,
+    height: width * 0.3,
+    marginBottom: -20,
   },
   content: {
     paddingHorizontal: 30,

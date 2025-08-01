@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo, useLayoutEffect } from 'react';
 import {
   View,
   Text,
@@ -17,8 +17,11 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { getKitcheDetails } from '../../../api/home';
+import { getCart, updateCart } from '../../../api/cart';
+import { showMessage } from 'react-native-flash-message';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -31,37 +34,55 @@ const { height, width } = Dimensions.get('window');
 const PLACEHOLDER_FOOD = ""
 const PLACEHOLDER_RESTAURANT = ""
 
-type MenuItem = {
+// Types
+type FoodType = 'Veg' | 'NonVeg';
+
+interface MenuItem {
   id: string;
   name: string;
   price: number;
-  type: 'Veg' | 'NonVeg';
+  type: FoodType;
   category: string;
-  image: string;
+  image: string | null;
   description: string;
   isBestseller?: boolean;
   quantity?: number;
   availability: boolean;
   discount_percent?: string | null;
-  discount_active?: string;
+  discount_active?: boolean;
   buy_one_get_one_free?: boolean | null;
-};
+}
 
-type FilterItem = {
+interface FilterItem {
   id: string;
   name: string;
   icon: string;
-};
+}
 
-type MenuCategory = {
+interface MenuCategory {
   name: string;
   items: MenuItem[];
   expanded: boolean;
-};
+}
 
-type KitchenDetails = {
+interface CartItem {
+  item_id: number;
+  item_name: string;
+  item_price: number;
+  quantity: number;
+  item_image: string;
+  food_type?: string;
+}
+
+interface CartResponse {
+  status: string;
+  cart_details: CartItem[];
+}
+
+interface KitchenDetails {
   restaurant_name: string;
   restaurant_image: string;
+  restaurant_id: string;
   Address: string;
   rating: number;
   min_order: number;
@@ -80,16 +101,14 @@ type KitchenDetails = {
     discount_percent: string | null;
     discount_active: string;
   }>;
-  delivery_timings: Array<{
-    day: string;
-    open: boolean;
-    start_time: string;
-    end_time: string;
-  }>;
   restaurant_current_status: {
     is_open: boolean;
   };
-};
+}
+
+interface UserData {
+  user_id?: string;
+}
 
 const FILTERS: FilterItem[] = [
   { id: '1', name: 'All', icon: 'fast-food-outline' },
@@ -105,7 +124,7 @@ const HEADER_SCROLL_DISTANCE = HEADER_MAX_HEIGHT - HEADER_MIN_HEIGHT;
 
 const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
 
-const VegNonVegIcon = ({ type, size = 16 }: { type: 'Veg' | 'NonVeg', size?: number }) => {
+const VegNonVegIcon = React.memo(({ type, size = 16 }: { type: FoodType; size?: number }) => {
   return (
     <View style={[
       styles.vegNonVegIconContainer,
@@ -118,10 +137,15 @@ const VegNonVegIcon = ({ type, size = 16 }: { type: 'Veg' | 'NonVeg', size?: num
       ]} />
     </View>
   );
-};
+});
 
-const HomeKitchenDetails = ({ route }) => {
+// const HomeKitchenDetails = () => {
+const HomeKitchenDetails: React.FC = () => {
   const navigation = useNavigation();
+  const route = useRoute();
+  const scrollY = useRef(new Animated.Value(0)).current;
+  
+  // State declarations
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [activeFilter, setActiveFilter] = useState('All');
@@ -130,9 +154,13 @@ const HomeKitchenDetails = ({ route }) => {
   const [kitchenDetails, setKitchenDetails] = useState<KitchenDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
+  const [user, setUser] = useState<UserData | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [cartLoading, setCartLoading] = useState(false);
+  const kitchenId = route.params?.kitchenId;
 
-  const scrollY = useRef(new Animated.Value(0)).current;
-  
+  // Animation interpolations
   const headerTranslateY = scrollY.interpolate({
     inputRange: [0, HEADER_SCROLL_DISTANCE],
     outputRange: [0, -HEADER_SCROLL_DISTANCE],
@@ -157,38 +185,129 @@ const HomeKitchenDetails = ({ route }) => {
     extrapolate: 'clamp',
   });
 
+  // Handle back button press
+  const handleBackPress = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('HomeScreen');
+    }
+  }, [navigation]);
+
+  // Set navigation options
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerShown: false,
+    });
+  }, [navigation]);
+
+  // Fetch data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      scrollY.setValue(0);
+      fetchCartData();
+      return () => {};
+    }, [])
+  );
+
+  // Modal handlers
+  const openModal = useCallback((item: MenuItem) => {
+    setSelectedItem(item);
+    setShowModal(true);
+  }, []);
+
+  const closeModal = useCallback(() => {
+    setShowModal(false);
+  }, []);
+
+  // Fetch user data and session ID
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const [userData, session] = await Promise.all([
+          AsyncStorage.getItem('user'),
+          AsyncStorage.getItem('session_id')
+        ]);
+        
+        if (userData) setUser(JSON.parse(userData));
+        if (session) setSessionId(session);
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+      }
+    };
+
+    fetchUserData();
+  }, []);
+
+  // Fetch cart data
+  const fetchCartData = useCallback(async () => {
+    if (!user?.id) return;
+    
+    try {
+      setCartLoading(true);
+      const payload = {
+        session_id: sessionId,
+        user_id:user?.id
+      };
+      
+      const response = await getCart(payload);
+      if (response.status === 200) {
+        const cartItemsFromApi = response.data.cart_details.map(item => ({
+          id: item.item_id.toString(),
+          name: item.item_name,
+          price: item.item_price,
+          quantity: item.quantity,
+          image: item.item_image || null,
+          type: (item.food_type === 'Non-Veg' ? 'NonVeg' : 'Veg') as FoodType,
+          category: '',
+          description: '',
+          availability: true,
+          isBestseller: false,
+          discount_active: false
+        }));
+        
+        setCartItems(cartItemsFromApi);
+      }
+    } catch (error) {
+      console.error('Failed to fetch cart:', error);
+      showMessage({
+        message: 'Failed to load cart items',
+        description: 'Please try again later',
+        type: 'danger',
+      });
+    } finally {
+      setCartLoading(false);
+    }
+  }, [user?.id]);
+
+  // Fetch kitchen details
   useEffect(() => {
     const fetchKitchenDetails = async () => {
       try {
         setLoading(true);
-        const response = await getKitcheDetails(route.params.kitchenId);
+        const response = await getKitcheDetails(kitchenId);
         
-        // Transform API data to match our UI structure
         const transformedItems = response.data.itemlist.map(item => ({
           id: item.id,
           name: item.item_name,
           price: parseFloat(item.item_price),
-          type: item.food_type === 'Non-Veg' ? 'NonVeg' : 'Veg',
+          type: (item.food_type === 'Non-Veg' ? 'NonVeg' : 'Veg') as FoodType,
           category: item.category,
           image: item.item_image.startsWith('http') ? item.item_image : null,
           description: item.description,
           availability: item.availability,
-          isBestseller: false, // You might want to add this to your API or calculate it
+          isBestseller: false,
           discount_percent: item.discount_percent,
           discount_active: item.discount_active === "1",
           buy_one_get_one_free: item.buy_one_get_one_free
         }));
 
-        // Group menu items by category
         const categoryMap = transformedItems.reduce((acc, item) => {
-          if (!acc[item.category]) {
-            acc[item.category] = [];
-          }
+          if (!acc[item.category]) acc[item.category] = [];
           acc[item.category].push(item);
           return acc;
         }, {} as Record<string, MenuItem[]>);
 
-        // Convert to array with expanded state
         const categories = Object.entries(categoryMap).map(([name, items]) => ({
           name,
           items,
@@ -197,18 +316,22 @@ const HomeKitchenDetails = ({ route }) => {
 
         setKitchenDetails(response.data);
         setCategories(categories);
-        setLoading(false);
       } catch (err) {
         console.error('Failed to fetch kitchen details:', err);
         setError('Failed to load kitchen details. Please try again.');
+      } finally {
         setLoading(false);
       }
     };
 
-    fetchKitchenDetails();
-  }, [route.params.kitchenId]);
+    if (kitchenId) {
+      fetchKitchenDetails();
+      fetchCartData()
+    }
+  }, [user?.id]);
 
-  const toggleCategory = (categoryName: string) => {
+  // Toggle category expansion
+  const toggleCategory = useCallback((categoryName: string) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setCategories(prevCategories =>
       prevCategories.map(category =>
@@ -217,87 +340,99 @@ const HomeKitchenDetails = ({ route }) => {
           : category
       )
     );
-  };
+  }, []);
 
-  const filteredCategories = categories.map(category => {
-    const filteredItems = category.items.filter(item => {
-      if (!item.availability) return false;
+  // Filter categories based on active filter
+  const filteredCategories = useMemo(() => {
+    return categories.map(category => {
+      const filteredItems = category.items.filter(item => {
+        if (!item.availability) return false;
+        
+        switch (activeFilter) {
+          case 'Veg': return item.type === 'Veg';
+          case 'NonVeg': return item.type === 'NonVeg';
+          case 'Bestseller': return item.isBestseller;
+          case 'Offers': return item.discount_active || item.buy_one_get_one_free;
+          default: return true;
+        }
+      });
+      return { ...category, items: filteredItems };
+    }).filter(category => category.items.length > 0);
+  }, [categories, activeFilter]);
+
+  // Calculate cart totals
+  const { itemCount, totalPrice } = useMemo(() => {
+    const count = cartItems.reduce((total, item) => total + (item.quantity || 0), 0);
+    const price = cartItems.reduce((total, item) => {
+      const itemPrice = item.discount_active && item.discount_percent 
+        ? item.price * (1 - parseFloat(item.discount_percent) / 100)
+        : item.price;
+      return total + (itemPrice * (item.quantity || 0));
+    }, 0);
+    return { itemCount: count, totalPrice: price };
+  }, [cartItems]);
+
+  // Update cart item quantity
+  const updateCartItem = useCallback(async (itemId: string, action: 'add' | 'remove') => {
+    if (!kitchenDetails?.restaurant_current_status.is_open) return;
+    
+    try {
+      setUpdatingItemId(itemId);
       
-      switch (activeFilter) {
-        case 'Veg': return item.type === 'Veg';
-        case 'NonVeg': return item.type === 'NonVeg';
-        case 'Bestseller': return item.isBestseller;
-        case 'Offers': return item.discount_active || item.buy_one_get_one_free;
-        default: return true;
-      }
-    });
-    return { ...category, items: filteredItems };
-  }).filter(category => category.items.length > 0);
+      const payload = {
+        session_id: sessionId,
+        restaurant_id: kitchenId,
+        item_id: itemId,
+        source: 'ITEMLIST',
+        action,
+        quantity: 1,
+        user_id:user?.id
+      };
 
-  const itemCount = cartItems.reduce((total, item) => total + (item.quantity || 0), 0);
-  const totalPrice = cartItems.reduce((total, item) => {
-    const itemPrice = item.discount_active && item.discount_percent 
-      ? item.price * (1 - parseFloat(item.discount_percent) / 100)
-      : item.price;
-    return total + (itemPrice * (item.quantity || 0));
-  }, 0);
-
-  const addToCart = (item: MenuItem) => {
-    const existingItem = cartItems.find(cartItem => cartItem.id === item.id);
-    if (existingItem) {
-      setCartItems(cartItems.map(cartItem =>
-        cartItem.id === item.id
-          ? { ...cartItem, quantity: (cartItem.quantity || 0) + 1 }
-          : cartItem
-      ));
-    } else {
-      setCartItems([...cartItems, { ...item, quantity: 1 }]);
+      await updateCart(payload);
+      await fetchCartData();
+    } catch (error) {
+      console.error('Cart update error:', error);
+      showMessage({
+        message: `Failed to ${action} item`,
+        description: error.response?.data?.message || 'Please try again',
+        type: 'danger',
+      });
+    } finally {
+      setUpdatingItemId(null);
     }
-  };
+  }, [sessionId, user?.id, kitchenId, kitchenDetails, fetchCartData]);
 
-  const removeFromCart = (itemId: string) => {
-    const existingItem = cartItems.find(item => item.id === itemId);
-    if (existingItem && existingItem.quantity && existingItem.quantity > 1) {
-      setCartItems(cartItems.map(item =>
-        item.id === itemId
-          ? { ...item, quantity: (item.quantity || 0) - 1 }
-          : item
-      ));
-    } else {
-      setCartItems(cartItems.filter(item => item.id !== itemId));
-    }
-  };
-
-  const getItemQuantity = (itemId: string) => {
+  // Get current quantity of an item in cart
+  const getItemQuantity = useCallback((itemId: string): number => {
     const item = cartItems.find(item => item.id === itemId);
     return item?.quantity || 0;
-  };
+  }, [cartItems]);
 
-  const openModal = (item: MenuItem) => {
-    setSelectedItem(item);
-    setShowModal(true);
-  };
-
-  const closeModal = () => {
-    setShowModal(false);
-  };
-
-  const handleViewCart = () => {
+  // View cart handler
+  const handleViewCart = useCallback(() => {
     if (!kitchenDetails) return;
-    
     navigation.navigate('CartScreen', { 
       cartItems,
       totalPrice,
+      kitchenId,
       restaurant: {
         name: kitchenDetails.restaurant_name,
         address: kitchenDetails.Address,
-        minOrder: `₹${kitchenDetails.min_order}`,
-        coverImage: kitchenDetails.restaurant_image || categories[0]?.items[0]?.image || ''
-      } 
+        minOrder: kitchenDetails.min_order,
+        coverImage: kitchenDetails.restaurant_image || PLACEHOLDER_RESTAURANT,
+        isOpen: kitchenDetails.restaurant_current_status.is_open
+      },
+      userId: user?.id
     });
-  };
+  }, [navigation, kitchenDetails, cartItems, totalPrice, kitchenId, user?.id]);
 
-  const renderCategoryHeader = ({ name, expanded, itemCount }: { name: string; expanded: boolean; itemCount: number }) => {
+  // Render category header
+  const renderCategoryHeader = useCallback(({ name, expanded, itemCount }: { 
+    name: string; 
+    expanded: boolean; 
+    itemCount: number 
+  }) => {
     return (
       <TouchableOpacity 
         style={styles.categoryHeader} 
@@ -317,114 +452,133 @@ const HomeKitchenDetails = ({ route }) => {
         </View>
       </TouchableOpacity>
     );
-  };
+  }, [toggleCategory]);
 
-  const renderItem = ({ item }: { item: MenuItem }) => {
+  // Render individual menu item
+  const renderItem = useCallback(({ item }: { item: MenuItem }) => {
     const quantity = getItemQuantity(item.id);
     const discountedPrice = item.discount_active && item.discount_percent 
       ? item.price * (1 - parseFloat(item.discount_percent) / 100)
       : null;
+    const isKitchenOpen = kitchenDetails?.restaurant_current_status.is_open;
+    const isUpdating = updatingItemId === item.id;
     
     return (
-      <TouchableOpacity 
-        style={[
-          styles.card,
-          !item.availability && styles.disabledCard
-        ]} 
-        onPress={() => openModal(item)}
-        activeOpacity={0.9}
-        disabled={!item.availability}
-      >
-        <View style={styles.cardContent}>
-          <View style={styles.imageContainer}>
-            <Image 
-              source={item.image ? { uri: item.image } : PLACEHOLDER_FOOD}
-              style={styles.foodImage}
-              defaultSource={PLACEHOLDER_FOOD}
-            />
-            {item.isBestseller && (
-              <View style={styles.bestsellerBadge}>
-                <Icon name="star" size={12} color="#fff" />
-                <Text style={styles.bestsellerText}>Bestseller</Text>
-              </View>
-            )}
-            {(item.discount_active || item.buy_one_get_one_free) && (
-              <View style={styles.offerBadge}>
-                <Icon name="pricetag" size={12} color="#fff" />
-                <Text style={styles.offerText}>
-                  {item.buy_one_get_one_free 
-                    ? 'BOGO' 
-                    : `${parseFloat(item.discount_percent).toFixed(0)}% OFF`}
-                </Text>
-              </View>
-            )}
-          </View>
-          <View style={styles.foodDetails}>
-            <View style={styles.foodHeader}>
-              <Text style={styles.foodName}>{item.name}</Text>
-              <View style={styles.priceContainer}>
-                {discountedPrice && (
-                  <Text style={styles.originalPrice}>₹{item.price.toFixed(2)}</Text>
-                )}
-                <Text style={styles.foodPrice}>
-                  ₹{discountedPrice ? discountedPrice.toFixed(2) : item.price.toFixed(2)}
-                </Text>
-              </View>
-            </View>
-            <Text style={styles.foodDescription} numberOfLines={2}>{item.description}</Text>
-            <View style={styles.priceRow}>
-              <View style={styles.itemTypeContainer}>
-                <VegNonVegIcon type={item.type} size={16} />
-                <Text style={styles.typeText}>{item.type}</Text>
-              </View>
-              {quantity > 0 ? (
-                <View style={styles.quantityContainer}>
-                  <TouchableOpacity 
-                    style={styles.quantityButton} 
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      removeFromCart(item.id);
-                    }}
-                  >
-                    <Icon name="remove" size={18} color="#e65c00" />
-                  </TouchableOpacity>
-                  <Text style={styles.quantityText}>{quantity}</Text>
-                  <TouchableOpacity 
-                    style={styles.quantityButton} 
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      addToCart(item);
-                    }}
-                  >
-                    <Icon name="add" size={18} color="#e65c00" />
-                  </TouchableOpacity>
+      <View style={styles.itemContainer}>
+        <TouchableOpacity 
+          style={[
+            styles.card,
+            !item.availability && styles.disabledCard
+          ]} 
+          onPress={() => openModal(item)}
+          activeOpacity={0.9}
+          disabled={!item.availability}
+        >
+          <View style={styles.cardContent}>
+            <View style={styles.imageContainer}>
+              <Image 
+                source={item.image ? { uri: item.image } : PLACEHOLDER_FOOD}
+                style={styles.foodImage}
+                defaultSource={PLACEHOLDER_FOOD}
+              />
+              {item.isBestseller && (
+                <View style={styles.bestsellerBadge}>
+                  <Icon name="star" size={12} color="#fff" />
+                  <Text style={styles.bestsellerText}>Bestseller</Text>
                 </View>
-              ) : (
-                <TouchableOpacity 
-                  style={[
-                    styles.addToCartBtn,
-                    !item.availability && styles.disabledAddToCartBtn
-                  ]} 
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    addToCart(item);
-                  }}
-                  activeOpacity={0.8}
-                  disabled={!item.availability}
-                >
-                  <Text style={styles.addToCartText}>
-                    {!item.availability ? 'UNAVAILABLE' : 'ADD'}
+              )}
+              {(item.discount_active || item.buy_one_get_one_free) && (
+                <View style={styles.offerBadge}>
+                  <Icon name="pricetag" size={12} color="#fff" />
+                  <Text style={styles.offerText}>
+                    {item.buy_one_get_one_free 
+                      ? 'BOGO' 
+                      : `${parseInt(item.discount_percent || '0')}% OFF`}
                   </Text>
-                </TouchableOpacity>
+                </View>
               )}
             </View>
+            <View style={styles.foodDetails}>
+              <View style={styles.foodHeader}>
+                <Text style={styles.foodName}>{item.name}</Text>
+                <View style={styles.priceContainer}>
+                  {discountedPrice && (
+                    <Text style={styles.originalPrice}>₹{item.price.toFixed(2)}</Text>
+                  )}
+                  <Text style={styles.foodPrice}>
+                    ₹{discountedPrice ? discountedPrice.toFixed(2) : item.price.toFixed(2)}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.foodDescription} numberOfLines={2}>{item.description}</Text>
+              <View style={styles.priceRow}>
+                <View style={styles.itemTypeContainer}>
+                  <VegNonVegIcon type={item.type} size={16} />
+                  <Text style={styles.typeText}>{item.type}</Text>
+                </View>
+                {quantity > 0 ? (
+                  <View style={styles.quantityContainer}>
+                    <TouchableOpacity 
+                      style={styles.quantityButton} 
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        updateCartItem(item.id, 'remove');
+                      }}
+                      disabled={!isKitchenOpen || isUpdating}
+                    >
+                      {isUpdating ? (
+                        <ActivityIndicator size="small" color="#e65c00" />
+                      ) : (
+                        <Icon name="remove" size={18} color={isKitchenOpen ? '#e65c00' : '#ccc'} />
+                      )}
+                    </TouchableOpacity>
+                    <Text style={styles.quantityText}>{quantity}</Text>
+                    <TouchableOpacity 
+                      style={styles.quantityButton} 
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        updateCartItem(item.id, 'add');
+                      }}
+                      disabled={!isKitchenOpen || isUpdating}
+                    >
+                      {isUpdating ? (
+                        <ActivityIndicator size="small" color="#e65c00" />
+                      ) : (
+                        <Icon name="add" size={18} color={isKitchenOpen ? '#e65c00' : '#ccc'} />
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity 
+                    style={[
+                      styles.addToCartBtn,
+                      (!item.availability || !isKitchenOpen) && styles.disabledAddToCartBtn
+                    ]} 
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      updateCartItem(item.id, 'add');
+                    }}
+                    activeOpacity={0.8}
+                    disabled={!item.availability || !isKitchenOpen || isUpdating}
+                  >
+                    {isUpdating ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.addToCartText}>{'ADD'}</Text>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
           </View>
-        </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+        <View style={styles.itemDivider} />
+      </View>
     );
-  };
+  }, [getItemQuantity, updatingItemId, kitchenDetails, openModal, updateCartItem]);
 
-  const renderCategory = ({ item }: { item: MenuCategory }) => {
+  // Render category with items
+  const renderCategory = useCallback(({ item }: { item: MenuCategory }) => {
     return (
       <View style={styles.categoryContainer}>
         {renderCategoryHeader({
@@ -435,15 +589,15 @@ const HomeKitchenDetails = ({ route }) => {
         {item.expanded && (
           <View style={styles.categoryItems}>
             {item.items.map(menuItem => (
-              <View key={menuItem.id}>
+              <React.Fragment key={menuItem.id}>
                 {renderItem({ item: menuItem })}
-              </View>
+              </React.Fragment>
             ))}
           </View>
         )}
       </View>
     );
-  };
+  }, [renderCategoryHeader, renderItem]);
 
   if (loading) {
     return (
@@ -461,7 +615,7 @@ const HomeKitchenDetails = ({ route }) => {
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity 
           style={styles.retryButton}
-          onPress={() => navigation.goBack()}
+          onPress={handleBackPress}
         >
           <Text style={styles.retryText}>Go Back</Text>
         </TouchableOpacity>
@@ -493,26 +647,26 @@ const HomeKitchenDetails = ({ route }) => {
         <View style={styles.overlay} />
         
         <TouchableOpacity 
-          onPress={() => navigation.goBack()} 
+          onPress={handleBackPress} 
           style={styles.backButton}
           activeOpacity={0.8}
         >
           <Icon name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         
+        <View style={styles.openStatusBadge}>
+          <View style={[
+            styles.openStatusIndicator,
+            isOpen ? styles.openStatus : styles.closedStatus
+          ]} />
+          <Text style={styles.openStatusText}>
+            {isOpen ? 'OPEN NOW' : 'CLOSED'}
+          </Text>
+        </View>
+        
         <Animated.View style={[styles.kitchenInfoContainer, {
           transform: [{ translateY: titleTranslateY }, { scale: titleScale }],
         }]}>
-          <View style={styles.statusBadge}>
-            <View style={[
-              styles.statusIndicator,
-              isOpen ? styles.openStatus : styles.closedStatus
-            ]} />
-            <Text style={styles.statusText}>
-              {isOpen ? 'OPEN NOW' : 'CLOSED'}
-            </Text>
-          </View>
-          
           <Text style={styles.kitchenName}>{kitchenDetails.restaurant_name}</Text>
           
           <View style={styles.kitchenMetaRow}>
@@ -527,7 +681,7 @@ const HomeKitchenDetails = ({ route }) => {
             <View style={styles.minOrderInfo}>
               <Icon name="basket-outline" size={16} color="#fff" />
               <Text style={styles.minOrderText}>
-                {kitchenDetails.min_order > 0 ? `₹${kitchenDetails.min_order}` : '100'}
+                ₹{kitchenDetails.min_order}
               </Text>
             </View>
           </View>
@@ -560,14 +714,16 @@ const HomeKitchenDetails = ({ route }) => {
             <TouchableOpacity
               style={[
                 styles.filterBtn, 
-                activeFilter === item.name && styles.activeFilterBtn
+                activeFilter === item.name && styles.activeFilterBtn,
+                !isOpen && styles.disabledFilterBtn
               ]}
-              onPress={() => setActiveFilter(item.name)}
+              onPress={() => isOpen && setActiveFilter(item.name)}
               activeOpacity={0.7}
+              disabled={!isOpen}
             >
               {item.name === 'Veg' || item.name === 'NonVeg' ? (
                 <VegNonVegIcon 
-                  type={item.name === 'Veg' ? 'Veg' : 'NonVeg'} 
+                  type={item.name as FoodType} 
                   size={16} 
                 />
               ) : (
@@ -579,7 +735,8 @@ const HomeKitchenDetails = ({ route }) => {
               )}
               <Text style={[
                 styles.filterText, 
-                activeFilter === item.name && styles.activeFilterText
+                activeFilter === item.name && styles.activeFilterText,
+                !isOpen && styles.disabledFilterText
               ]}>
                 {item.name}
               </Text>
@@ -613,9 +770,13 @@ const HomeKitchenDetails = ({ route }) => {
               <Text style={styles.cartPriceText}>₹{totalPrice.toFixed(2)}</Text>
             </View>
             <TouchableOpacity 
-              style={styles.viewCartBtn}
+              style={[
+                styles.viewCartBtn,
+                !isOpen && styles.disabledViewCartBtn
+              ]}
               activeOpacity={0.8}
-              onPress={handleViewCart}
+              onPress={isOpen ? handleViewCart : undefined}
+              disabled={!isOpen}
             >
               <Text style={styles.viewCartText}>VIEW CART</Text>
               <Icon name="chevron-forward" size={18} color="#fff" />
@@ -651,7 +812,6 @@ const HomeKitchenDetails = ({ route }) => {
                         ? (selectedItem.price * (1 - parseFloat(selectedItem.discount_percent) / 100)).toFixed(2)
                         : selectedItem.price.toFixed(2)}
                     </Text>
-
                   </View>
                 </View>
                 
@@ -682,49 +842,63 @@ const HomeKitchenDetails = ({ route }) => {
                   <View style={styles.modalQuantityControls}>
                     <TouchableOpacity 
                       style={styles.modalQuantityButton}
-                      onPress={() => removeFromCart(selectedItem.id)}
-                      disabled={getItemQuantity(selectedItem.id) === 0}
+                      onPress={() => updateCartItem(selectedItem.id, 'remove')}
+                      disabled={getItemQuantity(selectedItem.id) === 0 || !isOpen || updatingItemId === selectedItem.id}
                     >
-                      <Icon 
-                        name="remove" 
-                        size={24} 
-                        color={getItemQuantity(selectedItem.id) === 0 ? '#ccc' : '#e65c00'} 
-                      />
+                      {updatingItemId === selectedItem.id ? (
+                        <ActivityIndicator size="small" color="#e65c00" />
+                      ) : (
+                        <Icon 
+                          name="remove" 
+                          size={24} 
+                          color={getItemQuantity(selectedItem.id) === 0 || !isOpen ? '#ccc' : '#e65c00'} 
+                        />
+                      )}
                     </TouchableOpacity>
                     <Text style={styles.modalQuantityText}>
                       {getItemQuantity(selectedItem.id)}
                     </Text>
                     <TouchableOpacity 
                       style={styles.modalQuantityButton}
-                      onPress={() => addToCart(selectedItem)}
-                      disabled={!selectedItem.availability}
+                      onPress={() => updateCartItem(selectedItem.id, 'add')}
+                      disabled={!selectedItem.availability || !isOpen || updatingItemId === selectedItem.id}
                     >
-                      <Icon 
-                        name="add" 
-                        size={24} 
-                        color={!selectedItem.availability ? '#ccc' : '#e65c00'} 
-                      />
+                      {updatingItemId === selectedItem.id ? (
+                        <ActivityIndicator size="small" color="#e65c00" />
+                      ) : (
+                        <Icon 
+                          name="add" 
+                          size={24} 
+                          color={!selectedItem.availability || !isOpen ? '#ccc' : '#e65c00'} 
+                        />
+                      )}
                     </TouchableOpacity>
                   </View>
-                  
                   <TouchableOpacity 
                     style={[
                       styles.addToCartBtnLarge,
-                      !selectedItem.availability && styles.disabledAddToCartBtnLarge
+                      (!selectedItem.availability || !isOpen) && styles.disabledAddToCartBtnLarge
                     ]}
                     onPress={() => {
-                      if (selectedItem.availability) {
-                        addToCart(selectedItem);
+                      if (selectedItem.availability && isOpen) {
+                        updateCartItem(selectedItem.id, 'add');
                       }
                     }}
+                    disabled={!selectedItem.availability || !isOpen || updatingItemId === selectedItem.id}
                   >
-                    <Text style={styles.addToCartTextLarge}>
-                      {!selectedItem.availability 
-                        ? 'UNAVAILABLE' 
-                        : getItemQuantity(selectedItem.id) > 0 
-                          ? 'UPDATE CART' 
-                          : 'ADD TO CART'}
-                    </Text>
+                    {updatingItemId === selectedItem.id ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.addToCartTextLarge}>
+                        {!selectedItem.availability 
+                          ? 'UNAVAILABLE' 
+                          : !isOpen
+                            ? 'RESTAURANT CLOSED'
+                            : getItemQuantity(selectedItem.id) > 0 
+                              ? 'UPDATE CART' 
+                              : 'ADD TO CART'}
+                      </Text>
+                    )}
                   </TouchableOpacity>
                 </View>
               </View>
@@ -805,27 +979,22 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 8,
   },
-  kitchenInfoContainer: {
+  openStatusBadge: {
     position: 'absolute',
-    bottom: 55,
-    left: 20,
+    top: 50,
     right: 20,
-    zIndex: 10,
-  },
-  statusBadge: {
+    zIndex: 11,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
   },
-  statusIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  openStatusIndicator: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     marginRight: 6,
   },
   openStatus: {
@@ -834,10 +1003,17 @@ const styles = StyleSheet.create({
   closedStatus: {
     backgroundColor: '#F44336',
   },
-  statusText: {
+  openStatusText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
+  },
+  kitchenInfoContainer: {
+    position: 'absolute',
+    bottom: 55,
+    left: 20,
+    right: 20,
+    zIndex: 10,
   },
   kitchenName: {
     fontSize: 28,
@@ -961,11 +1137,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#e65c00',
     borderColor: '#e65c00',
   },
+  disabledFilterBtn: {
+    opacity: 0.6,
+  },
   filterText: {
     fontSize: 14,
     color: '#555',
     fontWeight: '500',
     marginLeft: 6,
+  },
+  disabledFilterText: {
+    color: '#999',
   },
   activeFilterText: {
     color: '#fff',
@@ -1010,17 +1192,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingBottom: 10,
   },
+  itemContainer: {
+    position: 'relative',
+  },
+  itemDivider: {
+    height: 1,
+    backgroundColor: '#f0f0f0',
+    marginHorizontal: 15,
+    marginVertical: 5,
+  },
   card: {
     backgroundColor: '#fff',
     borderRadius: 10,
     overflow: 'hidden',
-    marginBottom: 10,
+    marginBottom: 5,
     marginHorizontal: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
   },
   disabledCard: {
     opacity: 0.7,
@@ -1191,6 +1377,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 8,
+  },
+  disabledViewCartBtn: {
+    backgroundColor: '#999',
   },
   cartSummaryContent: {
     flexDirection: 'row',
@@ -1386,6 +1575,9 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  disabledItem: {
+    opacity: 0.6,
   },
 });
 

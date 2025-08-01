@@ -33,6 +33,7 @@ const COLORS = {
   searchBg: '#FFFFFF',      
   categoryBg: '#FFFFFF',    
   searchBorder: '#E1E4E8',  
+  refreshControl: '#E65C00', // Added refresh control color
 };
 
 // Typography
@@ -53,6 +54,7 @@ interface Kitchen {
   avg_price_range: number;
   restaurant_city: string;
   restaurant_status: number;
+  review_count?: number; // Added review count to interface
 }
 
 interface Category {
@@ -97,8 +99,23 @@ const KitchenScreen: React.FC = () => {
   const fetchKitchens = async () => {
     try {
       const response = await getKitchenList();
-      setApiData(response.data);
-      setFilteredKitchens(response.data.data.KitchenList);
+      // Add mock review count to each kitchen
+      const dataWithReviews = {
+        ...response.data,
+        data: {
+          ...response.data.data,
+          FeatureKitchenList: response.data.data.FeatureKitchenList.map(k => ({
+            ...k,
+            review_count: Math.floor(Math.random() * 100) + 1 // Random review count for demo
+          })),
+          KitchenList: response.data.data.KitchenList.map(k => ({
+            ...k,
+            review_count: Math.floor(Math.random() * 100) + 1 // Random review count for demo
+          }))
+        }
+      };
+      setApiData(dataWithReviews);
+      setFilteredKitchens(dataWithReviews.data.KitchenList);
     } catch (error) {
       Alert.alert('Error', 'Failed to fetch kitchens. Please try again later.');
       console.error('Error fetching kitchens:', error);
@@ -129,8 +146,6 @@ const KitchenScreen: React.FC = () => {
       );
     }
 
-    // Note: Some filters may not work as expected since the API response doesn't contain all the fields
-    // You may need to adjust these based on actual available data
     filters.forEach(filter => {
       if (filter.active) {
         switch (filter.type) {
@@ -165,7 +180,7 @@ const KitchenScreen: React.FC = () => {
   };
 
   const handleKitchenPress = (kitchen: Kitchen) => {
-    navigation.navigate('HomeKitchenDetails', { kitchenId: kitchen.restaurant_id });
+    navigation.navigate('HomeKitchenDetails', { kitchenId: kitchen.restaurant_id});
   };
 
   const handleSearchFocus = () => {
@@ -221,7 +236,6 @@ const KitchenScreen: React.FC = () => {
   );
 
   const renderKitchenItem = ({ item }: { item: Kitchen }) => {
-    // Default values for fields not in API response
     const deliveryTime = '30-40 min';
     const [minTime, maxTime] = deliveryTime.split('-').map(t => parseInt(t.trim()) || 30);
     const avgTime = Math.floor((minTime + maxTime) / 2);
@@ -229,8 +243,6 @@ const KitchenScreen: React.FC = () => {
     const distance = '1.5 km';
     const deliveryFee = '₹30';
     const minOrder = item.avg_price_range ? `₹${item.avg_price_range}` : '₹100';
-
-    // Split cuisines string into array
     const cuisines = item.item_cuisines ? item.item_cuisines.split(', ') : [];
 
     return (
@@ -252,11 +264,7 @@ const KitchenScreen: React.FC = () => {
             </View>
           )}
           
-          <View style={styles.kitchenBadgeContainer}>
-            {/* Offer badge removed since offers aren't in API response */}
-            {/* Veg badge removed since is_veg_only isn't in API response */}
-          </View>
-          
+          {/* Review Count Badge */}          
           <TouchableOpacity style={styles.favoriteButton}>
             <Icon name="heart" size={20} color="#fff" />
           </TouchableOpacity>
@@ -268,10 +276,9 @@ const KitchenScreen: React.FC = () => {
         
         <View style={styles.kitchenContent}>
           <View style={styles.kitchenHeader}>
-            <Text style={styles.kitchenName} numberOfLines={1}>{item.restaurant_name}</Text>
+            <Text style={styles.kitchenName} numberOfLines={2}>{item.restaurant_name}</Text>
             <View style={styles.ratingContainer}>
               <Icon name="star" size={14} color={COLORS.rating} />
-              {/* Rating text removed since rating isn't in API response */}
               <Text style={styles.ratingText}>4.0</Text>
             </View>
           </View>
@@ -302,8 +309,6 @@ const KitchenScreen: React.FC = () => {
           const deliveryTime = '25-35 min';
           const [minTime, maxTime] = deliveryTime.split('-').map(t => parseInt(t.trim()) || 30);
           const avgTime = Math.floor((minTime + maxTime) / 2);
-
-          // Split cuisines string into array
           const cuisines = item.item_cuisines ? item.item_cuisines.split(', ') : [];
 
           return (
@@ -324,14 +329,16 @@ const KitchenScreen: React.FC = () => {
                   <Icon name="restaurant-outline" size={40} color={COLORS.textLight} />
                 </View>
               )}
+              
+              {/* Review Count Badge for Featured Items */}
+              <View style={styles.reviewBadge}>
+                <Icon name="star" size={12} color="#fff" />
+                <Text style={styles.reviewBadgeText}>4.0 ({item.review_count})</Text>
+              </View>
+              
               <View style={styles.featuredContent}>
                 <View style={styles.featuredHeader}>
-                  <Text style={styles.featuredName} numberOfLines={1}>{item.restaurant_name}</Text>
-                  <View style={styles.featuredRating}>
-                    <Icon name="star" size={14} color={COLORS.rating} />
-                    {/* Rating text removed since rating isn't in API response */}
-                    <Text style={styles.featuredRatingText}>4.0</Text>
-                  </View>
+                  <Text style={styles.featuredName} numberOfLines={3}>{item.restaurant_name}</Text>
                 </View>
                 <Text style={styles.featuredInfo} numberOfLines={1}>
                   {cuisines.join(' • ')}
@@ -454,8 +461,8 @@ const KitchenScreen: React.FC = () => {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            colors={[COLORS.primary]}
-            tintColor={COLORS.primary}
+            colors={[COLORS.refreshControl]}
+            tintColor={COLORS.refreshControl}
           />
         }
       >
@@ -495,7 +502,7 @@ const KitchenScreen: React.FC = () => {
         {/* Featured Kitchens - Horizontal Scroll with 2 per screen */}
         {apiData.data.FeatureKitchenList.length > 0 && (
           <View style={styles.featuredSectionContainer}>
-            <Text style={styles.sectionTitle}>Top-rated in your area</Text>
+            <Text style={styles.sectionTitle}>Recommended for you</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -623,7 +630,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   
-  // Categories - Updated to remove background
+  // Categories
   categoryListContainer: {
     paddingHorizontal: 8,
   },
@@ -638,12 +645,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,
-    backgroundColor: 'transparent', // Remove background color
+    backgroundColor: 'transparent',
   },
   categoryImage: {
     width: 62,
     height: 62,
-    borderRadius: 31, // Make it circular if needed
+    borderRadius: 31,
   },
   categoryName: {
     fontSize: 12,
@@ -741,7 +748,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   featuredName: {
-    fontSize: 15,
+    fontSize: 13,
     fontFamily: FONTS.semiBold,
     color: COLORS.textDark,
     flex: 1,
@@ -803,6 +810,24 @@ const styles = StyleSheet.create({
   kitchenImage: {
     width: '100%',
     height: '100%',
+  },
+  // Review Badge Styles
+  reviewBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: COLORS.darkOverlay,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  reviewBadgeText: {
+    fontSize: 12,
+    fontFamily: FONTS.medium,
+    color: '#fff',
+    marginLeft: 4,
   },
   kitchenBadgeContainer: {
     position: 'absolute',
