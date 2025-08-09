@@ -15,12 +15,13 @@ import {
   UIManager,
   Platform,
   ActivityIndicator,
-  RefreshControl
+  RefreshControl,
+  Alert
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { getKitcheDetails } from '../../../api/home';
-import { getCart, updateCart } from '../../../api/cart';
+import { getCart, updateCart, clearCartDetails } from '../../../api/cart';
 import { showMessage } from 'react-native-flash-message';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -158,40 +159,40 @@ const HomeKitchenDetails: React.FC = () => {
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
   const [user, setUser] = useState<UserData | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [cartLoading, setCartLoading] = useState(false);
+  const [cartLoading, setCartLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [pastKitchenId, setPastKitchenId] = useState<string | null>(null);
+  const [showKitchenConflictModal, setShowKitchenConflictModal] = useState(false);
+  const [pendingCartAction, setPendingCartAction] = useState<{itemId: string, action: 'add' | 'remove'} | null>(null);
   
   const kitchenId = route.params?.kitchenId;
   AsyncStorage.setItem('kitchenId', kitchenId);
 
-  // Animation interpolations
-  const headerTranslateY = scrollY.interpolate({
-    inputRange: [0, HEADER_SCROLL_DISTANCE],
-    outputRange: [0, -HEADER_SCROLL_DISTANCE],
-    extrapolate: 'clamp',
-  });
+  // Fetch past kitchen ID from storage
+  const fetchPastKitchenId = useCallback(async () => {
+    try {
+      const storedKitchenId = await AsyncStorage.getItem('pastKitchenId');
+      if (storedKitchenId) {
+        setPastKitchenId(storedKitchenId);
+      }
+    } catch (error) {
+      console.error('Error fetching past kitchen ID:', error);
+    }
+  }, []);
 
-  const imageOpacity = scrollY.interpolate({
-    inputRange: [0, HEADER_SCROLL_DISTANCE / 2, HEADER_SCROLL_DISTANCE],
-    outputRange: [1, 0.8, 0],
-    extrapolate: 'clamp',
-  });
+  // Check if current kitchen matches past kitchen
+  const isSameKitchen = useMemo(() => {
+    return pastKitchenId === kitchenId;
+  }, [pastKitchenId, kitchenId]);
 
-  const titleScale = scrollY.interpolate({
-    inputRange: [0, HEADER_SCROLL_DISTANCE],
-    outputRange: [1, 0.8],
-    extrapolate: 'clamp',
-  });
-
-  const titleTranslateY = scrollY.interpolate({
-    inputRange: [0, HEADER_SCROLL_DISTANCE],
-    outputRange: [0, -50],
-    extrapolate: 'clamp',
-  });
+  // Check if cart has items from different kitchen
+  const hasDifferentKitchenItems = useMemo(() => {
+    return pastKitchenId && pastKitchenId !== kitchenId && cartItems.length > 0;
+  }, [pastKitchenId, kitchenId, cartItems]);
 
   // Handle back button press
   const handleBackPress = useCallback(() => {
-      navigation.navigate('HomeTabs');
+    navigation.navigate('HomeTabs');
   }, [navigation]);
 
   // Set navigation options
@@ -217,6 +218,47 @@ const HomeKitchenDetails: React.FC = () => {
       return { user: null, session: null };
     }
   }, []);
+
+  // Clear cart and update kitchen ID
+  const handleClearCartAndProceed = useCallback(async () => {
+    try {
+      setShowKitchenConflictModal(false);
+      setCartLoading(true);
+      
+      const { user: currentUser, session: currentSession } = await fetchUserData();
+      
+      if (!currentUser?.id) return;
+      
+      const payload = {
+        session_id: currentSession,
+        user_id: currentUser.id
+      };
+      
+      await clearCartDetails(payload);
+      await AsyncStorage.setItem('pastKitchenId', kitchenId);
+      setPastKitchenId(kitchenId);
+      
+      if (pendingCartAction) {
+        await updateCartItem(pendingCartAction.itemId, pendingCartAction.action, true);
+      }
+      
+      showMessage({
+        message: 'Cart cleared',
+        description: 'You can now add items from this kitchen',
+        type: 'success',
+      });
+    } catch (error) {
+      console.error('Failed to clear cart:', error);
+      showMessage({
+        message: 'Failed to clear cart',
+        description: 'Please try again later',
+        type: 'danger',
+      });
+    } finally {
+      setPendingCartAction(null);
+      setCartLoading(false);
+    }
+  }, [fetchUserData, kitchenId, pendingCartAction]);
 
   // Fetch cart data
   const fetchCartData = useCallback(async () => {
@@ -248,6 +290,15 @@ const HomeKitchenDetails: React.FC = () => {
         }));
         
         setCartItems(cartItemsFromApi);
+        
+        // Update past kitchen ID if we have cart items
+        if (cartItemsFromApi.length > 0) {
+          const storedKitchenId = await AsyncStorage.getItem('pastKitchenId');
+          if (!storedKitchenId) {
+            await AsyncStorage.setItem('pastKitchenId', kitchenId);
+            setPastKitchenId(kitchenId);
+          }
+        }
       }
     } catch (error) {
       console.error('Failed to fetch cart:', error);
@@ -259,7 +310,7 @@ const HomeKitchenDetails: React.FC = () => {
     } finally {
       setCartLoading(false);
     }
-  }, [fetchUserData]);
+  }, [fetchUserData, kitchenId]);
 
   // Fetch kitchen details
   const fetchKitchenDetails = useCallback(async () => {
@@ -306,18 +357,37 @@ const HomeKitchenDetails: React.FC = () => {
     }
   }, [kitchenId]);
 
+  const titleTranslateY = scrollY.interpolate({
+    inputRange: [0, HEADER_SCROLL_DISTANCE],
+    outputRange: [0, -50],
+    extrapolate: 'clamp',
+  });
+
+  const imageOpacity = scrollY.interpolate({
+    inputRange: [0, HEADER_SCROLL_DISTANCE / 2, HEADER_SCROLL_DISTANCE],
+    outputRange: [1, 0.8, 0],
+    extrapolate: 'clamp',
+  });
+
+  const titleScale = scrollY.interpolate({
+    inputRange: [0, HEADER_SCROLL_DISTANCE],
+    outputRange: [1, 0.8],
+    extrapolate: 'clamp',
+  });
+
   // Refresh all data
   const refreshData = useCallback(async () => {
     setRefreshing(true);
     try {
       await Promise.all([
         fetchKitchenDetails(),
-        fetchCartData()
+        fetchCartData(),
+        fetchPastKitchenId()
       ]);
     } catch (error) {
       console.error('Refresh error:', error);
     }
-  }, [fetchKitchenDetails, fetchCartData]);
+  }, [fetchKitchenDetails, fetchCartData, fetchPastKitchenId]);
 
   // Custom refresh handler
   const onRefresh = useCallback(() => {
@@ -363,6 +433,13 @@ const HomeKitchenDetails: React.FC = () => {
     );
   }, []);
 
+  // Animation interpolations
+  const headerTranslateY = scrollY.interpolate({
+    inputRange: [0, HEADER_SCROLL_DISTANCE],
+    outputRange: [0, -HEADER_SCROLL_DISTANCE],
+    extrapolate: 'clamp',
+  });
+
   // Filter categories based on active filter
   const filteredCategories = useMemo(() => {
     return categories.map(category => {
@@ -393,11 +470,22 @@ const HomeKitchenDetails: React.FC = () => {
     return { itemCount: count, totalPrice: price };
   }, [cartItems]);
 
-  // Update cart item quantity
-  const updateCartItem = useCallback(async (itemId: string, action: 'add' | 'remove') => {
+  // Update cart item quantity with kitchen conflict handling
+  const updateCartItem = useCallback(async (
+    itemId: string, 
+    action: 'add' | 'remove',
+    force = false
+  ) => {
     if (!kitchenDetails?.restaurant_current_status.is_open) return;
     
     try {
+      // Check if we're trying to add to a different kitchen's cart
+      if (!force && action === 'add' && hasDifferentKitchenItems) {
+        setPendingCartAction({ itemId, action });
+        setShowKitchenConflictModal(true);
+        return;
+      }
+
       setUpdatingItemId(itemId);
       
       const payload = {
@@ -411,6 +499,8 @@ const HomeKitchenDetails: React.FC = () => {
       };
 
       await updateCart(payload);
+      await AsyncStorage.setItem('pastKitchenId', kitchenId);
+      setPastKitchenId(kitchenId);
       await fetchCartData();
     } catch (error) {
       console.error('Cart update error:', error);
@@ -422,7 +512,14 @@ const HomeKitchenDetails: React.FC = () => {
     } finally {
       setUpdatingItemId(null);
     }
-  }, [sessionId, user?.id, kitchenId, kitchenDetails, fetchCartData]);
+  }, [
+    sessionId, 
+    user?.id, 
+    kitchenId, 
+    kitchenDetails, 
+    fetchCartData,
+    hasDifferentKitchenItems
+  ]);
 
   // Get current quantity of an item in cart
   const getItemQuantity = useCallback((itemId: string): number => {
@@ -436,7 +533,7 @@ const HomeKitchenDetails: React.FC = () => {
     navigation.navigate('CartScreen', { 
       cartItems,
       totalPrice,
-      kitchenId,
+      pastKitchenId,
       restaurant: {
         name: kitchenDetails.restaurant_name,
         address: kitchenDetails.Address,
@@ -619,11 +716,10 @@ const HomeKitchenDetails: React.FC = () => {
     );
   }, [renderCategoryHeader, renderItem]);
 
-  if (loading && !refreshing) {
+  if (loading && refreshing) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#E65C00" />
-        <Text style={styles.loadingText}>Loading restaurant details...</Text>
       </View>
     );
   }
@@ -945,6 +1041,46 @@ const HomeKitchenDetails: React.FC = () => {
             </View>
           </View>
         )}
+      </Modal>
+
+      {/* Kitchen Conflict Modal */}
+      <Modal
+        visible={showKitchenConflictModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowKitchenConflictModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>🚨 Kitchen Conflict</Text>
+            <Text style={styles.modalText}>
+              Your cart contains items from another restaurant. Would you like to reset your cart?
+            </Text>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity 
+                style={[styles.button, styles.cancel]}
+                onPress={() => {
+                  setShowKitchenConflictModal(false);
+                  setPendingCartAction(null);
+                }}
+              >
+                <Text style={styles.buttonText}>No</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.button, styles.confirm]}
+                onPress={handleClearCartAndProceed}
+                disabled={cartLoading}
+              >
+                {cartLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>Yes, Fresh Start</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -1463,142 +1599,55 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContainer: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: height * 0.85,
-    position: 'relative',
-  },
-  closeButton: {
-    position: 'absolute',
-    top: 20,
-    right: 20,
-    zIndex: 10,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 20,
-    padding: 8,
-  },
-  modalFoodImage: {
-    width: '100%',
-    height: 220,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    backgroundColor: '#f5f5f5',
-  },
-  modalContent: {
-    padding: 20,
-    paddingBottom: 30,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  modalFoodName: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#222',
-    flex: 1,
-    marginRight: 10,
-  },
-  modalPriceContainer: {
-    alignItems: 'flex-end',
-  },
-  modalFoodPrice: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#E65C00',
-  },
-  modalOriginalPrice: {
-    fontSize: 16,
-    color: '#999',
-    textDecorationLine: 'line-through',
-    marginRight: 4,
-  },
-  modalBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-    flexWrap: 'wrap',
-  },
-  modalBestsellerBadge: {
-    backgroundColor: '#E65C00',
-    borderRadius: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginRight: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  modalBestsellerText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
-    marginLeft: 4,
-  },
-  modalOfferBadge: {
-    backgroundColor: '#4ECB71',
-    borderRadius: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginRight: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  modalOfferText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
-    marginLeft: 4,
-  },
-  modalTypeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  modalTypeText: {
-    fontSize: 12,
-    color: '#555',
-    marginLeft: 6,
-  },
-  modalFoodDescription: {
-    fontSize: 15,
-    color: '#555',
-    marginBottom: 20,
-    lineHeight: 22,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  modalQuantityControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff5f0',
-    borderRadius: 25,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: '#ffd6c5',
-  },
-  modalQuantityButton: {
-    padding: 6,
-  },
-  modalQuantityText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#E65C00',
-    marginHorizontal: 12,
-    minWidth: 24,
-    textAlign: 'center',
-  },
+  flex: 1,
+  justifyContent: 'center',
+  backgroundColor: 'rgba(0,0,0,0.5)',
+  padding: 20
+},
+modalCard: {
+  backgroundColor: 'white',
+  borderRadius: 16,
+  padding: 24,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.25,
+  shadowRadius: 4,
+  elevation: 5
+},
+modalTitle: {
+  fontSize: 20,
+  fontWeight: 'bold',
+  marginBottom: 12,
+  textAlign: 'center'
+},
+modalText: {
+  fontSize: 16,
+  color: '#555',
+  marginBottom: 24,
+  textAlign: 'center'
+},
+buttonRow: {
+  flexDirection: 'row',
+  justifyContent: 'space-between'
+},
+button: {
+  padding: 14,
+  borderRadius: 8,
+  minWidth: '45%',
+  alignItems: 'center'
+},
+cancel: {
+  backgroundColor: '#E65C00',
+  color:"#fff"
+},
+confirm: {
+  backgroundColor: '#E65C00',
+  color:"#fff"
+},
+buttonText: {
+  fontWeight: '600',
+  color: 'white'
+},
   addToCartBtnLarge: {
     backgroundColor: '#E65C00',
     borderRadius: 25,
@@ -1621,6 +1670,64 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  conflictModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  conflictModalContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    maxWidth: 350,
+  },
+  conflictModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#E65C00',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  conflictModalText: {
+    fontSize: 16,
+    color: '#333',
+    marginBottom: 10,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  conflictModalSubText: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 20,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  conflictModalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 15,
+  },
+  conflictModalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#f5f5f5',
+    marginRight: 10,
+  },
+  confirmButton: {
+    backgroundColor: '#E65C00',
+  },
+  conflictModalButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

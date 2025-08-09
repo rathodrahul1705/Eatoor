@@ -16,6 +16,7 @@ import {
   FlatList,
   ScrollView,
   Dimensions,
+  Linking,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -196,9 +197,20 @@ const LoginScreen = () => {
             </TouchableOpacity>
 
             <Text style={styles.termsText}>
-              By continuing, you agree to our{' '}
-              <Text style={styles.highlightText}>Terms of Service</Text> and{' '}
-              <Text style={styles.highlightText}>Privacy Policy</Text>
+              Agree to{' '}
+              <Text
+                style={styles.highlightText}
+                onPress={() => Linking.openURL('https://www.eatoor.com/terms-and-conditions')}
+              >
+                Terms and Conditions
+              </Text>{' '}
+              &{' '}
+              <Text
+                style={styles.highlightText}
+                onPress={() => Linking.openURL('https://www.eatoor.com/privacy-policy')}
+              >
+                Privacy Policy
+              </Text>
             </Text>
           </View>
         </ScrollView>
@@ -380,7 +392,7 @@ const styles = StyleSheet.create({
   highlightText: {
     color: '#FF6B00',
     fontWeight: '500',
-    textDecorationLine: 'underline',
+    textDecorationLine: 'none',
   },
   // Country Picker Modal Styles
   modalContainer: {

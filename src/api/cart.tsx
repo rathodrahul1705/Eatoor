@@ -31,3 +31,12 @@ interface CartDetailsActionPayload {
 export const getCartDetails = (payload: CartDetailsActionPayload) => {
   return API.post('/restaurant/cart/details/', payload);
 };
+
+interface ClearCartDetails {
+  user_id: number;
+  session_id?: string;
+}
+
+export const clearCartDetails = (payload: ClearCartDetails) => {
+  return API.post('/restaurant/cart/clear/', payload);
+};

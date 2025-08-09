@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
-  Appearance,
 } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -82,18 +81,15 @@ const AddressHeaderLeft = () => {
     addressId: null,
   });
 
-  const colorScheme = Appearance.getColorScheme();
-  const isDarkMode = colorScheme === 'dark';
-  
   const colors = {
-    primary: isDarkMode ? '#E65C00' : '#E65C00',
-    secondary: isDarkMode ? '#E65C00' : '#E65C00',
-    text: isDarkMode ? '#EEE' : '#333',
-    error: isDarkMode ? '#E65C00' : '#E65C00',
-    headerBg: isDarkMode ? '#121212' : '#FFFFFF',
-    headerBorder: isDarkMode ? '#333' : '#EEE',
-    headerGradientStart: isDarkMode ? '#121212' : '#FFFFFF',
-    headerGradientEnd: isDarkMode ? '#1E1E1E' : '#F5F5F5',
+    primary: '#E65C00',
+    secondary: '#E65C00',
+    text: '#333',
+    error: '#E65C00',
+    headerBg: '#FFFFFF',
+    headerBorder: '#EEE',
+    headerGradientStart: '#FFFFFF',
+    headerGradientEnd: '#F5F5F5',
   };
 
   const saveAddressDetails = async (addressData: {
@@ -525,14 +521,11 @@ const AddressHeaderLeft = () => {
 };
 
 const HomeTabsNavigator = () => {
-  const colorScheme = Appearance.getColorScheme();
-  const isDarkMode = colorScheme === 'dark';
-  
   const colors = {
-    primary: isDarkMode ? '#E65C00' : '#E65C00',
-    inactive: isDarkMode ? '#888' : '#999',
-    background: isDarkMode ? '#1C1C1E' : '#FFF',
-    border: isDarkMode ? '#333' : '#EEE',
+    primary: '#E65C00',
+    inactive: '#999',
+    background: '#FFF',
+    border: '#EEE',
   };
 
   return (
@@ -573,7 +566,7 @@ const HomeTabsNavigator = () => {
       })}
       sceneContainerStyle={[
         styles.sceneContainer,
-        { backgroundColor: isDarkMode ? '#000' : '#FFF' },
+        { backgroundColor: '#FFF' },
       ]}
     >
       <Tab.Screen 
@@ -614,14 +607,12 @@ const HomeTabsNavigator = () => {
 
 const HomeTabs = () => {
   const navigation = useNavigation();
-  const colorScheme = Appearance.getColorScheme();
-  const isDarkMode = colorScheme === 'dark';
   
   const colors = {
-    background: isDarkMode ? '#121212' : '#FFFFFF',
-    border: isDarkMode ? '#333' : '#EEE',
-    gradientStart: isDarkMode ? '#121212' : '#FFFFFF',
-    gradientEnd: isDarkMode ? '#1E1E1E' : '#F5F5F5',
+    background: '#FFFFFF',
+    border: '#EEE',
+    gradientStart: '#FFFFFF',
+    gradientEnd: '#F5F5F5',
   };
 
   return (
@@ -647,11 +638,11 @@ const HomeTabs = () => {
               backgroundColor: 'transparent',
               borderBottomWidth: 1,
               borderBottomColor: colors.border,
-              shadowColor: isDarkMode ? 'transparent' : '#000',
+              shadowColor: '#000',
               shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: isDarkMode ? 0 : 0.05,
-              shadowRadius: isDarkMode ? 0 : 4,
-              elevation: isDarkMode ? 0 : 2,
+              shadowOpacity: 0.05,
+              shadowRadius: 4,
+              elevation: 2,
             },
           ],
           headerShadowVisible: false,

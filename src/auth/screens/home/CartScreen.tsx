@@ -95,7 +95,7 @@ type UserData = {
 
 const CartScreen = ({ route, navigation }) => {
   const [cartData, setCartData] = useState<CartApiResponse | null>(null);
-  const [kitchenId, setKitchenId] = useState<string | null>(null);
+  // const [kitchenId, setKitchenId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,16 +104,13 @@ const CartScreen = ({ route, navigation }) => {
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [addressId, setAddressId] = useState<string | null>(null);
   
+  const kitchenId = route?.params?.pastKitchenId
+  
   useEffect(() => {
     const fetchUserData = async () => {
       try {
         const userData = await AsyncStorage.getItem('user');
-        const kitchenData = await AsyncStorage.getItem('kitchenId');
         const savedAddressId = await AsyncStorage.getItem('AddressId');
-
-        if (kitchenData) {
-          setKitchenId(kitchenData);
-        }
         if (userData) {
           setUser(JSON.parse(userData));
         }
@@ -356,11 +353,7 @@ const CartScreen = ({ route, navigation }) => {
           </View>
           
           <View style={styles.itemDetails}>
-            <Text style={styles.itemName}>{item.item_name}</Text>
-            <Text style={styles.itemDescription} numberOfLines={2}>
-              {item.item_description}
-            </Text>
-            
+            <Text style={styles.itemName}>{item.item_name}</Text>            
             {item.discount_active ? (
               <View style={styles.priceRow}>
                 <Text style={styles.originalPrice}>₹{item.original_item_price.toFixed(2)}</Text>
@@ -948,7 +941,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   itemName: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '500',
     color: '#333',
     marginBottom: 4,
