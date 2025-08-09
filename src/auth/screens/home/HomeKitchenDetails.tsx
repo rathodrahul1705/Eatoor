@@ -1000,12 +1000,12 @@ const HomeKitchenDetails: React.FC = () => {
                       disabled={!selectedItem.availability || !isOpen || updatingItemId === selectedItem.id}
                     >
                       {updatingItemId === selectedItem.id ? (
-                        <ActivityIndicator size="small" color="#4ECB71" />
+                        <ActivityIndicator size="small" color="#E65C00" />
                       ) : (
                         <Icon 
                           name="add" 
                           size={24} 
-                          color={!selectedItem.availability || !isOpen ? '#ccc' : '#4ECB71'} 
+                          color={!selectedItem.availability || !isOpen ? '#ccc' : '#E65C00'} 
                         />
                       )}
                     </TouchableOpacity>
@@ -1045,43 +1045,43 @@ const HomeKitchenDetails: React.FC = () => {
 
       {/* Kitchen Conflict Modal */}
       <Modal
-        visible={showKitchenConflictModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowKitchenConflictModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>🚨 Kitchen Conflict</Text>
-            <Text style={styles.modalText}>
-              Your cart contains items from another restaurant. Would you like to reset your cart?
-            </Text>
-            <View style={styles.buttonRow}>
-              <TouchableOpacity 
-                style={[styles.button, styles.cancel]}
-                onPress={() => {
-                  setShowKitchenConflictModal(false);
-                  setPendingCartAction(null);
-                }}
-              >
-                <Text style={styles.buttonText}>No</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.button, styles.confirm]}
-                onPress={handleClearCartAndProceed}
-                disabled={cartLoading}
-              >
-                {cartLoading ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.buttonText}>Yes, Fresh Start</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+      visible={showKitchenConflictModal}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setShowKitchenConflictModal(false)}
+    >
+      <View style={styles.clearModalOverlay}>
+        <View style={styles.clearModalCard}>
+          <Text style={styles.clearModalTitle}>🚨 Kitchen Conflict</Text>
+          <Text style={styles.clearModalText}>
+            Your cart contains items from another restaurant. Would you like to reset your cart?
+          </Text>
+          <View style={styles.clearModalButtonRow}>
+            <TouchableOpacity 
+              style={[styles.clearModalButton, styles.clearModalCancelButton]}
+              onPress={() => {
+                setShowKitchenConflictModal(false);
+                setPendingCartAction(null);
+              }}
+            >
+              <Text style={styles.clearModalButtonText}>No</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.clearModalButton, styles.clearModalConfirmButton]}
+              onPress={handleClearCartAndProceed}
+              disabled={cartLoading}
+            >
+              {cartLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.clearModalButtonText}>Yes, Fresh Start</Text>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
-      </Modal>
+      </View>
+    </Modal>
     </SafeAreaView>
   );
 };
@@ -1599,55 +1599,142 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   modalOverlay: {
-  flex: 1,
-  justifyContent: 'center',
-  backgroundColor: 'rgba(0,0,0,0.5)',
-  padding: 20
-},
-modalCard: {
-  backgroundColor: 'white',
-  borderRadius: 16,
-  padding: 24,
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.25,
-  shadowRadius: 4,
-  elevation: 5
-},
-modalTitle: {
-  fontSize: 20,
-  fontWeight: 'bold',
-  marginBottom: 12,
-  textAlign: 'center'
-},
-modalText: {
-  fontSize: 16,
-  color: '#555',
-  marginBottom: 24,
-  textAlign: 'center'
-},
-buttonRow: {
-  flexDirection: 'row',
-  justifyContent: 'space-between'
-},
-button: {
-  padding: 14,
-  borderRadius: 8,
-  minWidth: '45%',
-  alignItems: 'center'
-},
-cancel: {
-  backgroundColor: '#E65C00',
-  color:"#fff"
-},
-confirm: {
-  backgroundColor: '#E65C00',
-  color:"#fff"
-},
-buttonText: {
-  fontWeight: '600',
-  color: 'white'
-},
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContainer: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: height * 0.85,
+    position: 'relative',
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    zIndex: 10,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 20,
+    padding: 8,
+  },
+  modalFoodImage: {
+    width: '100%',
+    height: 220,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    backgroundColor: '#f5f5f5',
+  },
+  modalContent: {
+    padding: 20,
+    paddingBottom: 30,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  modalFoodName: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#222',
+    flex: 1,
+    marginRight: 10,
+  },
+  modalPriceContainer: {
+    alignItems: 'flex-end',
+  },
+  modalFoodPrice: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#E65C00',
+  },
+  modalOriginalPrice: {
+    fontSize: 16,
+    color: '#999',
+    textDecorationLine: 'line-through',
+    marginRight: 4,
+  },
+  modalBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    flexWrap: 'wrap',
+  },
+  modalBestsellerBadge: {
+    backgroundColor: '#E65C00',
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginRight: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  modalBestsellerText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginLeft: 4,
+  },
+  modalOfferBadge: {
+    backgroundColor: '#4ECB71',
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginRight: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  modalOfferText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginLeft: 4,
+  },
+  modalTypeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  modalTypeText: {
+    fontSize: 12,
+    color: '#555',
+    marginLeft: 6,
+  },
+  modalFoodDescription: {
+    fontSize: 15,
+    color: '#555',
+    marginBottom: 20,
+    lineHeight: 22,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  modalQuantityControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff5f0',
+    borderRadius: 25,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#ffd6c5',
+  },
+  modalQuantityButton: {
+    padding: 6,
+  },
+  modalQuantityText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#E65C00',
+    marginHorizontal: 12,
+    minWidth: 24,
+    textAlign: 'center',
+  },
   addToCartBtnLarge: {
     backgroundColor: '#E65C00',
     borderRadius: 25,
@@ -1728,6 +1815,68 @@ buttonText: {
   conflictModalButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  clearModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  clearModalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 24,
+    width: '100%',
+    maxWidth: 350,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  clearModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    textAlign: 'center',
+    color: '#333',
+  },
+  clearModalText: {
+    fontSize: 16,
+    marginBottom: 24,
+    textAlign: 'center',
+    color: '#666',
+    lineHeight: 22,
+  },
+  clearModalButtonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  clearModalButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    minWidth: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearModalCancelButton: {
+    backgroundColor: '#e0e0e0',
+    marginRight: 10,
+  },
+  clearModalConfirmButton: {
+    backgroundColor: '#E65C00',
+    marginLeft: 10,
+  },
+  clearModalButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
   },
 });
 
