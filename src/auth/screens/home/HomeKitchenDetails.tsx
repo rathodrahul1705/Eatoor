@@ -897,25 +897,49 @@ const HomeKitchenDetails: React.FC = () => {
         }
       />
 
-      {/* Cart Summary */}
       {itemCount > 0 && (
-        <View style={styles.cartSummary}>
-          <View style={styles.cartSummaryContent}>
-            <View style={styles.cartCount}>
-              <Text style={styles.cartCountText}>{itemCount} item{itemCount !== 1 ? 's' : ''}</Text>
-              <Text style={styles.cartPriceText}>₹{totalPrice.toFixed(2)}</Text>
+        <View style={styles.cartSummary__container}>
+          {/* Kitchen Info Row with Image */}
+          <View style={styles.cartSummary__header}>
+            <View style={styles.cartSummary__kitchenInfo}>
+              <Image 
+                source={{ uri: "https://www.eatoor.com/media/menu_images/vegetable_upma.webp" }} 
+                style={styles.cartSummary__kitchenImage}
+              />
+              <View>
+                <Text style={styles.cartSummary__kitchenName} numberOfLines={1}>
+                  {"Current Kitchen"}
+                </Text>
+                <TouchableOpacity 
+                  onPress={() => navigation.navigate('MenuScreen', { kitchenId })}
+                  style={styles.cartSummary__viewMenuBtn}
+                >
+                  <Text style={styles.cartSummary__viewMenuText}>View Menu</Text>
+                </TouchableOpacity>
+              </View>
             </View>
+            
+            {/* Centered Price */}
+            {/* <View style={styles.cartSummary__priceBox}>
+              <Text style={styles.cartSummary__priceText}>₹{totalPrice.toFixed(2)}</Text>
+            </View> */}
+            
+            {/* Compact View Cart with Text */}
             <TouchableOpacity 
               style={[
-                styles.viewCartBtn,
-                !isOpen && styles.disabledViewCartBtn
+                styles.cartSummary__miniCartBtn,
+                !isOpen && styles.cartSummary__miniCartBtnDisabled
               ]}
-              activeOpacity={0.8}
               onPress={isOpen ? handleViewCart : undefined}
               disabled={!isOpen}
+              activeOpacity={0.9}
             >
-              <Text style={styles.viewCartText}>VIEW CART</Text>
-              <Icon name="chevron-forward" size={18} color="#fff" />
+              <View style={styles.cartSummary__miniCartContent}>
+                <Text style={styles.cartSummary__viewCartText}>View Cart</Text>
+                <View style={styles.cartSummary__cartCountBadge}>
+                  <Text style={styles.cartSummary__miniCartCount}>{itemCount}</Text>
+                </View>
+              </View>
             </TouchableOpacity>
           </View>
         </View>
@@ -1190,6 +1214,109 @@ const styles = StyleSheet.create({
     left: 20,
     right: 20,
     zIndex: 10,
+  },
+  cartSummary__container: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 3,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
+  cartSummary__header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  
+  cartSummary__kitchenInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 10,
+  },
+  
+  cartSummary__kitchenImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    marginRight: 10,
+  },
+  
+  cartSummary__kitchenName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2d3436',
+    marginBottom: 2,
+    maxWidth: 120,
+  },
+  
+  cartSummary__viewMenuBtn: {
+    alignSelf: 'flex-start',
+  },
+  
+  cartSummary__viewMenuText: {
+    color: '#4a90e2',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  
+  cartSummary__priceBox: {
+    paddingHorizontal: 12,
+  },
+  
+  cartSummary__priceText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#2d3436',
+  },
+  
+  cartSummary__miniCartBtn: {
+    backgroundColor: '#E65C00',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  
+  cartSummary__miniCartBtnDisabled: {
+    backgroundColor: '#b2bec3',
+  },
+  
+  cartSummary__miniCartContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  
+  cartSummary__viewCartText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    marginRight: 6,
+  },
+  
+  cartSummary__cartCountBadge: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    width: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  
+  cartSummary__miniCartCount: {
+    color: '#b54545ff',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   kitchenName: {
     fontSize: 28,
@@ -1539,54 +1666,7 @@ const styles = StyleSheet.create({
     minWidth: 20,
     textAlign: 'center',
   },
-  cartSummary: {
-    position: 'absolute',
-    bottom: 20,
-    left: 20,
-    right: 20,
-    backgroundColor: '#E65C00',
-    borderRadius: 12,
-    padding: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  disabledViewCartBtn: {
-    backgroundColor: '#999',
-  },
-  cartSummaryContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  cartCount: {},
-  cartCountText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  cartPriceText: {
-    fontSize: 16,
-    color: '#fff',
-    marginTop: 4,
-    fontWeight: '600',
-  },
-  viewCartBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 25,
-  },
-  viewCartText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
-    marginRight: 4,
-  },
+  
   menuContainer: {
     paddingBottom: 5,
   },

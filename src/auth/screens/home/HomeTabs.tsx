@@ -51,6 +51,24 @@ const tabIconsFocused: { [key in keyof HomeTabParamList]: string } = {
   Cart: 'cart',
 };
 
+// Color palette
+const COLORS = {
+  primary: '#FF6B35',       // Primary orange
+  primaryDark: '#E65C00',   // Darker orange
+  primaryLight: '#FF9F5B',  // Lighter orange
+  background: '#FFFFFF',    // White background
+  text: '#333333',          // Dark text
+  textLight: '#666666',     // Lighter text
+  border: '#EEEEEE',        // Light border
+  inactive: '#999999',      // Inactive tab color
+  error: '#FF3B30',         // Error red
+  success: '#34C759',       // Success green
+  warning: '#FF9500',       // Warning orange
+  info: '#5AC8FA',          // Info blue
+  gradientStart: '#E65C00', // Gradient start (primary)
+  gradientEnd: '#DD2476',   // Gradient end (primary light)
+};
+
 interface LocationData {
   address: string;
   loading: boolean;
@@ -80,17 +98,6 @@ const AddressHeaderLeft = () => {
     homeType: 'Delivering to',
     addressId: null,
   });
-
-  const colors = {
-    primary: '#E65C00',
-    secondary: '#E65C00',
-    text: '#333',
-    error: '#E65C00',
-    headerBg: '#FFFFFF',
-    headerBorder: '#EEE',
-    headerGradientStart: '#FFFFFF',
-    headerGradientEnd: '#F5F5F5',
-  };
 
   const saveAddressDetails = async (addressData: {
     id?: string;
@@ -459,14 +466,14 @@ const AddressHeaderLeft = () => {
       activeOpacity={0.7}
     >
       <View style={styles.addressLine}>
-        <Icon name="location-outline" size={16} color={colors.secondary} />
-        <Text style={[styles.addressLabel, { color: colors.secondary }]}>
+        <Icon name="location-outline" size={16} color={COLORS.background} />
+        <Text style={[styles.addressLabel, { color: COLORS.background }]}>
           {location.homeType}
         </Text>
         <Icon 
           name="chevron-down" 
           size={16} 
-          color={colors.secondary} 
+          color={COLORS.background} 
           style={{ marginLeft: 2 }} 
         />
       </View>
@@ -477,12 +484,12 @@ const AddressHeaderLeft = () => {
         style={styles.addressLine}
       >
         {location.loading ? (
-          <ActivityIndicator size={14} color={colors.primary} />
+          <ActivityIndicator size={14} color={COLORS.background} />
         ) : (
           <Icon 
             name={location.error ? "warning-outline" : "navigate-outline"} 
             size={14} 
-            color={location.error ? colors.error : colors.primary} 
+            color={location.error ? COLORS.error : COLORS.background} 
           />
         )}
         
@@ -490,7 +497,7 @@ const AddressHeaderLeft = () => {
           style={[
             styles.addressText, 
             { 
-              color: location.error ? colors.error : colors.text,
+              color: location.error ? COLORS.error : COLORS.background,
               fontWeight: location.error ? '500' : '400',
             },
           ]} 
@@ -510,7 +517,7 @@ const AddressHeaderLeft = () => {
               <Icon 
                 name="reload-outline" 
                 size={14} 
-                color={location.error ? colors.error : colors.primary} 
+                color={location.error ? COLORS.error : COLORS.background} 
               />
             </Animatable.View>
           </TouchableOpacity>
@@ -521,13 +528,6 @@ const AddressHeaderLeft = () => {
 };
 
 const HomeTabsNavigator = () => {
-  const colors = {
-    primary: '#E65C00',
-    inactive: '#999',
-    background: '#FFF',
-    border: '#EEE',
-  };
-
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -546,18 +546,18 @@ const HomeTabsNavigator = () => {
             >
               <Icon name={iconName} size={size} color={color} />
               {focused && (
-                <View style={[styles.tabIndicator, { backgroundColor: colors.primary }]} />
+                <View style={[styles.tabIndicator, { backgroundColor: COLORS.primary }]} />
               )}
             </Animatable.View>
           );
         },
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.inactive,
+        tabBarActiveTintColor: COLORS.primary,
+        tabBarInactiveTintColor: COLORS.inactive,
         tabBarStyle: [
           styles.tabBar,
           {
-            backgroundColor: colors.background,
-            borderTopColor: colors.border,
+            backgroundColor: COLORS.background,
+            borderTopColor: COLORS.border,
           },
         ],
         tabBarLabelStyle: styles.tabLabel,
@@ -566,7 +566,7 @@ const HomeTabsNavigator = () => {
       })}
       sceneContainerStyle={[
         styles.sceneContainer,
-        { backgroundColor: '#FFF' },
+        { backgroundColor: COLORS.background },
       ]}
     >
       <Tab.Screen 
@@ -608,13 +608,6 @@ const HomeTabsNavigator = () => {
 const HomeTabs = () => {
   const navigation = useNavigation();
   
-  const colors = {
-    background: '#FFFFFF',
-    border: '#EEE',
-    gradientStart: '#FFFFFF',
-    gradientEnd: '#F5F5F5',
-  };
-
   return (
     <Stack.Navigator>
       <Stack.Screen
@@ -626,7 +619,7 @@ const HomeTabs = () => {
           headerRight: () => <ProfileButton navigation={navigation} />,
           headerBackground: () => (
             <LinearGradient
-              colors={[colors.gradientStart, colors.gradientEnd]}
+              colors={[COLORS.gradientStart, COLORS.gradientEnd]}
               style={StyleSheet.absoluteFill}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
@@ -637,7 +630,7 @@ const HomeTabs = () => {
             { 
               backgroundColor: 'transparent',
               borderBottomWidth: 1,
-              borderBottomColor: colors.border,
+              borderBottomColor: COLORS.border,
               shadowColor: '#000',
               shadowOffset: { width: 0, height: 2 },
               shadowOpacity: 0.05,
