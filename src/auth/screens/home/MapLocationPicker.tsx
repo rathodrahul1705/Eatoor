@@ -31,7 +31,7 @@ import { storeUserAddress, updateUserAddress } from '../../../api/address';
 // Constants
 const { width, height } = Dimensions.get('window');
 const ASPECT_RATIO = width / height;
-const LATITUDE_DELTA = 0.0922;
+const LATITUDE_DELTA = 0.005; // More zoomed in by default
 const LONGITUDE_DELTA = LATITUDE_DELTA * ASPECT_RATIO;
 const DEFAULT_COORDINATES = {
   latitude: 19.0760,
@@ -100,12 +100,13 @@ const MapLocationPicker = () => {
   const [isManualAddressEdit, setIsManualAddressEdit] = useState(false);
   const [selectedPlaceName, setSelectedPlaceName] = useState('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
   
   // Animation values
   const scrollY = useRef(new Animated.Value(0)).current;
   const modalTranslateY = useRef(new Animated.Value(height)).current;
   const modalOpacity = useRef(new Animated.Value(0)).current;
-  const mapHeight = useRef(new Animated.Value(height * 0.45)).current;
+  const mapHeight = useRef(new Animated.Value(height * 0.5)).current;
 
   // Keyboard listeners
   useEffect(() => {
@@ -126,7 +127,7 @@ const MapLocationPicker = () => {
       () => {
         setKeyboardVisible(false);
         Animated.timing(mapHeight, {
-          toValue: height * 0.45,
+          toValue: height * 0.5,
           duration: 250,
           useNativeDriver: false,
         }).start();
@@ -173,6 +174,20 @@ const MapLocationPicker = () => {
           if (savedLat && savedLng) {
             initialLat = parseFloat(savedLat);
             initialLng = parseFloat(savedLng);
+          } else {
+            // Try to get current location if no saved location
+            const hasPermission = await requestLocationPermission();
+            if (hasPermission) {
+              const position = await new Promise<Geolocation.GeoPosition>((resolve, reject) => {
+                Geolocation.getCurrentPosition(
+                  resolve,
+                  reject,
+                  { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+                );
+              });
+              initialLat = position.coords.latitude;
+              initialLng = position.coords.longitude;
+            }
           }
         }
 
@@ -205,6 +220,8 @@ const MapLocationPicker = () => {
 
       } catch (error) {
         console.error('Error initializing address:', error);
+      } finally {
+        setIsFirstLoad(false);
       }
     };
 
@@ -239,7 +256,7 @@ const MapLocationPicker = () => {
 
   // Fetch address from coordinates
   const fetchAddressFromCoordinates = async (lat: number, lng: number) => {
-    if (isManualAddressEdit) return;
+    if (isManualAddressEdit && !isFirstLoad) return;
 
     try {
       setIsLoading(true);
@@ -276,11 +293,11 @@ const MapLocationPicker = () => {
         
         setAddress(prev => ({
           ...prev,
-          address: prev.address === '' || prev.address === address.address ? fullAddress : prev.address,
-          city: prev.city === '' ? (city || locality || sublocality) : prev.city,
-          state: prev.state === '' ? state : prev.state,
-          zipCode: prev.zipCode === '' ? postalCode : prev.zipCode,
-          country: prev.country === '' ? country : prev.country,
+          address: prev.address === '' || !isManualAddressEdit ? fullAddress : prev.address,
+          city: prev.city === '' || !isManualAddressEdit ? (city || locality || sublocality) : prev.city,
+          state: prev.state === '' || !isManualAddressEdit ? state : prev.state,
+          zipCode: prev.zipCode === '' || !isManualAddressEdit ? postalCode : prev.zipCode,
+          country: prev.country === '' || !isManualAddressEdit ? country : prev.country,
           latitude: lat,
           longitude: lng,
         }));
@@ -574,6 +591,11 @@ const MapLocationPicker = () => {
   };
 
   const prepareAddressPayload = () => {
+    const formatCoord = (value) => {
+      if (value === null || value === undefined || isNaN(value)) return null;
+      return Number(value).toFixed(4);
+    };
+
     return {
       street_address: address.address,
       user: user?.id || 0,
@@ -584,11 +606,12 @@ const MapLocationPicker = () => {
       near_by_landmark: address.landmark,
       home_type: address.type,
       name_of_location: address.name,
-      latitude: address.latitude,
-      longitude: address.longitude,
+      latitude: formatCoord(address.latitude),
+      longitude: formatCoord(address.longitude),
       is_default: addressToEdit?.isDefault || false,
     };
   };
+
 
   // Pan responder for modal swipe down
   const panResponder = useRef(
@@ -682,6 +705,8 @@ const MapLocationPicker = () => {
         if (onLocationConfirmed) {
           onLocationConfirmed(newAddress);
         }
+        
+        console.log("prevLocation===",prevLocation)
         
         closeModal();
         setTimeout(() => {
@@ -795,6 +820,18 @@ const MapLocationPicker = () => {
               }}
               onBlur={() => setTimeout(() => setShowSearchResults(false), 200)}
             />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity
+                style={styles.clearSearchButton}
+                onPress={() => {
+                  setSearchQuery('');
+                  setSearchResults([]);
+                  setShowSearchResults(false);
+                }}
+              >
+                <Icon name="close" size={20} color="#999" />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
         
@@ -1396,6 +1433,9 @@ const styles = StyleSheet.create({
   },
   searchIcon: {
     marginRight: 10,
+  },
+  clearSearchButton: {
+    marginLeft: 10,
   },
   searchInput: {
     flex: 1,

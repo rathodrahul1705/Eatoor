@@ -102,7 +102,7 @@ const AddressHeaderLeft = () => {
   const saveAddressDetails = async (addressData: {
     id?: string;
     full_address: string;
-    home_type: string;
+    home_type?: string;
     latitude: string;
     longitude: string;
   }) => {
@@ -164,17 +164,40 @@ const AddressHeaderLeft = () => {
       });
 
       if (response.data?.id) {
-        await saveAddressDetails(response.data);
+        await saveAddressDetails({
+          id: response.data.id.toString(),
+          full_address: response.data.full_address,
+          home_type: response.data.home_type,
+          latitude: lat.toString(),
+          longitude: lng.toString(),
+        });
+        
         updateLocationState(
           response.data.full_address,
           { lat, lng },
           { 
-            homeType: response.data.home_type,
+            homeType: response.data.home_type || 'Delivering to',
             addressId: response.data.id.toString()
           }
         );
         return true;
       }
+      
+      // If no address found in database, save the current coordinates and address
+      const currentAddress = await getAddressFromCoordinates(lat, lng);
+      await saveAddressDetails({
+        full_address: currentAddress,
+        latitude: lat.toString(),
+        longitude: lng.toString(),
+        home_type: 'Delivering to'
+      });
+      
+      updateLocationState(
+        currentAddress,
+        { lat, lng },
+        { homeType: 'Delivering to' }
+      );
+      
       return false;
     } catch (error) {
       console.error('Error checking location in database:', error);
@@ -245,9 +268,17 @@ const AddressHeaderLeft = () => {
         if (foundInDB) return;
 
         const address = await getAddressFromCoordinates(latitude, longitude);
+        await saveAddressDetails({
+          full_address: address,
+          latitude: latitude.toString(),
+          longitude: longitude.toString(),
+          home_type: 'Delivering to'
+        });
+        
         updateLocationState(
           address,
-          { lat: latitude, lng: longitude }
+          { lat: latitude, lng: longitude },
+          { homeType: 'Delivering to' }
         );
         return;
       }
@@ -425,39 +456,52 @@ const AddressHeaderLeft = () => {
   };
 
   const handleAddressPress = () => {
-    navigation.navigate('AddressScreen', {
-      prevLocation: "HomeTabs",
-      currentLocation: location.coords,
-      currentAddress: location.address,
-      onAddressSelect: async (
-        selectedAddress: string, 
-        selectedCoords: { lat: number; lng: number }, 
-        homeType: string, 
-        addressId?: string
-      ) => {
-        updateLocationState(
-          selectedAddress,
-          selectedCoords,
-          { 
-            homeType: homeType || 'Delivering to',
-            addressId: addressId || null
-          }
-        );
-        
+  if (!location?.coords || !location?.address) {
+    console.warn("Location data not available");
+    return;
+  }
+
+  navigation.navigate('AddressScreen', {
+    prevLocation: "HomeTabs",
+    currentLocation: {
+      latitude: location.coords.latitude,
+      longitude: location.coords.longitude
+    },
+    currentAddress: location.address,
+    onAddressSelect: (selectedAddressObj) => {
+      const raw = selectedAddressObj.rawAddress;
+
+      // Update UI
+      updateLocationState(
+        raw.full_address,
+        {
+          latitude: parseFloat(raw.latitude),
+          longitude: parseFloat(raw.longitude),
+        },
+        { 
+          homeType: raw.home_type || 'Delivering to',
+          addressId: String(raw.id) || null
+        }
+      );
+
+      // Save address details
+      (async () => {
         try {
           await saveAddressDetails({
-            id: addressId,
-            full_address: selectedAddress,
-            home_type: homeType || 'Delivering to',
-            latitude: selectedCoords.lat.toString(),
-            longitude: selectedCoords.lng.toString(),
+            id: String(raw.id),
+            full_address: raw.full_address,
+            home_type: raw.home_type || 'Delivering to',
+            latitude: raw.latitude,
+            longitude: raw.longitude,
           });
         } catch (error) {
           console.error('Error saving selected address:', error);
         }
-      }
-    });
-  };
+      })();
+    }
+  });
+};
+
 
   return (
     <TouchableOpacity

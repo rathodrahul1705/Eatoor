@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, StyleSheet, SafeAreaView, Text, TextInput,
   FlatList, TouchableOpacity, Image, Animated, Dimensions, 
@@ -8,7 +8,10 @@ import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
 import { getKitchenList, updateFavouriteKitchen } from '../../../api/home';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getCart } from '../../../api/cart';
 
+// Constants
 const { width, height } = Dimensions.get('window');
 const isIOS = Platform.OS === 'ios';
 
@@ -34,14 +37,13 @@ const COLORS = {
   categoryBg: '#FFFFFF',
   searchBorder: '#E1E4E8',
   refreshControl: '#E65C00',
-  headerGradientStart: '#E65C00',  // Vibrant orange
-  headerGradientEnd: '#DD2476',    // Deep pink
+  headerGradientStart: '#E65C00',
+  headerGradientEnd: '#DD2476',
   textOnGradient: '#FFFFFF',
   categoryText: 'rgba(255,255,255,0.9)',
   activeCategoryText: '#FFFFFF',
 };
 
-// Typography
 const FONTS = {
   bold: 'Inter-Bold',
   semiBold: 'Inter-SemiBold',
@@ -49,9 +51,9 @@ const FONTS = {
   regular: 'Inter-Regular',
 };
 
-// Default category icon
-const DEFAULT_CATEGORY_ICON = ""
+const DEFAULT_CATEGORY_ICON = "";
 
+// Types
 interface Kitchen {
   restaurant_id: string;
   restaurant_name: string;
@@ -89,90 +91,52 @@ interface ApiResponse {
   };
 }
 
+interface PastKitchenDetails {
+  id: string;
+  name: string;
+  image: string;
+  itemCount: number;
+}
+
 const KitchenScreen: React.FC = () => {
   const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [apiData, setApiData] = useState<ApiResponse | null>(null);
-  const [filteredKitchens, setFilteredKitchens] = useState<Kitchen[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filters, setFilters] = useState<Filter[]>([]);
   const [favoriteLoading, setFavoriteLoading] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<number | null>(null);
-
+  const [pastKitchenDetails, setPastKitchenDetails] = useState<PastKitchenDetails | null>(null);
+  const [user, setUser] = useState(null);
   const searchAnim = useRef(new Animated.Value(0)).current;
 
-  // Initialize filters
-  useEffect(() => {
-    setFilters([
-      { id: '1', name: 'Rating 4.0+', icon: 'star', type: 'rating', active: false },
-      { id: '2', name: 'Pure Veg', icon: 'leaf', type: 'veg', active: false },
-      { id: '3', name: 'Offers', icon: 'pricetag', type: 'offer', active: false },
-      { id: '4', name: 'Fast Delivery', icon: 'rocket', type: 'fastDelivery', active: false },
-    ]);
-  }, []);
+  // Initialize filters with useMemo to prevent unnecessary recreations
+  const [filters, setFilters] = useState<Filter[]>(useMemo(() => [
+    { id: '1', name: 'Rating 4.0+', icon: 'star', type: 'rating', active: false },
+    { id: '2', name: 'Pure Veg', icon: 'leaf', type: 'veg', active: false },
+    { id: '3', name: 'Offers', icon: 'pricetag', type: 'offer', active: false },
+    { id: '4', name: 'Fast Delivery', icon: 'rocket', type: 'fastDelivery', active: false },
+  ], []));
 
-  const fetchKitchens = async () => {
-    try {
-      setLoading(true);
-      const response = await getKitchenList();
-      
-      // Add review counts and ensure is_favourite is set
-      const processedData = {
-        ...response.data,
-        data: {
-          ...response.data.data,
-          FeatureKitchenList: response.data.data.FeatureKitchenList.map(k => ({
-            ...k,
-            review_count: Math.floor(Math.random() * 100) + 1,
-            is_favourite: k.is_favourite || false
-          })),
-          KitchenList: response.data.data.KitchenList.map(k => ({
-            ...k,
-            review_count: Math.floor(Math.random() * 100) + 1,
-            is_favourite: k.is_favourite || false
-          }))
-        }
-      };
-      
-      setApiData(processedData);
-      setFilteredKitchens(processedData.data.KitchenList);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to fetch kitchens. Please try again later.');
-      console.error('Error fetching kitchens:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchKitchens();
-  }, []);
-
-  useEffect(() => {
-    applyFilters();
-  }, [filters, searchQuery, apiData, activeCategory]);
-
-  const applyFilters = () => {
-    if (!apiData) return;
+  // Memoized filtered kitchens to prevent unnecessary recalculations
+  const filteredKitchens = useMemo(() => {
+    if (!apiData) return [];
 
     let result = [...apiData.data.KitchenList];
 
+    // Apply search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       result = result.filter(kitchen => 
         kitchen.restaurant_name.toLowerCase().includes(query) ||
         (kitchen.item_cuisines && kitchen.item_cuisines.toLowerCase().includes(query))
-      );
-    }
+    )}
 
-    // Apply category filter if active
+    // Apply category filter
     if (activeCategory !== null && apiData.data.CategoryList[activeCategory]) {
       const categoryName = apiData.data.CategoryList[activeCategory].name;
       result = result.filter(kitchen => 
-        kitchen.item_cuisines && kitchen.item_cuisines.toLowerCase().includes(categoryName.toLowerCase())
-      );
+        kitchen.item_cuisines && kitchen.item_cuisines.toLowerCase().includes(categoryName.toLowerCase()))
     }
 
     // Apply other filters
@@ -180,82 +144,202 @@ const KitchenScreen: React.FC = () => {
       if (filter.active) {
         switch (filter.type) {
           case 'rating':
-            result = result.filter(kitchen => (Math.random() * 5) >= 4.0); // Simulate rating filter
+            result = result.filter(() => (Math.random() * 5) >= 4.0);
             break;
           case 'veg':
-            break;
           case 'offer':
-            break;
           case 'fastDelivery':
+            // Implement actual filtering logic here when available
             break;
         }
       }
     });
 
-    setFilteredKitchens(result);
-  };
+    return result;
+  }, [apiData, searchQuery, activeCategory, filters]);
 
-  const handleCategoryPress = (categoryId: number) => {
-    setActiveCategory(activeCategory === categoryId ? null : categoryId);
-  };
+  // Fetch user data with proper cleanup
+  const fetchUserData = useCallback(async () => {
+    try {
+      const [userData] = await Promise.all([
+        AsyncStorage.getItem('user'),
+      ]);      
+      if (userData) {
+        setUser(JSON.parse(userData));
+      }
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+    }
+  }, []);
 
-  const handleFilterPress = (filterId: string) => {
-    setFilters(filters.map(filter => 
-      filter.id === filterId ? { ...filter, active: !filter.active } : filter
-    ));
-  };
+  // Save past kitchen details with error handling
+  const savePastKitchenDetails = useCallback(async (details: PastKitchenDetails) => {
+    try {
+      await AsyncStorage.setItem('pastKitchenDetails', JSON.stringify(details));
+      setPastKitchenDetails(details);
+    } catch (error) {
+      console.error('Error saving past kitchen details:', error);
+    }
+  }, []);
+  
+  // Fetch past kitchen details with proper dependencies
+  const fetchPastKitchenDetails = useCallback(async () => {
+    try {
+      const storedDetails = await AsyncStorage.getItem('pastKitchenDetails');
+      if (storedDetails != null) {
+        setPastKitchenDetails(JSON.parse(storedDetails));
+        return;
+      }
 
-  const handleRefresh = () => {
+      console.log("user======",user)
+
+      const payload = {
+        session_id: null,
+        user_id: user?.id
+      };
+
+      const response = await getCart(payload);
+      if (response?.status === 200) {
+        const existingCart = response?.data?.existingCartDetails || [];
+        if (existingCart.length > 0) {
+          const newPastKitchenDetails = {
+            id: existingCart[0]?.restaurant_id,
+            name: existingCart[0]?.restaurant_name,
+            image: existingCart[0]?.restaurant_profile_image,
+            itemCount: response?.data?.total_item_count || 0
+          };
+          await savePastKitchenDetails(newPastKitchenDetails);
+          setPastKitchenDetails(newPastKitchenDetails);
+        }
+      }else{
+        setPastKitchenDetails(null)
+      }
+    } catch (error) {
+      console.error('Error fetching past kitchen details:', error);
+    }
+  }, [user?.id, savePastKitchenDetails]);
+
+  // Main data fetching function with proper error handling
+  const fetchKitchens = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await getKitchenList();
+      
+      if (response.data?.success) {
+        const processedData = {
+          ...response.data,
+          data: {
+            ...response.data.data,
+            FeatureKitchenList: response.data.data.FeatureKitchenList.map(k => ({
+              ...k,
+              review_count: Math.floor(Math.random() * 100) + 1,
+              is_favourite: k.is_favourite || false
+            })),
+            KitchenList: response.data.data.KitchenList.map(k => ({
+              ...k,
+              review_count: Math.floor(Math.random() * 100) + 1,
+              is_favourite: k.is_favourite || false
+            }))
+          }
+        };
+        
+        setApiData(processedData);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to fetch kitchens. Please try again later.');
+      console.error('Error fetching kitchens:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  // Initial data loading with cleanup
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadData = async () => {
+      await fetchUserData();
+      await fetchKitchens();
+      if (isMounted) {
+        await fetchPastKitchenDetails();
+      }
+    };
+
+    loadData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [fetchKitchens, fetchPastKitchenDetails, fetchUserData]);
+
+  // Refresh control handler
+  const handleRefresh = useCallback(() => {
     setRefreshing(true);
     fetchKitchens();
-  };
+  }, [fetchKitchens]);
 
-  const handleKitchenPress = (kitchen: Kitchen) => {
+  // Category press handler
+  const handleCategoryPress = useCallback((categoryId: number) => {
+    setActiveCategory(prev => prev === categoryId ? null : categoryId);
+  }, []);
+
+  // Filter press handler
+  const handleFilterPress = useCallback((filterId: string) => {
+    setFilters(prev => prev.map(filter => 
+      filter.id === filterId ? { ...filter, active: !filter.active } : filter
+    ));
+  }, []);
+
+  // Kitchen press handler
+  const handleKitchenPress = useCallback((kitchen: Kitchen) => {
     navigation.navigate('HomeKitchenDetails', { kitchenId: kitchen.restaurant_id });
-  };
+  }, [navigation]);
 
-  const handleSearchFocus = () => {
+  // Search animation handlers
+  const handleSearchFocus = useCallback(() => {
     Animated.timing(searchAnim, {
       toValue: 1,
       duration: 200,
       useNativeDriver: false,
     }).start();
-  };
+  }, [searchAnim]);
 
-  const handleSearchBlur = () => {
+  const handleSearchBlur = useCallback(() => {
     Animated.timing(searchAnim, {
       toValue: 0,
       duration: 200,
       useNativeDriver: false,
     }).start();
-  };
+  }, [searchAnim]);
 
-  const toggleFavorite = async (kitchenId: string) => {
+  // Favorite toggle with proper error handling
+  const toggleFavorite = useCallback(async (kitchenId: string) => {
+    if (favoriteLoading) return;
+
     try {
       setFavoriteLoading(kitchenId);
       
-      if (apiData) {
-        const updatedKitchenList = apiData.data.KitchenList.map(kitchen => 
-          kitchen.restaurant_id === kitchenId 
-            ? { ...kitchen, is_favourite: !kitchen.is_favourite } 
-            : kitchen
-        );
+      setApiData(prev => {
+        if (!prev) return null;
         
-        const updatedFeatureKitchenList = apiData.data.FeatureKitchenList.map(kitchen => 
-          kitchen.restaurant_id === kitchenId 
-            ? { ...kitchen, is_favourite: !kitchen.is_favourite } 
-            : kitchen
-        );
-        
-        setApiData({
-          ...apiData,
+        return {
+          ...prev,
           data: {
-            ...apiData.data,
-            KitchenList: updatedKitchenList,
-            FeatureKitchenList: updatedFeatureKitchenList
+            ...prev.data,
+            KitchenList: prev.data.KitchenList.map(kitchen => 
+              kitchen.restaurant_id === kitchenId 
+                ? { ...kitchen, is_favourite: !kitchen.is_favourite } 
+                : kitchen
+            ),
+            FeatureKitchenList: prev.data.FeatureKitchenList.map(kitchen => 
+              kitchen.restaurant_id === kitchenId 
+                ? { ...kitchen, is_favourite: !kitchen.is_favourite } 
+                : kitchen
+            )
           }
-        });
-      }
+        };
+      });
       
       await updateFavouriteKitchen({ restaurant_id: kitchenId });
     } catch (error) {
@@ -263,22 +347,38 @@ const KitchenScreen: React.FC = () => {
       Alert.alert('Error', 'Failed to update favorite status. Please try again.');
       
       // Revert UI changes if API call fails
-      if (apiData) {
-        setApiData({
-          ...apiData,
+      setApiData(prev => {
+        if (!prev) return null;
+        
+        return {
+          ...prev,
           data: {
-            ...apiData.data,
-            KitchenList: apiData.data.KitchenList,
-            FeatureKitchenList: apiData.data.FeatureKitchenList
+            ...prev.data,
+            KitchenList: prev.data.KitchenList,
+            FeatureKitchenList: prev.data.FeatureKitchenList
           }
-        });
-      }
+        };
+      });
     } finally {
       setFavoriteLoading(null);
     }
-  };
+  }, [favoriteLoading]);
 
-  const renderCategory = ({ item, index }: { item: Category, index: number }) => (
+  // Navigation handlers
+  const BackToKitchen = useCallback(() => {
+    if (pastKitchenDetails?.id) {
+      navigation.navigate('HomeKitchenDetails', { kitchenId: pastKitchenDetails.id });
+    }
+  }, [navigation, pastKitchenDetails]);
+
+  const handleViewCart = useCallback(() => {
+    if (pastKitchenDetails?.id) {
+      navigation.navigate('CartScreen', { pastkitcheId: pastKitchenDetails.id });
+    }
+  }, [navigation, pastKitchenDetails]);
+
+  // Memoized render functions for performance
+  const renderCategory = useCallback(({ item, index }: { item: Category, index: number }) => (
     <TouchableOpacity 
       style={[
         styles.categoryCard,
@@ -306,9 +406,9 @@ const KitchenScreen: React.FC = () => {
         {item.name}
       </Text>
     </TouchableOpacity>
-  );
+  ), [activeCategory, handleCategoryPress]);
 
-  const renderFilter = ({ item }: { item: Filter }) => (
+  const renderFilter = useCallback(({ item }: { item: Filter }) => (
     <TouchableOpacity 
       style={[
         styles.filterCard,
@@ -329,9 +429,9 @@ const KitchenScreen: React.FC = () => {
         {item.name}
       </Text>
     </TouchableOpacity>
-  );
+  ), [handleFilterPress]);
 
-  const renderKitchenItem = ({ item }: { item: Kitchen }) => {
+  const renderKitchenItem = useCallback(({ item }: { item: Kitchen }) => {
     const deliveryTime = '30-40 min';
     const [minTime, maxTime] = deliveryTime.split('-').map(t => parseInt(t.trim()) || 30);
     const avgTime = Math.floor((minTime + maxTime) / 2);
@@ -340,7 +440,7 @@ const KitchenScreen: React.FC = () => {
     const deliveryFee = '₹30';
     const minOrder = item.avg_price_range ? `₹${item.avg_price_range}` : '₹100';
     const cuisines = item.item_cuisines ? item.item_cuisines.split(', ') : [];
-    const rating = (Math.random() * 1 + 4).toFixed(1); // Random rating between 4.0 and 5.0
+    const rating = (Math.random() * 1 + 4).toFixed(1);
 
     return (
       <TouchableOpacity
@@ -407,11 +507,11 @@ const KitchenScreen: React.FC = () => {
         </View>
       </TouchableOpacity>
     );
-  };
+  }, [handleKitchenPress, toggleFavorite, favoriteLoading]);
 
-  const renderFeaturedKitchenPair = (index: number) => {
+  const renderFeaturedKitchenPair = useCallback((index: number) => {
     if (!apiData) return null;
-    
+      
     const pair = apiData.data.FeatureKitchenList.slice(index * 2, index * 2 + 2);
     if (pair.length === 0) return null;
 
@@ -422,7 +522,7 @@ const KitchenScreen: React.FC = () => {
           const [minTime, maxTime] = deliveryTime.split('-').map(t => parseInt(t.trim()) || 30);
           const avgTime = Math.floor((minTime + maxTime) / 2);
           const cuisines = item.item_cuisines ? item.item_cuisines.split(', ') : [];
-          const rating = (Math.random() * 1 + 4).toFixed(1); // Random rating between 4.0 and 5.0
+          const rating = (Math.random() * 1 + 4).toFixed(1);
 
           return (
             <TouchableOpacity 
@@ -485,8 +585,9 @@ const KitchenScreen: React.FC = () => {
         })}
       </View>
     );
-  };
+  }, [apiData, handleKitchenPress, toggleFavorite, favoriteLoading]);
 
+  // Loading state
   if (loading && !refreshing) {
     return (
       <SafeAreaView style={[styles.container, styles.loadingContainer]}>
@@ -495,6 +596,7 @@ const KitchenScreen: React.FC = () => {
     );
   }
 
+  // Error state
   if (!apiData) {
     return (
       <SafeAreaView style={[styles.container, styles.emptyContainer]}>
@@ -511,9 +613,9 @@ const KitchenScreen: React.FC = () => {
     );
   }
 
+  // Calculate featured pairs count
   const featuredPairsCount = Math.ceil(apiData.data.FeatureKitchenList.length / 2);
 
-  // console.log("apiData===",apiData.data.CategoryList)
   return (
     <SafeAreaView style={styles.container}>
       {/* Enhanced Gradient Header Section */}
@@ -571,41 +673,14 @@ const KitchenScreen: React.FC = () => {
           </View>
 
           {/* Categories with active state */}
-          <ScrollView
+          <FlatList
             horizontal
+            data={apiData.data.CategoryList}
+            renderItem={renderCategory}
+            keyExtractor={(item) => item.id.toString()}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.categoryListContainer}
-          >
-            {apiData.data.CategoryList.map((category, index) => (
-              <TouchableOpacity 
-                key={category.id} 
-                style={[
-                  styles.categoryCard,
-                  activeCategory === index && styles.activeCategoryCard
-                ]}
-                activeOpacity={0.8}
-                onPress={() => handleCategoryPress(index)}
-              >
-                <View style={[
-                  styles.categoryIconContainer,
-                  activeCategory === index && styles.activeCategoryIconContainer
-                ]}>
-                  <Image 
-                    source={{ uri: category.icon }} 
-                    style={styles.categoryImage} 
-                    resizeMode="cover"
-                    // defaultSource={DEFAULT_CATEGORY_ICON}
-                  />
-                </View>
-                <Text style={[
-                  styles.categoryName,
-                  activeCategory === index && styles.activeCategoryName
-                ]} numberOfLines={1}>
-                  {category.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          />
         </LinearGradient>
       </Animated.View>
 
@@ -625,35 +700,14 @@ const KitchenScreen: React.FC = () => {
       >
         {/* Quick Filters */}
         <View style={styles.sectionContainer}>
-          <ScrollView
+          <FlatList
             horizontal
+            data={filters}
+            renderItem={renderFilter}
+            keyExtractor={(item) => item.id}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.filterList}
-          >
-            {filters.map(filter => (
-              <TouchableOpacity 
-                key={filter.id}
-                style={[
-                  styles.filterCard,
-                  filter.active && styles.activeFilterCard
-                ]}
-                onPress={() => handleFilterPress(filter.id)}
-                activeOpacity={0.7}
-              >
-                <Icon 
-                  name={filter.icon} 
-                  size={16} 
-                  color={filter.active ? '#fff' : COLORS.textMedium} 
-                />
-                <Text style={[
-                  styles.filterText,
-                  filter.active && styles.activeFilterText
-                ]}>
-                  {filter.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          />
         </View>
 
         {/* Featured Kitchens */}
@@ -668,9 +722,11 @@ const KitchenScreen: React.FC = () => {
               decelerationRate="fast"
               snapToAlignment="start"
             >
-              {[...Array(featuredPairsCount)].map((_, index) => {
-                return renderFeaturedKitchenPair(index);
-              })}
+              {[...Array(featuredPairsCount)].map((_, index) => (
+                <React.Fragment key={`featured-${index}`}>
+                  {renderFeaturedKitchenPair(index)}
+                </React.Fragment>
+              ))}
             </ScrollView>
           </View>
         )}
@@ -688,52 +744,57 @@ const KitchenScreen: React.FC = () => {
               <Text style={styles.emptySubText}>Try adjusting your filters or search</Text>
             </View>
           ) : (
-            <View style={styles.kitchenList}>
-              {filteredKitchens.map(item => (
-                <View key={item.restaurant_id} style={styles.kitchenCardWrapper}>
-                  {renderKitchenItem({ item })}
-                </View>
-              ))}
-            </View>
+            <FlatList
+              data={filteredKitchens}
+              renderItem={renderKitchenItem}
+              keyExtractor={(item) => item.restaurant_id}
+              scrollEnabled={false}
+              contentContainerStyle={styles.kitchenList}
+              initialNumToRender={5}
+              maxToRenderPerBatch={5}
+              windowSize={5}
+            />
           )}
         </View>
       </ScrollView>
 
-      {/* Bottom Cart Summary */}
-      <View style={styles.cartSummary__container}>
-        <View style={styles.cartSummary__header}>
-          <View style={styles.cartSummary__kitchenInfo}>
-            <Image 
-              source={{ uri: "https://www.eatoor.com/media/menu_images/vegetable_upma.webp" }} 
-              style={styles.cartSummary__kitchenImage}
-            />
-            <View>
-              <Text style={styles.cartSummary__kitchenName} numberOfLines={1}>
-                {"Royal Kitchen"}
-              </Text>
-              <TouchableOpacity 
-                onPress={() => console.log("View Menu pressed")}
-                style={styles.cartSummary__viewMenuBtn}
-              >
-                <Text style={styles.cartSummary__viewMenuText}>View Menu</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-          
-          <TouchableOpacity 
-            style={styles.cartSummary__miniCartBtn}
-            onPress={() => console.log("View Cart pressed")}
-            activeOpacity={0.9}
-          >
-            <View style={styles.cartSummary__miniCartContent}>
-              <Text style={styles.cartSummary__viewCartText}>View Cart</Text>
-              <View style={styles.cartSummary__cartCountBadge}>
-                <Text style={styles.cartSummary__miniCartCount}>3</Text>
+      {/* Past Kitchen Cart Summary */}
+      {pastKitchenDetails && (
+        <View style={styles.cartSummary__container}>
+          <View style={styles.cartSummary__header}>
+            <View style={styles.cartSummary__kitchenInfo}>
+              <Image 
+                source={{ uri: pastKitchenDetails.image }} 
+                style={styles.cartSummary__kitchenImage}
+              />
+              <View>
+                <Text style={styles.cartSummary__kitchenName} numberOfLines={1}>
+                  {pastKitchenDetails.name}
+                </Text>
+                <TouchableOpacity 
+                  onPress={BackToKitchen}
+                  style={styles.cartSummary__viewMenuBtn}
+                >
+                  <Text style={styles.cartSummary__viewMenuText}>View Menu</Text>
+                </TouchableOpacity>
               </View>
             </View>
-          </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.cartSummary__miniCartBtn}
+              onPress={handleViewCart}
+              activeOpacity={0.9}
+            >
+              <View style={styles.cartSummary__miniCartContent}>
+                <Text style={styles.cartSummary__viewCartText}>View Cart</Text>
+                <View style={styles.cartSummary__cartCountBadge}>
+                  <Text style={styles.cartSummary__miniCartCount}>{pastKitchenDetails.itemCount}</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      )}
     </SafeAreaView>
   );
 };
@@ -1171,8 +1232,8 @@ const styles = StyleSheet.create({
   cartSummary__miniCartBtn: {
     backgroundColor: COLORS.primary,
     borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1207,4 +1268,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default KitchenScreen;
+export default React.memo(KitchenScreen);

@@ -93,9 +93,15 @@ type UserData = {
   contact_number: string;
 };
 
+interface PastKitchenDetails {
+  id: string;
+  name: string;
+  image: string;
+  itemCount: number;
+}
+
 const CartScreen = ({ route, navigation }) => {
   const [cartData, setCartData] = useState<CartApiResponse | null>(null);
-  // const [kitchenId, setKitchenId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,9 +109,10 @@ const CartScreen = ({ route, navigation }) => {
   const [user, setUser] = useState<UserData | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [addressId, setAddressId] = useState<string | null>(null);
-  
-  const kitchenId = route?.params?.pastKitchenId
-  
+  const [shortAddress, setShortAddress] = useState<string>("Select Address");
+  const [fullAddress, setFullAddress] = useState<string>("Select Address");
+  const [pastKitchenDetails, setPastKitchenDetails] = useState<PastKitchenDetails | null>(null);
+    
   useEffect(() => {
     const fetchUserData = async () => {
       try {
@@ -117,6 +124,13 @@ const CartScreen = ({ route, navigation }) => {
         if (savedAddressId) {
           setAddressId(savedAddressId);
         }
+
+        const storedDetails = await AsyncStorage.getItem('pastKitchenDetails');
+
+        if (storedDetails) {
+        setPastKitchenDetails(JSON.parse(storedDetails));
+      }
+
       } catch (error) {
         console.error('Error fetching user data:', error);
       }
@@ -127,6 +141,7 @@ const CartScreen = ({ route, navigation }) => {
 
   const userId = user?.id;
   const sessionId = "";
+  const kitchenId = pastKitchenDetails?.id;
 
   const swipeAnim = useRef(new Animated.Value(0)).current;
   const [isSwiped, setIsSwiped] = useState(false);
@@ -152,6 +167,8 @@ const CartScreen = ({ route, navigation }) => {
       
       if (response.status === 200) {
         const updatedResponse = response.data;
+        
+        // Update suggested items with cart quantities
         if (updatedResponse.cart_details && updatedResponse.suggestion_cart_items) {
           updatedResponse.suggestion_cart_items = updatedResponse.suggestion_cart_items.map(suggestedItem => {
             const cartItem = updatedResponse.cart_details.find(item => item.item_id === suggestedItem.item_id);
@@ -170,6 +187,9 @@ const CartScreen = ({ route, navigation }) => {
         }
         
         setCartData(updatedResponse);
+        
+        // Update address display
+        updateAddressDisplay(updatedResponse);
       } else {
         setError('Failed to load cart data');
       }
@@ -179,6 +199,38 @@ const CartScreen = ({ route, navigation }) => {
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  };
+
+  const updateAddressDisplay = async (cartResponse?: CartApiResponse) => {
+    try {
+      let address = "";
+      let homeType = "";
+      const estimatedTime = cartResponse?.delivery_time?.estimated_time || "";
+      
+      if (cartResponse?.delivery_address_details?.address_line1) {
+        address = cartResponse.delivery_address_details.address_line1;
+        if (cartResponse.delivery_address_details.address_line2) {
+          address += `, ${cartResponse.delivery_address_details.address_line2}`;
+        }
+        homeType = cartResponse.delivery_address_details.address_type || "";
+      } else {
+        address = (await AsyncStorage.getItem("StreetAddress")) || "";
+        homeType = (await AsyncStorage.getItem("HomeType")) || "";
+      }
+
+      // Short address for header
+      const shortAddr = address.length > 18 ? `${address.substring(0, 18)}...` : address;
+      const shortAddressText = homeType ? `${homeType} | ${shortAddr}` : shortAddr;
+      setShortAddress(estimatedTime ? `${estimatedTime} | ${shortAddressText}` : shortAddressText);
+
+      // Full address for details section
+      const fullAddressText = homeType ? `${homeType} | ${address}` : address;
+      setFullAddress(estimatedTime ? `${estimatedTime} | ${fullAddressText.substring(0, 50)}...` : fullAddressText);
+    } catch (error) {
+      console.error('Error formatting address:', error);
+      setShortAddress("Select Address");
+      setFullAddress("Select Address");
     }
   };
 
@@ -196,34 +248,18 @@ const CartScreen = ({ route, navigation }) => {
   const handleAddressChange = async () => {
     navigation.navigate('AddressScreen', { 
       prevLocation: 'CartScreen',
-      onAddressSelect: async (selectedAddressId: string) => {
+      onAddressSelect: async (selectedAddressId: string | number) => {
         try {
-          await AsyncStorage.setItem('AddressId', selectedAddressId);
-          setAddressId(selectedAddressId);
+          await AsyncStorage.setItem('AddressId', String(selectedAddressId.id));
+          setAddressId(String(selectedAddressId.id));
+          fetchCartData(); // Refresh cart data with new address
         } catch (error) {
           console.error('Error saving address:', error);
         }
       }
     });
   };
-
-  const truncateAddress = (address: string) => {
-    if (!address) return "Select delivery address";
-    const parts = address.split(',');
-    if (parts.length > 5) {
-      return `${parts[0]}, ${parts[1]}`;
-    }
-    return address.length > 30 ? `${address.substring(0, 30)}...` : address;
-  };
-
-  const formatAddress = () => {
-    if (!cartData?.delivery_address_details) return "";
-    const { address, home_type } = cartData.delivery_address_details;
-    const { estimated_time } = cartData.delivery_time;
-    const address_field = `${home_type} | ${address}`;
-    return `${estimated_time} | ${address_field}`;
-  };
-
+  
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -328,8 +364,8 @@ const CartScreen = ({ route, navigation }) => {
   };
 
   const BackToKitchen = () => {
-      navigation.navigate('HomeKitchenDetails',{ kitchenId: kitchenId});
-    };
+    navigation.navigate('HomeKitchenDetails', { kitchenId: kitchenId });
+  };
 
   const renderCartItem = ({ item }: { item: CartItem }) => {
     const isUpdating = updatingItems.some(i => i.id === item.item_id);
@@ -418,6 +454,7 @@ const CartScreen = ({ route, navigation }) => {
           source={{ uri: item.item_image || 'https://via.placeholder.com/150' }} 
           style={styles.suggestedItemImage} 
           resizeMode="cover"
+          onError={() => console.log("Image failed to load")}
         />
         <View style={styles.suggestedItemContent}>
           <View style={styles.suggestedItemHeader}>
@@ -600,7 +637,7 @@ const CartScreen = ({ route, navigation }) => {
           <View style={styles.detailRow}>
             <Icon name="location-outline" size={20} color="#E65C00" style={styles.detailIcon} />
             <View style={styles.addressContainer}>
-              <Text style={styles.detailText}>{truncateAddress(formatAddress())}</Text>
+              <Text style={styles.detailText}>{fullAddress}</Text>
               <TouchableOpacity 
                 style={styles.changeAddressButton}
                 onPress={handleAddressChange}
@@ -692,6 +729,7 @@ const CartScreen = ({ route, navigation }) => {
   }
 
   if (loading && !cartData) {
+
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="#fff" />
@@ -728,13 +766,12 @@ const CartScreen = ({ route, navigation }) => {
               >
                 <Icon name="location-outline" size={16} color="#E65C00" />
                 <Text style={styles.headerAddressText} numberOfLines={1}>
-                  {truncateAddress(formatAddress())}
-                <Icon name="chevron-down" size={16} color="#E65C00" style={styles.downArrowIcon} />
+                  {shortAddress}
                 </Text>
+                <Icon name="chevron-down" size={16} color="#E65C00" style={styles.downArrowIcon} />
               </TouchableOpacity>
             </View>
           </View>
-          
           {renderCartContent()}
         </>
       )}

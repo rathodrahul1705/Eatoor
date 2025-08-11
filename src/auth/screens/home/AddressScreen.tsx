@@ -17,6 +17,7 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import * as Animatable from 'react-native-animatable';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Address, AddressType, MapLocationPickerParams } from '../../../types/addressTypes';
 import { getAddressList, updateUserStatusAddress, deleteUserAddress } from '../../../api/address';
 
@@ -35,7 +36,17 @@ interface ApiAddress {
   is_default: boolean;
 }
 
-const AddressScreen = () => {
+interface AddressScreenProps {
+  route?: {
+    params?: {
+      onAddressSelect?: (address: Address) => void;
+      selectionMode?: boolean;
+      navigateToCart?: boolean; // Add this new prop
+    };
+  };
+}
+
+const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
   const navigation = useNavigation();
   const [searchQuery, setSearchQuery] = useState('');
   const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
@@ -43,8 +54,13 @@ const AddressScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fadeAnim = useState(new Animated.Value(0))[0];
-  const route = useRoute();
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
 
+  // Check if we're in selection mode
+  const isSelectionMode = route?.params?.selectionMode ?? true;
+  const onAddressSelect = route?.params?.onAddressSelect;
+  const navigateToCart = route?.params?.navigateToCart ?? false;
+  
   useEffect(() => {
     fetchAddresses();
   }, []);
@@ -123,7 +139,7 @@ const AddressScreen = () => {
   };
 
   const handleAddNewAddress = () => {
-    const prevLocation = route.params?.prevLocation;
+    const prevLocation = route?.params?.prevLocation;
 
     const params: MapLocationPickerParams = {
       prevLocation,
@@ -135,8 +151,10 @@ const AddressScreen = () => {
   };
 
   const handleEditAddress = (address: Address) => {
+    const prevLocation = route?.params?.prevLocation;
     const params: MapLocationPickerParams = {
       addressToEdit: address,
+      prevLocation: prevLocation,
       onLocationConfirmed: (updatedAddress: Address) => {
         setSavedAddresses(savedAddresses.map(addr => 
           addr.id === updatedAddress.id ? updatedAddress : addr
@@ -159,7 +177,7 @@ const AddressScreen = () => {
             try {
               await deleteUserAddress(id);
               setSavedAddresses(savedAddresses.filter(addr => addr.id !== id));
-              Alert.alert("Success", "Address deleted successfully");
+              // Alert.alert("Success", "Address deleted successfully");
             } catch (error) {
               console.error('Failed to delete address:', error);
               Alert.alert("Error", "Failed to delete address. Please try again.");
@@ -180,10 +198,39 @@ const AddressScreen = () => {
       }));
       
       setSavedAddresses(updatedAddresses);
-      Alert.alert("Success", "Default address updated successfully");
+      // Alert.alert("Success", "Default address updated successfully");
     } catch (error) {
       console.error('Failed to update default address:', error);
       Alert.alert("Error", "Failed to update default address. Please try again.");
+    }
+  };
+
+  const storeAddressToStorage = async (address: Address) => {
+    try {
+      const addressData = address.rawAddress;
+      await AsyncStorage.multiSet([
+          ['AddressId', String(addressData.id)],
+          ['StreetAddress', String(addressData.full_address)],
+          ['HomeType', String(addressData.home_type || 'Delivering to')],
+          ['Latitude', String(addressData.latitude)],
+          ['Longitude', String(addressData.longitude)],
+        ]);
+    } catch (error) {
+      console.error('Failed to save address to storage:', error);
+    }
+  };
+
+  const handleAddressSelect = async (address: Address) => {
+    if (!isSelectionMode) return;
+    setSelectedAddressId(address.id);
+    await storeAddressToStorage(address);
+    if (onAddressSelect) {
+      onAddressSelect(address);
+    }
+    if (navigateToCart) {
+      navigation.navigate('CartScreen');
+    } else {
+      setTimeout(() => navigation.goBack(), 500);
     }
   };
 
@@ -254,73 +301,84 @@ const AddressScreen = () => {
           <Text style={styles.addButtonText}>Add New Address</Text>
         </TouchableOpacity>
 
-        <Text style={styles.sectionTitle}>Saved Addresses</Text>
+        <Text style={styles.sectionTitle}>
+          {isSelectionMode ? 'Select an Address' : 'Saved Addresses'}
+        </Text>
         
         {filteredAddresses.length > 0 ? (
           filteredAddresses.map((address, index) => (
-            <Animatable.View 
+            <TouchableOpacity
               key={address.id}
-              animation="fadeInUp"
-              duration={500}
-              delay={index * 100}
-              style={[
-                styles.addressCard, 
-                address.isDefault && styles.defaultAddressCard
-              ]}
+              onPress={() => handleAddressSelect(address)}
+              activeOpacity={0.7}
             >
-              <View style={styles.addressHeader}>
-                <View style={[
-                  styles.addressIcon,
-                  { backgroundColor: address.isDefault ? '#eb6c18ff' : '#E0E0E0' }
-                ]}>
-                  <Icon 
-                    name={getIconName(address.type)} 
-                    size={20} 
-                    color={address.isDefault ? '#FFF' : '#555'} 
-                  />
+              <Animatable.View 
+                animation="fadeInUp"
+                duration={500}
+                delay={index * 100}
+                style={[
+                  styles.addressCard, 
+                  address.isDefault && styles.defaultAddressCard,
+                  isSelectionMode && selectedAddressId === address.id && styles.selectedAddressCard
+                ]}
+              >
+                <View style={styles.addressHeader}>
+                  <View style={[
+                    styles.addressIcon,
+                    { 
+                      backgroundColor: address.isDefault ? '#eb6c18ff' : 
+                        (isSelectionMode && selectedAddressId === address.id) ? '#4CAF50' : '#E0E0E0'
+                    }
+                  ]}>
+                    <Icon 
+                      name={getIconName(address.type)} 
+                      size={20} 
+                      color={
+                        address.isDefault ? '#FFF' : 
+                        (isSelectionMode && selectedAddressId === address.id) ? '#FFF' : '#555'
+                      } 
+                    />
+                  </View>
+                  <View style={styles.addressTitleContainer}>
+                    <Text style={styles.addressName}>
+                      {address.name.charAt(0).toUpperCase() + address.name.slice(1)}
+                    </Text>
+                    {address.isDefault && (
+                      <View style={styles.defaultTag}>
+                        <Text style={styles.defaultTagText}>Default</Text>
+                      </View>
+                    )}
+                    {isSelectionMode && selectedAddressId === address.id && (
+                      <View style={styles.selectedTag}>
+                        <Text style={styles.selectedTagText}>Selected</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
-                <View style={styles.addressTitleContainer}>
-                  <Text style={styles.addressName}>
-                    {address.name.charAt(0).toUpperCase() + address.name.slice(1)}
-                  </Text>
-                  {address.isDefault && (
-                    <View style={styles.defaultTag}>
-                      <Text style={styles.defaultTagText}>Default</Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-              
-              <Text style={styles.addressText}>{address.address}</Text>
-              
-              <View style={styles.actionButtons}>
-                <TouchableOpacity 
-                  style={styles.actionButton}
-                  onPress={() => handleEditAddress(address)}
-                >
-                  <Icon name="create" size={18} color="#e97528ff" />
-                  <Text style={styles.actionButtonText}>Edit</Text>
-                </TouchableOpacity>
                 
-                {/* <TouchableOpacity 
-                  style={styles.actionButton}
-                  onPress={() => handleDeleteAddress(address.id)}
-                >
-                  <Icon name="trash" size={18} color="#FF6B6B" />
-                  <Text style={[styles.actionButtonText, { color: '#FF6B6B' }]}>Delete</Text>
-                </TouchableOpacity> */}
+                <Text style={styles.addressText}>{address.address}</Text>
                 
-                {!address.isDefault && (
-                  <TouchableOpacity 
-                    style={styles.actionButton}
-                    onPress={() => setAsDefaultAddress(address.id)}
-                  >
-                    <Icon name="star" size={18} color="#FFC107" />
-                    <Text style={[styles.actionButtonText, { color: '#FFC107' }]}>Set Default</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </Animatable.View>
+                  <View style={styles.actionButtons}>
+                    <TouchableOpacity 
+                      style={styles.actionButton}
+                      onPress={() => handleEditAddress(address)}
+                    >
+                      <Icon name="create" size={18} color="#e97528ff" />
+                      <Text style={styles.actionButtonText}>Edit</Text>
+                    </TouchableOpacity>
+                    
+                    {!address.isDefault && (
+                      <TouchableOpacity 
+                        style={styles.actionButton}
+                        onPress={() => setAsDefaultAddress(address.id)}
+                      >
+                        <Icon name="star" size={18} color="#FFC107" />
+                        <Text style={[styles.actionButtonText, { color: '#FFC107' }]}>Set Default</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+              </Animatable.View>
+            </TouchableOpacity>
           ))
         ) : (
           <View style={styles.emptyState}>
@@ -346,7 +404,9 @@ const AddressScreen = () => {
         >
           <Icon name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Addresses</Text>
+        <Text style={styles.headerTitle}>
+          {isSelectionMode ? 'Select Address' : 'My Addresses'}
+        </Text>
         <View style={styles.headerRight} />
       </View>
 
@@ -493,6 +553,11 @@ const styles = StyleSheet.create({
     borderColor: '#E65C00',
     backgroundColor: '#F0F7FF',
   },
+  selectedAddressCard: {
+    borderWidth: 2,
+    borderColor: '#4CAF50',
+    backgroundColor: '#F0FFF0',
+  },
   addressHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -524,6 +589,18 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   defaultTagText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  selectedTag: {
+    backgroundColor: '#4CAF50',
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginLeft: 8,
+  },
+  selectedTagText: {
     color: '#FFF',
     fontSize: 12,
     fontWeight: '600',
