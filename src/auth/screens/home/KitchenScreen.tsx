@@ -177,7 +177,6 @@ const KitchenScreen: React.FC = () => {
 
             let status: ActiveOrder['status'];
             let statusText: string;
-
             if (order.status === 'Cancelled') {
               status = 'cancelled';
               statusText = 'Cancelled';
@@ -187,12 +186,18 @@ const KitchenScreen: React.FC = () => {
             } else if (order.status === 'Confirmed') {
               status = 'confirmed';
               statusText = 'Confirmed';
-            } else if (minutesRemaining <= 0) {
+            } else if (order.status === 'On the Way') {
+              status = 'on the way';
+              statusText = 'On The Way';
+            }else if (order.status === 'Preparing') {
+              status = 'preparing';
+              statusText = 'Preparing';
+            }else if (order.status === 'Ready for Delivery/Pickup') {
+              status = 'Ready for Delivery/Pickup';
+              statusText = 'Ready for Delivery/Pickup';
+            }else if (minutesRemaining <= 0) {
               status = 'delivered';
               statusText = 'Delivered';
-            } else if (minutesRemaining <= 15) {
-              status = 'on-the-way';
-              statusText = 'On the way';
             } else {
               status = 'preparing';
               statusText = 'Preparing';
@@ -229,9 +234,6 @@ const KitchenScreen: React.FC = () => {
       setOrdersLoading(false);
     }
   }, []);
-
-
-  console.log("activeOrders===",activeOrders)
 
   // Save past kitchen details with error handling
   const savePastKitchenDetails = useCallback(async (details: PastKitchenDetails) => {
@@ -892,7 +894,7 @@ const KitchenScreen: React.FC = () => {
               />
               <TextInput
                 style={[styles.searchInput, { color: COLORS.textDark }]}
-                placeholder="Search for restaurants or cuisines"
+                placeholder="Search for home kitchens or cuisines"
                 placeholderTextColor={COLORS.textLight}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
