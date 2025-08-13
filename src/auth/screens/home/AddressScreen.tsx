@@ -138,6 +138,8 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
     }
   };
 
+  console.log("route?.params?.prevLocation===",route?.params?.prevLocation)
+
   const handleAddNewAddress = () => {
     const prevLocation = route?.params?.prevLocation;
 

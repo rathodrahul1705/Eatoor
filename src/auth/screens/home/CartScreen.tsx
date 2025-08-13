@@ -10,20 +10,24 @@ import {
   ScrollView,
   Image,
   Dimensions,
-  Animated,
-  PanResponder,
   ActivityIndicator,
   RefreshControl,
-  Alert
+  Alert,
+  Modal,
+  Animated,
+  Easing
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { getCartDetails, updateCart } from '../../../api/cart';
+import { getCartDetails, updateCart, createPayment, verifyPayment, updatePyamentData } from '../../../api/cart';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import RazorpayCheckout from 'react-native-razorpay';
 
 const { width, height } = Dimensions.get('window');
-const SWIPE_THRESHOLD = width * 0.7 - 80;
 
-// Define types for API response
+// Minimum order value constant
+const MINIMUM_ORDER_VALUE = 50;
+
+// Type definitions
 type CartItem = {
   item_id: number;
   id: number;
@@ -61,6 +65,7 @@ type DeliveryAddress = {
   state: string;
   postal_code: string;
   country: string;
+  address_type?: string;
 };
 
 type DeliveryTime = {
@@ -100,6 +105,56 @@ interface PastKitchenDetails {
   itemCount: number;
 }
 
+type PaymentStatus = 'idle' | 'processing' | 'success' | 'failed' | 'cancelled';
+
+interface RazorpayOrderResponse {
+  status: string;
+  data: {
+    id: string;
+    entity: string;
+    amount: number;
+    amount_paid: number;
+    amount_due: number;
+    currency: string;
+    receipt: string;
+    offer_id: null | string;
+    status: string;
+    attempts: number;
+    created_at: number;
+  };
+}
+
+interface VerifyPaymentResponse {
+  status: string;
+  payment_id: number;
+  order_status: number;
+  eatoor_order_number: string;
+  payment_method: string;
+  payment_status: string;
+  amount_paid: number;
+  eatoor_order_id: number;
+}
+
+interface UpdateOrderResponse {
+  status: string;
+  order_number: string;
+  order_id: number;
+  total_amount: string;
+  estimated_prep_time: number;
+}
+
+type PaymentResponse = {
+  razorpay_payment_id: string;
+  razorpay_order_id: string;
+  razorpay_signature: string;
+};
+
+type PaymentVerificationState = {
+  verifying: boolean;
+  message: string;
+  success: boolean;
+};
+
 const CartScreen = ({ route, navigation }) => {
   const [cartData, setCartData] = useState<CartApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -107,12 +162,33 @@ const CartScreen = ({ route, navigation }) => {
   const [error, setError] = useState<string | null>(null);
   const [updatingItems, setUpdatingItems] = useState<{id: number, action: 'increment' | 'decrement' | 'add'}[]>([]);
   const [user, setUser] = useState<UserData | null>(null);
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [addressId, setAddressId] = useState<string | null>(null);
   const [shortAddress, setShortAddress] = useState<string>("Select Address");
   const [fullAddress, setFullAddress] = useState<string>("Select Address");
   const [pastKitchenDetails, setPastKitchenDetails] = useState<PastKitchenDetails | null>(null);
-    
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('idle');
+  const [orderDetails, setOrderDetails] = useState<{
+    order_id: number;
+    order_number: string;
+  } | null>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentMessage, setPaymentMessage] = useState('');
+  const [razorpayOrderId, setRazorpayOrderId] = useState<string | null>(null);
+  const [paymentVerification, setPaymentVerification] = useState<PaymentVerificationState>({
+    verifying: false,
+    message: '',
+    success: false
+  });
+  
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const rotationAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.8)).current;
+
+  const userId = user?.id;
+  const sessionId = "";
+  const kitchenId = pastKitchenDetails?.id;
+
+  // Fetch user data on mount
   useEffect(() => {
     const fetchUserData = async () => {
       try {
@@ -126,11 +202,9 @@ const CartScreen = ({ route, navigation }) => {
         }
 
         const storedDetails = await AsyncStorage.getItem('pastKitchenDetails');
-
         if (storedDetails) {
-        setPastKitchenDetails(JSON.parse(storedDetails));
-      }
-
+          setPastKitchenDetails(JSON.parse(storedDetails));
+        }
       } catch (error) {
         console.error('Error fetching user data:', error);
       }
@@ -139,12 +213,41 @@ const CartScreen = ({ route, navigation }) => {
     fetchUserData();
   }, []);
 
-  const userId = user?.id;
-  const sessionId = "";
-  const kitchenId = pastKitchenDetails?.id;
+  // Fetch cart data when dependencies change
+  useEffect(() => {
+    if (kitchenId && userId) {
+      fetchCartData();
+    }
+  }, [userId, kitchenId, addressId]);
 
-  const swipeAnim = useRef(new Animated.Value(0)).current;
-  const [isSwiped, setIsSwiped] = useState(false);
+  // Handle payment status animations
+  useEffect(() => {
+    if (paymentStatus === 'processing' || paymentVerification.verifying) {
+      Animated.loop(
+        Animated.timing(rotationAnim, {
+          toValue: 1,
+          duration: 1000,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        })
+      ).start();
+    } else if (paymentStatus === 'success' || paymentStatus === 'failed') {
+      Animated.sequence([
+        Animated.timing(scaleAnim, {
+          toValue: 1.2,
+          duration: 200,
+          easing: Easing.ease,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 100,
+          easing: Easing.ease,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [paymentStatus, paymentVerification.verifying]);
 
   const fetchCartData = async () => {
     if (!kitchenId) {
@@ -168,7 +271,6 @@ const CartScreen = ({ route, navigation }) => {
       if (response.status === 200) {
         const updatedResponse = response.data;
         
-        // Update suggested items with cart quantities
         if (updatedResponse.cart_details && updatedResponse.suggestion_cart_items) {
           updatedResponse.suggestion_cart_items = updatedResponse.suggestion_cart_items.map(suggestedItem => {
             const cartItem = updatedResponse.cart_details.find(item => item.item_id === suggestedItem.item_id);
@@ -187,8 +289,6 @@ const CartScreen = ({ route, navigation }) => {
         }
         
         setCartData(updatedResponse);
-        
-        // Update address display
         updateAddressDisplay(updatedResponse);
       } else {
         setError('Failed to load cart data');
@@ -219,12 +319,10 @@ const CartScreen = ({ route, navigation }) => {
         homeType = (await AsyncStorage.getItem("HomeType")) || "";
       }
 
-      // Short address for header
       const shortAddr = address.length > 18 ? `${address.substring(0, 18)}...` : address;
       const shortAddressText = homeType ? `${homeType} | ${shortAddr}` : shortAddr;
       setShortAddress(estimatedTime ? `${estimatedTime} | ${shortAddressText}` : shortAddressText);
 
-      // Full address for details section
       const fullAddressText = homeType ? `${homeType} | ${address}` : address;
       setFullAddress(estimatedTime ? `${estimatedTime} | ${fullAddressText.substring(0, 50)}...` : fullAddressText);
     } catch (error) {
@@ -233,12 +331,6 @@ const CartScreen = ({ route, navigation }) => {
       setFullAddress("Select Address");
     }
   };
-
-  useEffect(() => {
-    if (kitchenId && userId) {
-      fetchCartData();
-    }
-  }, [userId, kitchenId, addressId]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -252,84 +344,257 @@ const CartScreen = ({ route, navigation }) => {
         try {
           await AsyncStorage.setItem('AddressId', String(selectedAddressId.id));
           setAddressId(String(selectedAddressId.id));
-          fetchCartData(); // Refresh cart data with new address
+          fetchCartData();
         } catch (error) {
           console.error('Error saving address:', error);
         }
       }
     });
   };
-  
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onPanResponderMove: (_, gestureState) => {
-        if (gestureState.dx > 0 && gestureState.dx <= SWIPE_THRESHOLD) {
-          swipeAnim.setValue(gestureState.dx);
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dx > SWIPE_THRESHOLD / 2 && cartData) {
-          if (!addressId) {
-            Alert.alert(
-              'Address Required',
-              'Please select a delivery address before proceeding to payment',
-              [
-                {
-                  text: 'OK',
-                  onPress: () => {
-                    Animated.spring(swipeAnim, {
-                      toValue: 0,
-                      useNativeDriver: false
-                    }).start();
-                  }
-                },
-                {
-                  text: 'Select Address',
-                  onPress: () => {
-                    Animated.spring(swipeAnim, {
-                      toValue: 0,
-                      useNativeDriver: false
-                    }).start(() => {
-                      handleAddressChange();
-                    });
-                  }
-                }
-              ]
-            );
-            return;
-          }
 
-          setIsProcessingPayment(true);
-          Animated.timing(swipeAnim, {
-            toValue: SWIPE_THRESHOLD,
-            duration: 200,
-            useNativeDriver: false
-          }).start(() => {
-            setIsSwiped(true);
-            setTimeout(() => {
-              navigation.navigate('Payment', {
-                amount: cartData.billing_details.total,
-                restaurant: cartData.restaurant_name || 'Restaurant',
-                items: cartData.cart_details,
-                userId,
-                kitchenId,
-                addressId
-              });
-              swipeAnim.setValue(0);
-              setIsSwiped(false);
-              setIsProcessingPayment(false);
-            }, 500);
-          });
-        } else {
-          Animated.spring(swipeAnim, {
-            toValue: 0,
-            useNativeDriver: false
-          }).start();
-        }
+  const showPaymentStatusModal = (status: PaymentStatus, message: string) => {
+    setPaymentStatus(status);
+    setPaymentMessage(message);
+    setShowPaymentModal(true);
+    
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 300,
+      easing: Easing.ease,
+      useNativeDriver: true,
+    }).start();
+    
+    if (status === 'success') {
+      if (orderDetails) {
+        navigation.navigate('TrackOrder', {
+          order: {
+            order_number: orderDetails.order_number
+          }
+        });
       }
-    })
-  ).current;
+      setShowPaymentModal(false);
+    } else {
+      setTimeout(() => {
+        setShowPaymentModal(false);
+      }, 3000);
+    }
+  };
+
+  const createRazorpayOrder = async (): Promise<string> => {
+    if (!cartData || !userId || !kitchenId) {
+      throw new Error('Required data missing for creating order');
+    }
+
+    try {
+      const payload = {
+        user_id: userId,
+        restaurant_id: kitchenId,
+        amount: cartData.billing_details.total * 100, // Convert to paise
+        currency: 'INR',
+        receipt: `order_${Date.now()}`
+      };
+
+      const response = await createPayment(payload);
+      
+      if (response.status === 200) {
+        return response.data.data.id;
+      } else {
+        throw new Error(response.data.message || 'Failed to create Razorpay order');
+      }
+    } catch (error) {
+      console.error('Error creating Razorpay order:', error);
+      throw error;
+    }
+  };
+
+  const verifyPaymentStatus = async (paymentResponse: PaymentResponse) => {
+    if (!cartData || !userId || !kitchenId || !addressId) {
+      throw new Error('Required data missing for payment verification');
+    }
+
+    try {
+      // First update the order details with payment info
+      const updateResponse = await updateOrderDetails(paymentResponse.razorpay_payment_id);
+
+      // Then verify the payment with Razorpay
+      const payload = {
+        razorpay_order_id: paymentResponse.razorpay_order_id,
+        razorpay_payment_id: paymentResponse.razorpay_payment_id,
+        razorpay_signature: paymentResponse.razorpay_signature,
+        amount: cartData.billing_details.total,
+        deliveryAddressId: addressId,
+        payment_type: 2, // Online payment
+        eatoor_order_id: updateResponse.order_id,
+        restaurant_id: kitchenId,
+        restaurantName: cartData.restaurant_name,
+      };
+
+      const response = await verifyPayment(payload);
+
+      if (response.status === 200) {
+        const verificationData = response.data as VerifyPaymentResponse;
+        setOrderDetails({
+          order_id: verificationData.eatoor_order_id,
+          order_number: verificationData.eatoor_order_number
+        });
+        
+        setPaymentVerification({
+          verifying: false,
+          message: 'Payment verified successfully!',
+          success: true
+        });
+        
+        showPaymentStatusModal('success', 'Payment successful! Redirecting to order details...');
+      } else {
+        throw new Error(response.data.message || 'Payment verification failed');
+      }
+    } catch (error) {
+      console.error('Payment verification error:', error);
+      setPaymentVerification({
+        verifying: false,
+        message: 'Payment verification failed',
+        success: false
+      });
+      throw error;
+    }
+  };
+
+  const updateOrderDetails = async (
+    razorpayPaymentId: string
+  ): Promise<UpdateOrderResponse> => {
+    if (!cartData || !kitchenId || !addressId || !userId) {
+      throw new Error('Required data missing for updating order');
+    }
+
+    try {
+      const payload = {
+        user_id: userId,
+        restaurant_id: kitchenId,
+        payment_method: 2, // Online payment
+        payment_type: 2, // Online payment
+        delivery_address_id: addressId,
+        is_takeaway: false,
+        special_instructions: '',
+        razorpay_order_id: razorpayOrderId,
+        razorpay_payment_id: razorpayPaymentId,
+        delivery_fee: cartData.billing_details.delivery_fee,
+        total_amount: cartData.billing_details.total,
+        code: null,
+        discount_amount: cartData.billing_details.subtotal - cartData.billing_details.total
+      };
+
+      const response = await updatePyamentData(payload);
+      if (response.status === 201) {
+        return response.data;
+      } else {
+        console.error('Failed to update order details:', response.data);
+        throw new Error(response.data.message || 'Failed to update order details');
+      }
+    } catch (error) {
+      console.error('Error updating order details:', error);
+      throw error;
+    }
+  };
+
+  const initiatePayment = async () => {
+    if (!cartData || !user) {
+      Alert.alert('Error', 'Cart data or user information is missing');
+      return;
+    }
+    
+    // Check minimum order value
+    if (cartData.billing_details.total < MINIMUM_ORDER_VALUE) {
+      Alert.alert(
+        'Minimum Order Value',
+        `Your order total is ₹${cartData.billing_details.total.toFixed(2)}. Minimum order value is ₹${MINIMUM_ORDER_VALUE}. Please add more items to proceed.`,
+        [
+          { text: 'OK' },
+          {
+            text: 'Browse Menu',
+            onPress: BackToKitchen
+          }
+        ]
+      );
+      return;
+    }
+    
+    if (!addressId) {
+      Alert.alert(
+        'Address Required',
+        'Please select a delivery address before proceeding to payment',
+        [
+          {
+            text: 'OK',
+          },
+          {
+            text: 'Select Address',
+            onPress: () => {
+              handleAddressChange();
+            }
+          }
+        ]
+      );
+      return;
+    }
+    
+    setPaymentStatus('processing');
+    
+    try {
+      // Create Razorpay order first
+      const orderId = await createRazorpayOrder();
+      setRazorpayOrderId(orderId);
+
+      const options = {
+        description: `Order from ${cartData.restaurant_name}`,
+        image: 'https://www.eatoor.com/eatoormob.svg',
+        currency: 'INR',
+        key: 'rzp_test_mB9VQp97Cs0fo0', // Replace with your actual Razorpay key
+        amount: cartData.billing_details.total * 100, // Amount in paise
+        name: user.name,
+        order_id: orderId,
+        prefill: {
+          email: user.email,
+          contact: user.contact_number,
+          name: user.name
+        },
+        theme: { color: '#E65C00' }
+      };
+
+      RazorpayCheckout.open(options)
+        .then(async (data: PaymentResponse) => {
+          // Start verification process
+          setPaymentVerification({
+            verifying: true,
+            message: 'Verifying your payment...',
+            success: false
+          });
+          
+          try {
+            await verifyPaymentStatus(data);
+          } catch (error) {
+            console.error('Payment verification error:', error);
+            setPaymentVerification({
+              verifying: false,
+              message: 'Payment verification failed',
+              success: false
+            });
+            showPaymentStatusModal('failed', 'Payment verification failed. Please check your order history.');
+          }
+        })
+        .catch((error) => {
+          if (error.description === 'Payment Cancelled') {
+            showPaymentStatusModal('cancelled', 'Payment was cancelled by user');
+          } else {
+            showPaymentStatusModal('failed', error.description || 'Payment could not be completed');
+          }
+        });
+    } catch (error) {
+      console.error('Payment error:', error);
+      showPaymentStatusModal('failed', error.message || 'An error occurred while processing payment');
+    } finally {
+      setPaymentStatus('idle');
+    }
+  };
 
   const updateItemQuantity = async (itemId: number, action: 'increment' | 'decrement', source: 'CART' | 'SUGGESTION' = 'CART') => {
     if (!cartData || !kitchenId) return;
@@ -454,7 +719,6 @@ const CartScreen = ({ route, navigation }) => {
           source={{ uri: item.item_image || 'https://via.placeholder.com/150' }} 
           style={styles.suggestedItemImage} 
           resizeMode="cover"
-          onError={() => console.log("Image failed to load")}
         />
         <View style={styles.suggestedItemContent}>
           <View style={styles.suggestedItemHeader}>
@@ -595,7 +859,6 @@ const CartScreen = ({ route, navigation }) => {
         />
       }
     >
-      {/* Your Order Section */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Your Order</Text>
@@ -612,7 +875,6 @@ const CartScreen = ({ route, navigation }) => {
         </View>
       </View>
       
-      {/* Suggested Items Section */}
       {cartData?.suggestion_cart_items && cartData.suggestion_cart_items.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -629,7 +891,6 @@ const CartScreen = ({ route, navigation }) => {
         </View>
       )}
       
-      {/* Delivery Details Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Delivery Details</Text>
         
@@ -661,7 +922,6 @@ const CartScreen = ({ route, navigation }) => {
         </View>
       </View>
       
-      {/* Bill Details Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Bill Details</Text>
         
@@ -692,13 +952,169 @@ const CartScreen = ({ route, navigation }) => {
         </View>
       </View>
       
-      {/* Note Section */}
       <View style={styles.noteCard}>
         <Icon name="information-circle-outline" size={20} color="#E65C00" />
         <Text style={styles.noteText}>Order cannot be cancelled once packed for delivery</Text>
       </View>
     </ScrollView>
   );
+
+  const renderPaymentFooter = () => {
+    if (!cartData || !cartData.cart_details || cartData.cart_details.length === 0) {
+      return null;
+    }
+
+    if (paymentVerification.verifying) {
+      return (
+        <View style={[styles.paymentFooter, { backgroundColor: '#fff' }]}>
+          <View style={styles.verificationContainer}>
+            <ActivityIndicator size="small" color="#E65C00" />
+            <Text style={styles.verificationText}>
+              Verifying your payment...
+            </Text>
+          </View>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.paymentFooter}>
+        {addressId ? (
+          <TouchableOpacity 
+            style={styles.payButton}
+            onPress={initiatePayment}
+            disabled={paymentStatus === 'processing' || paymentVerification.verifying}
+            activeOpacity={0.8}
+          >
+            {paymentStatus === 'processing' ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Text style={styles.payButtonText}>Pay ₹{cartData.billing_details.total.toFixed(2)}</Text>
+                <Icon name="arrow-forward" size={20} color="#fff" style={styles.payButtonIcon} />
+              </>
+            )}
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity 
+            style={styles.addAddressButton}
+            onPress={handleAddressChange}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.addAddressButtonText}>Select Delivery Location</Text>
+            <Icon name="location" size={20} color="#fff" style={styles.addAddressIcon} />
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
+
+  const renderPaymentModal = () => {
+    let modalColor, iconName, iconSize, additionalContent;
+    
+    const rotateInterpolation = rotationAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: ['0deg', '360deg'],
+    });
+
+    if (paymentVerification.verifying) {
+      modalColor = '#2196F3';
+      iconName = 'refresh';
+      iconSize = 60;
+      additionalContent = (
+        <Animated.View style={[styles.loadingIcon, { transform: [{ rotate: rotateInterpolation }] }]}>
+          <Icon name={iconName} size={iconSize} color="#fff" />
+        </Animated.View>
+      );
+    } else {
+      switch(paymentStatus) {
+        case 'success':
+          modalColor = '#4CAF50';
+          iconName = 'checkmark-circle';
+          iconSize = 80;
+          additionalContent = (
+            <Animated.View style={[styles.successAnimation, { transform: [{ scale: scaleAnim }] }]}>
+              <Icon name={iconName} size={iconSize} color="#fff" />
+            </Animated.View>
+          );
+          break;
+        case 'failed':
+          modalColor = '#E65C00';
+          iconName = 'close-circle';
+          iconSize = 80;
+          additionalContent = (
+            <Animated.View style={[styles.successAnimation, { transform: [{ scale: scaleAnim }] }]}>
+              <Icon name={iconName} size={iconSize} color="#fff" />
+            </Animated.View>
+          );
+          break;
+        case 'cancelled':
+          modalColor = '#FF9800';
+          iconName = 'alert-circle';
+          iconSize = 80;
+          additionalContent = (
+            <Animated.View style={[styles.successAnimation, { transform: [{ scale: scaleAnim }] }]}>
+              <Icon name={iconName} size={iconSize} color="#fff" />
+            </Animated.View>
+          );
+          break;
+        case 'processing':
+          modalColor = '#2196F3';
+          iconName = 'refresh';
+          iconSize = 60;
+          additionalContent = (
+            <Animated.View style={[styles.loadingIcon, { transform: [{ rotate: rotateInterpolation }] }]}>
+              <Icon name={iconName} size={iconSize} color="#fff" />
+            </Animated.View>
+          );
+          break;
+        default:
+          return null;
+      }
+    }
+
+    return (
+      <Modal
+        visible={showPaymentModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPaymentModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Animated.View style={[
+            styles.modalContainer,
+            { 
+              opacity: fadeAnim, 
+              backgroundColor: modalColor,
+              padding: paymentVerification.verifying ? 30 : 24
+            }
+          ]}>
+            {additionalContent}
+            <Text style={styles.modalText}>
+              {paymentVerification.verifying 
+                ? paymentVerification.message 
+                : paymentMessage}
+            </Text>
+            {paymentVerification.verifying && (
+              <ActivityIndicator size="small" color="#fff" style={{ marginTop: 10 }} />
+            )}
+          </Animated.View>
+        </View>
+      </Modal>
+    );
+  };
+
+  if (loading && !cartData) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#E65C00" />
+          <Text style={styles.loadingText}>Loading your cart...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (error) {
     return (
@@ -723,19 +1139,6 @@ const CartScreen = ({ route, navigation }) => {
               <Text style={styles.secondaryButtonText}>Back to Menu</Text>
             </TouchableOpacity>
           </View>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (loading && !cartData) {
-
-    return (
-      <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#E65C00" />
-          <Text style={styles.loadingText}>Loading your cart...</Text>
         </View>
       </SafeAreaView>
     );
@@ -772,68 +1175,13 @@ const CartScreen = ({ route, navigation }) => {
               </TouchableOpacity>
             </View>
           </View>
+          
           {renderCartContent()}
         </>
       )}
       
-      {/* Payment Footer - Only show if cart has items */}
-      {!isCartEmpty && (
-        <View style={styles.paymentFooter}>
-          <View style={styles.swipeContainer}>
-            <View style={styles.swipeTrack}>
-              <Text style={styles.swipeHint}>Swipe to pay ₹{cartData?.billing_details.total.toFixed(2)}</Text>
-              <View style={styles.swipeArrows}>
-                <Icon name="chevron-forward" size={20} color="#666" />
-                <Icon name="chevron-forward" size={20} color="#666" />
-              </View>
-            </View>
-            <Animated.View 
-              style={[
-                styles.swipeButton,
-                {
-                  width: swipeAnim.interpolate({
-                    inputRange: [0, SWIPE_THRESHOLD],
-                    outputRange: [80, SWIPE_THRESHOLD + 180],
-                    extrapolate: 'clamp'
-                  }),
-                  backgroundColor: swipeAnim.interpolate({
-                    inputRange: [0, SWIPE_THRESHOLD],
-                    outputRange: ['#E65C00', '#4CAF50'],
-                    extrapolate: 'clamp'
-                  })
-                }
-              ]}
-              {...panResponder.panHandlers}
-            >
-              <View style={styles.swipeButtonContent}>
-                {isProcessingPayment ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <>
-                    <Icon 
-                      name={isSwiped ? "checkmark-circle" : "arrow-forward"} 
-                      size={20} 
-                      color="#fff" 
-                    />
-                    <Animated.Text style={[
-                      styles.swipeText,
-                      {
-                        opacity: swipeAnim.interpolate({
-                          inputRange: [0, SWIPE_THRESHOLD/2],
-                          outputRange: [0, 1],
-                          extrapolate: 'clamp'
-                        })
-                      }
-                    ]}>
-                      {isSwiped ? "Processing..." : `Pay ₹${cartData?.billing_details.total.toFixed(2)}`}
-                    </Animated.Text>
-                  </>
-                )}
-              </View>
-            </Animated.View>
-          </View>
-        </View>
-      )}
+      {renderPaymentFooter()}
+      {renderPaymentModal()}
     </SafeAreaView>
   );
 };
@@ -862,7 +1210,6 @@ const styles = StyleSheet.create({
   downArrowIcon: {
     marginLeft: 4,
   },
-  // Header styles
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -900,8 +1247,6 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     flex: 1,
   },
-  
-  // Section styles
   section: {
     marginTop: 16,
     paddingHorizontal: 16,
@@ -922,8 +1267,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
   },
-  
-  // Cart Item Container
   cartItemContainer: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -939,8 +1282,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  
-  // Veg/Non-Veg Indicator
   itemTypeContainer: {
     marginRight: 12,
   },
@@ -971,8 +1312,6 @@ const styles = StyleSheet.create({
   nonVegIndicator: {
     backgroundColor: '#E65C00',
   },
-  
-  // Item Details
   itemDetails: {
     flex: 1,
     marginRight: 12,
@@ -982,11 +1321,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#333',
     marginBottom: 4,
-  },
-  itemDescription: {
-    fontSize: 13,
-    color: '#666',
-    marginBottom: 8,
   },
   priceRow: {
     flexDirection: 'row',
@@ -1022,8 +1356,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FF9800',
   },
-  
-  // Quantity Controls
   quantityContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1048,8 +1380,6 @@ const styles = StyleSheet.create({
     minWidth: 20,
     textAlign: 'center',
   },
-  
-  // Suggested items
   suggestedItemsContainer: {
     paddingBottom: 8,
     paddingLeft: 16,
@@ -1122,8 +1452,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  
-  // Detail card
   detailCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -1163,8 +1491,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     fontSize: 14,
   },
-  
-  // Bill card
   billCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -1207,8 +1533,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#E65C00',
   },
-  
-  // Note card
   noteCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1224,8 +1548,6 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     flex: 1,
   },
-  
-  // Empty state
   emptyContainer: {
     flex: 1,
     backgroundColor: '#fff',
@@ -1301,8 +1623,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginRight: 6,
   },
-  
-  // Error state
   errorContainer: {
     flex: 1,
     backgroundColor: '#fff',
@@ -1350,8 +1670,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
   },
-  
-  // Payment footer
   paymentFooter: {
     position: 'absolute',
     bottom: 0,
@@ -1363,68 +1681,58 @@ const styles = StyleSheet.create({
     padding: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.7,
     shadowRadius: 8,
     elevation: 10,
     borderWidth: 1,
     borderColor: '#f0f0f0',
   },
-  swipeContainer: {
-    height: 56,
-    justifyContent: 'center',
-  },
-  swipeTrack: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 56,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: '#eee',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-  },
-  swipeHint: {
-    fontSize: 16,
-    color: '#666',
-    marginRight: 10,
-    marginLeft: 60,
-  },
-  swipeArrows: {
+  payButton: {
+    backgroundColor: '#E65C00',
+    borderRadius: 30,
+    paddingVertical: 15,
+    paddingHorizontal: 25,
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  swipeButton: {
-    position: 'absolute',
-    height: 56,
-    borderRadius: 28,
     justifyContent: 'center',
-    zIndex: 2,
-    elevation: 5,
+    elevation: 3,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
-    shadowRadius: 4,
-    overflow: 'hidden',
+    shadowRadius: 2,
   },
-  swipeButtonContent: {
+  payButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginRight: 10,
+  },
+  payButtonIcon: {
+    marginLeft: 5,
+  },
+  addAddressButton: {
+    backgroundColor: '#E65C00',
+    borderRadius: 30,
+    paddingVertical: 15,
+    paddingHorizontal: 25,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    height: '100%',
+    justifyContent: 'center',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
   },
-  swipeText: {
+  addAddressButtonText: {
     color: '#fff',
-    fontWeight: '600',
     fontSize: 16,
-    marginLeft: 10,
+    fontWeight: 'bold',
+    marginRight: 10,
   },
-  
-  // Misc
+  addAddressIcon: {
+    marginLeft: 5,
+  },
   cartItemsList: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -1437,6 +1745,55 @@ const styles = StyleSheet.create({
   },
   emptySuggestionsContainer: {
     marginBottom: 20,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    width: width * 0.8,
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalIcon: {
+    marginBottom: 16,
+  },
+  modalText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 16,
+  },
+  loadingIcon: {
+    marginBottom: 20,
+  },
+  successAnimation: {
+    width: 100,
+    height: 100,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  verificationContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  verificationText: {
+    fontSize: 16,
+    color: '#333',
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  verificationLoader: {
+    marginTop: 20,
   },
 });
 

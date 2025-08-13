@@ -31,7 +31,6 @@ const OrderDetailsScreen = () => {
             user_id: parsedUser.id 
           });
 
-          console.log("response== sss",response)
           if (response.status == 200 && response.data.orders?.length > 0) {
             setOrderDetails(response.data.orders[0]);
           } else {

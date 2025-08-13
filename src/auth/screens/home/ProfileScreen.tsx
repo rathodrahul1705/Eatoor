@@ -147,7 +147,7 @@ const ProfileScreen = ({ navigation }) => {
       {/* Header with back button and menu */}
       <View style={styles.header}>
         <TouchableOpacity 
-          onPress={() => navigation.goBack()}
+          onPress={() => navigation.navigate('HomeTabs')}
           style={styles.headerButton}
         >
           <Icon name="arrow-back" size={24} color="#333" />

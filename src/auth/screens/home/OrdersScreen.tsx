@@ -295,7 +295,7 @@ const PastOrdersScreen = () => {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity 
-          onPress={() => navigation.goBack()}
+          onPress={() => navigation.navigate('ProfileScreen')}
         >
           <Icon name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
