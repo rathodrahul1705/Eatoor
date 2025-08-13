@@ -15,12 +15,15 @@ import {
   Alert,
   Modal,
   Animated,
-  Easing
+  Easing,
+  Platform,
+  TouchableWithoutFeedback
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { getCartDetails, updateCart, createPayment, verifyPayment, updatePyamentData } from '../../../api/cart';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import RazorpayCheckout from 'react-native-razorpay';
+import { BlurView } from '@react-native-community/blur';
 
 const { width, height } = Dimensions.get('window');
 
@@ -179,10 +182,13 @@ const CartScreen = ({ route, navigation }) => {
     message: '',
     success: false
   });
+  const [verificationComplete, setVerificationComplete] = useState(false);
+  const [showBlurOverlay, setShowBlurOverlay] = useState(false);
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const rotationAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
+  const slideAnim = useRef(new Animated.Value(height)).current;
 
   const userId = user?.id;
   const sessionId = "";
@@ -248,6 +254,25 @@ const CartScreen = ({ route, navigation }) => {
       ]).start();
     }
   }, [paymentStatus, paymentVerification.verifying]);
+
+  // Handle modal slide animation
+  useEffect(() => {
+    if (showPaymentModal) {
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 300,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(slideAnim, {
+        toValue: height,
+        duration: 200,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [showPaymentModal]);
 
   const fetchCartData = async () => {
     if (!kitchenId) {
@@ -352,32 +377,25 @@ const CartScreen = ({ route, navigation }) => {
     });
   };
 
-  const showPaymentStatusModal = (status: PaymentStatus, message: string) => {
+  const showPaymentStatusModal = (status: PaymentStatus, message: string, orderNumber?: string) => {
     setPaymentStatus(status);
     setPaymentMessage(message);
     setShowPaymentModal(true);
-    
+
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 300,
       easing: Easing.ease,
       useNativeDriver: true,
-    }).start();
-    
-    if (status === 'success') {
-      if (orderDetails) {
-        navigation.navigate('TrackOrder', {
-          order: {
-            order_number: orderDetails.order_number
-          }
-        });
+    }).start(() => {
+      if (status === 'success' && orderNumber) {
+        AsyncStorage.removeItem('pastKitchenDetails');
+        setTimeout(() => {
+          setShowPaymentModal(false);
+          navigation.navigate('TrackOrder', { order: { order_number: orderNumber } });
+        }, 300);
       }
-      setShowPaymentModal(false);
-    } else {
-      setTimeout(() => {
-        setShowPaymentModal(false);
-      }, 3000);
-    }
+    });
   };
 
   const createRazorpayOrder = async (): Promise<string> => {
@@ -409,14 +427,16 @@ const CartScreen = ({ route, navigation }) => {
 
   const verifyPaymentStatus = async (paymentResponse: PaymentResponse) => {
     if (!cartData || !userId || !kitchenId || !addressId) {
-      throw new Error('Required data missing for payment verification');
+      console.error("Missing required payment data");
+      showPaymentStatusModal('failed', 'Required data missing for payment verification');
+      return;
     }
 
     try {
-      // First update the order details with payment info
+      // Step 1: Update order details with payment info
       const updateResponse = await updateOrderDetails(paymentResponse.razorpay_payment_id);
 
-      // Then verify the payment with Razorpay
+      // Step 2: Prepare verification payload
       const payload = {
         razorpay_order_id: paymentResponse.razorpay_order_id,
         razorpay_payment_id: paymentResponse.razorpay_payment_id,
@@ -429,33 +449,40 @@ const CartScreen = ({ route, navigation }) => {
         restaurantName: cartData.restaurant_name,
       };
 
+      // Step 3: Verify with backend
       const response = await verifyPayment(payload);
 
       if (response.status === 200) {
         const verificationData = response.data as VerifyPaymentResponse;
+
+        // ✅ Store order details
         setOrderDetails({
           order_id: verificationData.eatoor_order_id,
           order_number: verificationData.eatoor_order_number
         });
-        
+
+        // ✅ Update verification state
         setPaymentVerification({
           verifying: false,
           message: 'Payment verified successfully!',
           success: true
         });
-        
-        showPaymentStatusModal('success', 'Payment successful! Redirecting to order details...');
+
+        // ✅ Pass order number directly to modal (avoids async state issue)
+        showPaymentStatusModal('success', 'Payment successful! Redirecting to order details...', verificationData.eatoor_order_number);
       } else {
         throw new Error(response.data.message || 'Payment verification failed');
       }
     } catch (error) {
       console.error('Payment verification error:', error);
+
       setPaymentVerification({
         verifying: false,
         message: 'Payment verification failed',
         success: false
       });
-      throw error;
+
+      showPaymentStatusModal('failed', 'Payment verification failed');
     }
   };
 
@@ -538,6 +565,7 @@ const CartScreen = ({ route, navigation }) => {
     }
     
     setPaymentStatus('processing');
+    setShowBlurOverlay(true);
     
     try {
       // Create Razorpay order first
@@ -571,6 +599,7 @@ const CartScreen = ({ route, navigation }) => {
           
           try {
             await verifyPaymentStatus(data);
+            setVerificationComplete(true);
           } catch (error) {
             console.error('Payment verification error:', error);
             setPaymentVerification({
@@ -579,9 +608,12 @@ const CartScreen = ({ route, navigation }) => {
               success: false
             });
             showPaymentStatusModal('failed', 'Payment verification failed. Please check your order history.');
+          } finally {
+            setShowBlurOverlay(false);
           }
         })
         .catch((error) => {
+          setShowBlurOverlay(false);
           if (error.description === 'Payment Cancelled') {
             showPaymentStatusModal('cancelled', 'Payment was cancelled by user');
           } else {
@@ -590,6 +622,7 @@ const CartScreen = ({ route, navigation }) => {
         });
     } catch (error) {
       console.error('Payment error:', error);
+      setShowBlurOverlay(false);
       showPaymentStatusModal('failed', error.message || 'An error occurred while processing payment');
     } finally {
       setPaymentStatus('idle');
@@ -983,7 +1016,7 @@ const CartScreen = ({ route, navigation }) => {
           <TouchableOpacity 
             style={styles.payButton}
             onPress={initiatePayment}
-            disabled={paymentStatus === 'processing' || paymentVerification.verifying}
+            disabled={paymentStatus === 'processing' || paymentVerification.verifying || showBlurOverlay}
             activeOpacity={0.8}
           >
             {paymentStatus === 'processing' ? (
@@ -1000,6 +1033,7 @@ const CartScreen = ({ route, navigation }) => {
             style={styles.addAddressButton}
             onPress={handleAddressChange}
             activeOpacity={0.8}
+            disabled={showBlurOverlay}
           >
             <Text style={styles.addAddressButtonText}>Select Delivery Location</Text>
             <Icon name="location" size={20} color="#fff" style={styles.addAddressIcon} />
@@ -1010,7 +1044,7 @@ const CartScreen = ({ route, navigation }) => {
   };
 
   const renderPaymentModal = () => {
-    let modalColor, iconName, iconSize, additionalContent;
+    let modalColor, iconName, iconSize, additionalContent, animationStyle;
     
     const rotateInterpolation = rotationAnim.interpolate({
       inputRange: [0, 1],
@@ -1020,59 +1054,64 @@ const CartScreen = ({ route, navigation }) => {
     if (paymentVerification.verifying) {
       modalColor = '#2196F3';
       iconName = 'refresh';
-      iconSize = 60;
+      iconSize = 40;
       additionalContent = (
         <Animated.View style={[styles.loadingIcon, { transform: [{ rotate: rotateInterpolation }] }]}>
           <Icon name={iconName} size={iconSize} color="#fff" />
         </Animated.View>
       );
+      animationStyle = styles.verifyingModal;
     } else {
       switch(paymentStatus) {
         case 'success':
           modalColor = '#4CAF50';
           iconName = 'checkmark-circle';
-          iconSize = 80;
+          iconSize = 60;
           additionalContent = (
             <Animated.View style={[styles.successAnimation, { transform: [{ scale: scaleAnim }] }]}>
               <Icon name={iconName} size={iconSize} color="#fff" />
             </Animated.View>
           );
+          animationStyle = styles.successModal;
           break;
         case 'failed':
           modalColor = '#E65C00';
           iconName = 'close-circle';
-          iconSize = 80;
+          iconSize = 60;
           additionalContent = (
             <Animated.View style={[styles.successAnimation, { transform: [{ scale: scaleAnim }] }]}>
               <Icon name={iconName} size={iconSize} color="#fff" />
             </Animated.View>
           );
+          animationStyle = styles.errorModal;
           break;
         case 'cancelled':
           modalColor = '#FF9800';
           iconName = 'alert-circle';
-          iconSize = 80;
+          iconSize = 60;
           additionalContent = (
             <Animated.View style={[styles.successAnimation, { transform: [{ scale: scaleAnim }] }]}>
               <Icon name={iconName} size={iconSize} color="#fff" />
             </Animated.View>
           );
+          animationStyle = styles.warningModal;
           break;
         case 'processing':
           modalColor = '#2196F3';
           iconName = 'refresh';
-          iconSize = 60;
+          iconSize = 40;
           additionalContent = (
             <Animated.View style={[styles.loadingIcon, { transform: [{ rotate: rotateInterpolation }] }]}>
               <Icon name={iconName} size={iconSize} color="#fff" />
             </Animated.View>
           );
+          animationStyle = styles.verifyingModal;
           break;
         default:
           return null;
       }
     }
-
+    
     return (
       <Modal
         visible={showPaymentModal}
@@ -1083,24 +1122,75 @@ const CartScreen = ({ route, navigation }) => {
         <View style={styles.modalOverlay}>
           <Animated.View style={[
             styles.modalContainer,
+            animationStyle,
             { 
-              opacity: fadeAnim, 
-              backgroundColor: modalColor,
-              padding: paymentVerification.verifying ? 30 : 24
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
             }
           ]}>
-            {additionalContent}
-            <Text style={styles.modalText}>
-              {paymentVerification.verifying 
-                ? paymentVerification.message 
-                : paymentMessage}
-            </Text>
-            {paymentVerification.verifying && (
-              <ActivityIndicator size="small" color="#fff" style={{ marginTop: 10 }} />
-            )}
+            <View style={styles.modalContent}>
+              {additionalContent}
+              <Text style={styles.modalText}>
+                {paymentVerification.verifying 
+                  ? paymentVerification.message 
+                  : paymentMessage}
+              </Text>
+              
+              {paymentVerification.verifying && (
+                <ActivityIndicator size="small" color="#fff" style={styles.verificationLoader} />
+              )}
+              
+              {!paymentVerification.verifying && paymentStatus !== 'processing' && (
+                <TouchableOpacity
+                  style={styles.modalCloseButton}
+                  onPress={() => {
+                    setShowPaymentModal(false);
+                    if (verificationComplete && paymentStatus === 'success' && orderDetails) {
+                      navigation.navigate('TrackOrder', {
+                        order: {
+                          order_number: orderDetails.order_number
+                        }
+                      });
+                    }
+                  }}
+                >
+                  <Text style={styles.modalCloseButtonText}>
+                    {paymentStatus === 'success' ? 'View Order' : 'Close'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </Animated.View>
         </View>
       </Modal>
+    );
+  };
+
+  const renderBlurOverlay = () => {
+    if (!showBlurOverlay) return null;
+
+    return (
+      <View style={styles.absoluteBlurContainer}>
+        {Platform.OS === 'ios' ? (
+          <BlurView
+            style={styles.absoluteBlur}
+            blurType="light"
+            blurAmount={10}
+            reducedTransparencyFallbackColor="white"
+          />
+        ) : (
+          <View style={[styles.absoluteBlur, { backgroundColor: 'rgba(255,255,255,0.7)' }]} />
+        )}
+        
+        <View style={styles.blurLoadingContainer}>
+          <ActivityIndicator size="large" color="#E65C00" />
+          <Text style={styles.blurLoadingText}>
+            {paymentVerification.verifying 
+              ? 'Verifying your payment...' 
+              : 'Processing payment...'}
+          </Text>
+        </View>
+      </View>
     );
   };
 
@@ -1150,6 +1240,16 @@ const CartScreen = ({ route, navigation }) => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       
+      {/* Blur overlay for payment processing */}
+      {renderBlurOverlay()}
+      
+      {/* Touch blocking overlay during payment processing */}
+      {showBlurOverlay && (
+        <TouchableWithoutFeedback>
+          <View style={styles.touchableOverlay} />
+        </TouchableWithoutFeedback>
+      )}
+      
       {isCartEmpty ? (
         renderEmptyCart()
       ) : (
@@ -1158,6 +1258,7 @@ const CartScreen = ({ route, navigation }) => {
             <TouchableOpacity 
               onPress={BackToKitchen}
               style={styles.backButton}
+              disabled={showBlurOverlay}
             >
               <Icon name="arrow-back" size={24} color="#333" />
             </TouchableOpacity>
@@ -1166,6 +1267,7 @@ const CartScreen = ({ route, navigation }) => {
               <TouchableOpacity 
                 onPress={handleAddressChange}
                 style={styles.headerAddressContainer}
+                disabled={showBlurOverlay}
               >
                 <Icon name="location-outline" size={16} color="#E65C00" />
                 <Text style={styles.headerAddressText} numberOfLines={1}>
@@ -1748,35 +1850,95 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  absoluteBlurContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
+  },
+  absoluteBlur: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    right: 0,
+  },
+  blurLoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1001,
+  },
+  blurLoadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
+  },
+  touchableOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 999,
   },
   modalContainer: {
-    width: width * 0.8,
-    borderRadius: 16,
+    width: width * 0.85,
+    borderRadius: 20,
     padding: 24,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+    overflow: 'hidden',
+  },
+  verifyingModal: {
+    backgroundColor: '#2196F3',
+  },
+  successModal: {
+    backgroundColor: '#4CAF50',
+  },
+  errorModal: {
+    backgroundColor: '#E65C00',
+  },
+  warningModal: {
+    backgroundColor: '#FF9800',
+  },
+  modalContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
   },
   modalIcon: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   modalText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
-    marginTop: 16,
+    marginTop: 20,
+    marginBottom: 20,
+    lineHeight: 24,
   },
   loadingIcon: {
     marginBottom: 20,
   },
   successAnimation: {
-    width: 100,
-    height: 100,
+    width: 80,
+    height: 80,
     backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 50,
+    borderRadius: 40,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 20,
@@ -1793,7 +1955,22 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   verificationLoader: {
-    marginTop: 20,
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  modalCloseButton: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 25,
+    marginTop: 15,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+  },
+  modalCloseButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
   },
 });
 

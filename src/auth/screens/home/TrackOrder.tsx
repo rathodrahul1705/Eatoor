@@ -93,6 +93,7 @@ const TrackOrder = () => {
   
   const ANIMATION_DURATION = 2000;
   
+  // console.log("order===",order?.status)
   // Delivery partner details
   const [deliveryPartner, setDeliveryPartner] = useState({
     name: 'Delivery Partner',
@@ -218,21 +219,16 @@ const TrackOrder = () => {
     return deg * (Math.PI/180);
   };
 
-  // Set up polling for live tracking data
   useEffect(() => {
-    if (order_number) {
-      // Initial fetch
       fetchLiveTrackingData();
-      
-      // Set up interval for polling (every 30 seconds)
-      const interval = setInterval(fetchLiveTrackingData, 30000);
+      const interval = setInterval(fetchLiveTrackingData, 120000);
       setTrackingInterval(interval);
-      
       return () => {
-        if (interval) clearInterval(interval);
+        clearInterval(interval);
       };
-    }
-  }, [order_number, fetchLiveTrackingData]);
+  }, [order?.status, order_number, fetchLiveTrackingData]);
+
+  
 
   // Map animation
   const toggleMap = useCallback(() => {

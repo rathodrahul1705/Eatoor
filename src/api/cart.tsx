@@ -90,3 +90,11 @@ export interface UpdateOrderDetails {
 export const updatePyamentData = (payload: UpdateOrderDetails) => {
   return API.post('/restaurant/order/details/update/', payload);
 };
+
+export interface ActiveOrderPayload {
+  user_id: number;
+}
+
+export const getActiveOrders = (payload: ActiveOrderPayload) => {
+  return API.post('/order/active-orders/', payload);
+};

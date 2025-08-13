@@ -9,7 +9,8 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
 import { getKitchenList, updateFavouriteKitchen } from '../../../api/home';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getCart } from '../../../api/cart';
+import { getCart, getActiveOrders } from '../../../api/cart';
+import moment from 'moment';
 
 // Constants
 const { width, height } = Dimensions.get('window');
@@ -42,6 +43,11 @@ const COLORS = {
   textOnGradient: '#FFFFFF',
   categoryText: 'rgba(255,255,255,0.9)',
   activeCategoryText: '#FFFFFF',
+  orderStatusBorder: '#E5E7EB',
+  orderPreparing: '#F59E0B',
+  orderOnTheWay: '#3B82F6',
+  orderDelivered: '#10B981',
+  orderCancelled: '#EF4444',
 };
 
 const FONTS = {
@@ -52,8 +58,16 @@ const FONTS = {
 };
 
 const DEFAULT_CATEGORY_ICON = "";
+const ACTIVE_ORDERS_LIMIT = 3;
 
 // Types
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  // Add other user properties as needed
+}
+
 interface Kitchen {
   restaurant_id: string;
   restaurant_name: string;
@@ -98,6 +112,24 @@ interface PastKitchenDetails {
   itemCount: number;
 }
 
+interface ActiveOrder {
+  id: string;
+  orderNumber: string;
+  status: 'preparing' | 'on-the-way' | 'delivered' | 'cancelled';
+  statusText: string;
+  kitchenId: string;
+  kitchenName: string;
+  kitchenImage: string;
+  estimatedArrival: string;
+  placedOn: string;
+  items?: {
+    name: string;
+    quantity: number;
+  }[];
+  totalAmount?: number;
+  deliveryAddress?: string;
+}
+
 const KitchenScreen: React.FC = () => {
   const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
@@ -107,70 +139,99 @@ const KitchenScreen: React.FC = () => {
   const [favoriteLoading, setFavoriteLoading] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<number | null>(null);
   const [pastKitchenDetails, setPastKitchenDetails] = useState<PastKitchenDetails | null>(null);
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [showAllActiveOrders, setShowAllActiveOrders] = useState(false);
   const searchAnim = useRef(new Animated.Value(0)).current;
 
-  // Initialize filters with useMemo to prevent unnecessary recreations
-  const [filters, setFilters] = useState<Filter[]>(useMemo(() => [
-    { id: '1', name: 'Rating 4.0+', icon: 'star', type: 'rating', active: false },
-    { id: '2', name: 'Pure Veg', icon: 'leaf', type: 'veg', active: false },
-    { id: '3', name: 'Offers', icon: 'pricetag', type: 'offer', active: false },
-    { id: '4', name: 'Fast Delivery', icon: 'rocket', type: 'fastDelivery', active: false },
-  ], []));
-
-  // Memoized filtered kitchens to prevent unnecessary recalculations
-  const filteredKitchens = useMemo(() => {
-    if (!apiData) return [];
-
-    let result = [...apiData.data.KitchenList];
-
-    // Apply search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(kitchen => 
-        kitchen.restaurant_name.toLowerCase().includes(query) ||
-        (kitchen.item_cuisines && kitchen.item_cuisines.toLowerCase().includes(query))
-    )}
-
-    // Apply category filter
-    if (activeCategory !== null && apiData.data.CategoryList[activeCategory]) {
-      const categoryName = apiData.data.CategoryList[activeCategory].name;
-      result = result.filter(kitchen => 
-        kitchen.item_cuisines && kitchen.item_cuisines.toLowerCase().includes(categoryName.toLowerCase()))
-    }
-
-    // Apply other filters
-    filters.forEach(filter => {
-      if (filter.active) {
-        switch (filter.type) {
-          case 'rating':
-            result = result.filter(() => (Math.random() * 5) >= 4.0);
-            break;
-          case 'veg':
-          case 'offer':
-          case 'fastDelivery':
-            // Implement actual filtering logic here when available
-            break;
-        }
-      }
-    });
-
-    return result;
-  }, [apiData, searchQuery, activeCategory, filters]);
-
-  // Fetch user data with proper cleanup
+  // Fetch user data with proper typing and error handling
   const fetchUserData = useCallback(async () => {
     try {
-      const [userData] = await Promise.all([
-        AsyncStorage.getItem('user'),
-      ]);      
+      const userData = await AsyncStorage.getItem('user');
       if (userData) {
-        setUser(JSON.parse(userData));
+        const parsedUser = JSON.parse(userData) as User;
+        setUser(parsedUser);
+        return parsedUser;
       }
+      return null;
     } catch (error) {
       console.error('Error fetching user data:', error);
+      return null;
     }
   }, []);
+
+  // Fetch active orders from API with user dependency
+  const fetchActiveOrders = useCallback(async (userId: string) => {
+    try {
+      setOrdersLoading(true);
+      const payload = { user_id: userId };
+      const response = await getActiveOrders(payload);
+
+      if (response?.status === 200) {
+        const formattedOrders: ActiveOrder[] = response.data.orders
+          .map(order => {
+            const now = moment();
+            const deliveryTime = moment(order.estimated_delivery);
+            const minutesRemaining = deliveryTime.diff(now, 'minutes');
+
+            let status: ActiveOrder['status'];
+            let statusText: string;
+
+            if (order.status === 'Cancelled') {
+              status = 'cancelled';
+              statusText = 'Cancelled';
+            } else if (order.status === 'Pending') {
+              status = 'pending';
+              statusText = 'Pending';
+            } else if (order.status === 'Confirmed') {
+              status = 'confirmed';
+              statusText = 'Confirmed';
+            } else if (minutesRemaining <= 0) {
+              status = 'delivered';
+              statusText = 'Delivered';
+            } else if (minutesRemaining <= 15) {
+              status = 'on-the-way';
+              statusText = 'On the way';
+            } else {
+              status = 'preparing';
+              statusText = 'Preparing';
+            }
+
+            return {
+              id: order.order_number,
+              orderNumber: order.order_number,
+              status,
+              statusText,
+              kitchenId: order.order_number,
+              kitchenName: order.kitchan_name,
+              kitchenImage: order.kitchan_image,
+              estimatedArrival: `${Math.max(1, minutesRemaining)} min`,
+              placedOn: moment(order.placed_on).format('MMM D, h:mm A'),
+            };
+          })
+          // ✅ Only keep orders that are NOT delivered
+          .filter(order => order.status !== 'delivered');
+
+        // Sort by remaining minutes
+        formattedOrders.sort((a, b) => {
+          const aMinutes = parseInt(a.estimatedArrival);
+          const bMinutes = parseInt(b.estimatedArrival);
+          return aMinutes - bMinutes;
+        });
+
+        setActiveOrders(formattedOrders);
+      }
+    } catch (error) {
+      console.error('Error fetching active orders:', error);
+      Alert.alert('Error', 'Failed to load active orders. Please try again.');
+    } finally {
+      setOrdersLoading(false);
+    }
+  }, []);
+
+
+  console.log("activeOrders===",activeOrders)
 
   // Save past kitchen details with error handling
   const savePastKitchenDetails = useCallback(async (details: PastKitchenDetails) => {
@@ -182,8 +243,8 @@ const KitchenScreen: React.FC = () => {
     }
   }, []);
   
-  // Fetch past kitchen details with proper dependencies
-  const fetchPastKitchenDetails = useCallback(async () => {
+  // Fetch past kitchen details with proper user dependency
+  const fetchPastKitchenDetails = useCallback(async (userId: string) => {
     try {
       const storedDetails = await AsyncStorage.getItem('pastKitchenDetails');
       if (storedDetails != null) {
@@ -191,14 +252,13 @@ const KitchenScreen: React.FC = () => {
         return;
       }
 
-      console.log("user======",user)
-
       const payload = {
         session_id: null,
-        user_id: user?.id
+        user_id: userId
       };
 
       const response = await getCart(payload);
+      
       if (response?.status === 200) {
         const existingCart = response?.data?.existingCartDetails || [];
         if (existingCart.length > 0) {
@@ -211,15 +271,15 @@ const KitchenScreen: React.FC = () => {
           await savePastKitchenDetails(newPastKitchenDetails);
           setPastKitchenDetails(newPastKitchenDetails);
         }
-      }else{
-        setPastKitchenDetails(null)
+      } else {
+        setPastKitchenDetails(null);
       }
     } catch (error) {
       console.error('Error fetching past kitchen details:', error);
     }
-  }, [user?.id, savePastKitchenDetails]);
+  }, [savePastKitchenDetails]);
 
-  // Main data fetching function with proper error handling
+  // Main data fetching function
   const fetchKitchens = useCallback(async () => {
     try {
       setLoading(true);
@@ -254,15 +314,24 @@ const KitchenScreen: React.FC = () => {
     }
   }, []);
 
-  // Initial data loading with cleanup
+  // Initial data loading with proper cleanup and user dependency
   useEffect(() => {
     let isMounted = true;
 
     const loadData = async () => {
-      await fetchUserData();
-      await fetchKitchens();
-      if (isMounted) {
-        await fetchPastKitchenDetails();
+      try {
+        const user = await fetchUserData();
+        if (user && isMounted) {
+          await Promise.all([
+            fetchKitchens(),
+            fetchActiveOrders(user.id),
+            fetchPastKitchenDetails(user.id)
+          ]);
+        } else {
+          await fetchKitchens();
+        }
+      } catch (error) {
+        console.error('Initial data loading error:', error);
       }
     };
 
@@ -271,13 +340,149 @@ const KitchenScreen: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [fetchKitchens, fetchPastKitchenDetails, fetchUserData]);
+  }, [fetchKitchens, fetchPastKitchenDetails, fetchUserData, fetchActiveOrders]);
 
-  // Refresh control handler
-  const handleRefresh = useCallback(() => {
+  // Refresh control handler with user dependency
+  const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    fetchKitchens();
-  }, [fetchKitchens]);
+    try {
+      const user = await fetchUserData();
+      if (user) {
+        await Promise.all([
+          fetchKitchens(),
+          fetchActiveOrders(user.id),
+          fetchPastKitchenDetails(user.id)
+        ]);
+      } else {
+        await fetchKitchens();
+      }
+    } catch (error) {
+      console.error('Refresh error:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchKitchens, fetchActiveOrders, fetchPastKitchenDetails, fetchUserData]);
+
+  // Order press handler
+  const handleOrderPress = useCallback(
+    (order: ActiveOrder) => {
+      navigation.navigate('TrackOrder', { order: { order_number: order.orderNumber } });
+    },
+    [navigation]
+  );
+
+  const handleViewAllOrders = useCallback(() => {
+    navigation.navigate('ActiveOrders', { orders: activeOrders });
+  }, [navigation, activeOrders]);
+
+  const toggleShowAllActiveOrders = useCallback(() => {
+    setShowAllActiveOrders(prev => !prev);
+  }, []);
+
+  // Render a single active order in the footer
+  const renderActiveOrderFooterItem = useCallback((order: ActiveOrder) => {
+    const statusColors = {
+      'preparing': { bg: '#FEF3C7', text: '#92400E', icon: 'time-outline' },
+      'on-the-way': { bg: '#DBEAFE', text: '#1E40AF', icon: 'bicycle-outline' },
+      'delivered': { bg: '#D1FAE5', text: '#065F46', icon: 'checkmark-done-outline' },
+      'cancelled': { bg: '#FEE2E2', text: '#B91C1C', icon: 'close-circle-outline' },
+    };
+
+    const statusColor = statusColors[order.status] || statusColors.preparing;
+    const isCancelled = order.status === 'cancelled';
+
+    return (
+      <TouchableOpacity
+        key={order.id}
+        style={styles.activeOrderFooterItem}
+        onPress={() => handleOrderPress(order)}
+        activeOpacity={0.9}
+      >
+        <View style={styles.activeOrderFooterContent}>
+          <Image 
+            source={{ uri: order.kitchenImage || 'https://via.placeholder.com/50' }} 
+            style={styles.activeOrderFooterImage}
+          />
+          <View style={styles.activeOrderFooterDetails}>
+            <Text style={styles.activeOrderFooterKitchen} numberOfLines={1}>
+              {order.kitchenName}
+            </Text>
+            <View style={styles.activeOrderFooterStatus}>
+              <Icon 
+                name={statusColor.icon} 
+                size={14} 
+                color={statusColor.text} 
+              />
+              <Text style={[styles.activeOrderFooterStatusText, { color: statusColor.text }]}>
+                {order.statusText}
+              </Text>
+            </View>
+          </View>
+          {!isCancelled && (
+            <TouchableOpacity 
+              style={styles.activeOrderFooterTimeButton}
+              onPress={() => handleOrderPress(order)}
+            >
+              <View style={styles.activeOrderFooterTime}>
+                <Text style={styles.activeOrderFooterTimeLabel}>Arriving in</Text>
+                <View style={styles.activeOrderFooterTimeBadge}>
+                  <Text style={styles.activeOrderFooterTimeText}>
+                    {order.estimatedArrival}
+                  </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  }, [handleOrderPress]);
+
+  // Initialize filters with useMemo
+  const [filters, setFilters] = useState<Filter[]>(useMemo(() => [
+    { id: '1', name: 'Rating 4.0+', icon: 'star', type: 'rating', active: false },
+    { id: '2', name: 'Pure Veg', icon: 'leaf', type: 'veg', active: false },
+    { id: '3', name: 'Offers', icon: 'pricetag', type: 'offer', active: false },
+    { id: '4', name: 'Fast Delivery', icon: 'rocket', type: 'fastDelivery', active: false },
+  ], []));
+
+  // Memoized filtered kitchens
+  const filteredKitchens = useMemo(() => {
+    if (!apiData) return [];
+
+    let result = [...apiData.data.KitchenList];
+
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(kitchen => 
+        kitchen.restaurant_name.toLowerCase().includes(query) ||
+        (kitchen.item_cuisines && kitchen.item_cuisines.toLowerCase().includes(query))
+      );
+    }
+
+    if (activeCategory !== null && apiData.data.CategoryList[activeCategory]) {
+      const categoryName = apiData.data.CategoryList[activeCategory].name;
+      result = result.filter(kitchen => 
+        kitchen.item_cuisines && kitchen.item_cuisines.toLowerCase().includes(categoryName.toLowerCase())
+      );
+    }
+
+    filters.forEach(filter => {
+      if (filter.active) {
+        switch (filter.type) {
+          case 'rating':
+            result = result.filter(() => (Math.random() * 5) >= 4.0);
+            break;
+          case 'veg':
+          case 'offer':
+          case 'fastDelivery':
+            break;
+        }
+      }
+    });
+
+    return result;
+  }, [apiData, searchQuery, activeCategory, filters]);
 
   // Category press handler
   const handleCategoryPress = useCallback((categoryId: number) => {
@@ -346,7 +551,6 @@ const KitchenScreen: React.FC = () => {
       console.error('Error toggling favorite:', error);
       Alert.alert('Error', 'Failed to update favorite status. Please try again.');
       
-      // Revert UI changes if API call fails
       setApiData(prev => {
         if (!prev) return null;
         
@@ -615,10 +819,41 @@ const KitchenScreen: React.FC = () => {
 
   // Calculate featured pairs count
   const featuredPairsCount = Math.ceil(apiData.data.FeatureKitchenList.length / 2);
+  const displayedActiveOrders = showAllActiveOrders ? activeOrders : activeOrders.slice(0, ACTIVE_ORDERS_LIMIT);
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Enhanced Gradient Header Section */}
+      {/* Active Orders Footer - Only show if there are active orders */}
+      {activeOrders.length > 0 && !ordersLoading && (
+        <View style={styles.activeOrdersFooter}>
+          {displayedActiveOrders.map(order => (
+            <React.Fragment key={order.id}>
+              {renderActiveOrderFooterItem(order)}
+              {order !== displayedActiveOrders[displayedActiveOrders.length - 1] && (
+                <View style={styles.orderDivider} />
+              )}
+            </React.Fragment>
+          ))}
+          
+          {activeOrders.length > ACTIVE_ORDERS_LIMIT && (
+            <TouchableOpacity 
+              style={styles.activeOrdersFooterSeeAll}
+              onPress={toggleShowAllActiveOrders}
+            >
+              <Text style={styles.activeOrdersFooterSeeAllText}>
+                {showAllActiveOrders ? 'Show less' : `View all ${activeOrders.length} active orders`}
+              </Text>
+              <Icon 
+                name={showAllActiveOrders ? "chevron-up" : "chevron-down"} 
+                size={16} 
+                color={COLORS.primary} 
+              />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {/* Header Section */}
       <Animated.View style={[
         styles.headerContainer,
         {
@@ -672,10 +907,9 @@ const KitchenScreen: React.FC = () => {
             </View>
           </View>
 
-          {/* Categories with active state */}
           <FlatList
             horizontal
-            data={apiData.data.CategoryList}
+            data={apiData?.data?.CategoryList || []}
             renderItem={renderCategory}
             keyExtractor={(item) => item.id.toString()}
             showsHorizontalScrollIndicator={false}
@@ -711,7 +945,7 @@ const KitchenScreen: React.FC = () => {
         </View>
 
         {/* Featured Kitchens */}
-        {apiData.data.FeatureKitchenList.length > 0 && (
+        {apiData?.data?.FeatureKitchenList?.length > 0 && (
           <View style={styles.featuredSectionContainer}>
             <Text style={styles.sectionTitle}>Recommended for you</Text>
             <ScrollView
@@ -758,8 +992,8 @@ const KitchenScreen: React.FC = () => {
         </View>
       </ScrollView>
 
-      {/* Past Kitchen Cart Summary */}
-      {pastKitchenDetails && (
+      {/* Bottom Section - Shows either Past Kitchen Cart or nothing if both are not applicable */}
+      {pastKitchenDetails && activeOrders.length === 0 && (
         <View style={styles.cartSummary__container}>
           <View style={styles.cartSummary__header}>
             <View style={styles.cartSummary__kitchenInfo}>
@@ -808,22 +1042,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  headerContainer: {
-    paddingBottom: 10,
-    zIndex: 100,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-    overflow: 'hidden',
-  },
-  headerGradient: {
-    paddingBottom: 10,
-  },
-  scrollContainer: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 30,
-  },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -862,8 +1080,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: FONTS.semiBold,
   },
+  headerContainer: {
+    paddingBottom: 10,
+    zIndex: 100,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    overflow: 'hidden',
+  },
+  headerGradient: {
+    paddingBottom: 10,
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 30,
+  },
   searchContainer: {
-    marginTop:15,
+    marginTop: 15,
     paddingHorizontal: 30,
     marginBottom: 12,
   },
@@ -916,7 +1150,6 @@ const styles = StyleSheet.create({
     width: 65,
     height: 65,
     borderRadius: 32,
-    // tintColor: COLORS.categoryText,
   },
   categoryName: {
     fontSize: 12,
@@ -948,7 +1181,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 12,
   },
-  seeAll: {
+  seeAllText: {
     fontSize: 14,
     fontFamily: FONTS.semiBold,
     color: COLORS.primary,
@@ -1184,8 +1417,104 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.regular,
     color: COLORS.textMedium,
   },
+  // Active Orders Footer Styles
+  activeOrdersFooter: {
+    position: 'absolute',
+    bottom: 80,
+    left: 16,
+    right: 16,
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+    zIndex: 1000,
+  },
+  activeOrderFooterItem: {
+    backgroundColor: '#FFF',
+    borderRadius: 8,
+  },
+  orderDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: 8,
+  },
+  activeOrderFooterContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  activeOrderFooterImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    marginRight: 12,
+  },
+  activeOrderFooterDetails: {
+    flex: 1,
+  },
+  activeOrderFooterKitchen: {
+    fontSize: 14,
+    fontFamily: FONTS.medium,
+    color: COLORS.textDark,
+    marginBottom: 4,
+  },
+  activeOrderFooterStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  activeOrderFooterStatusText: {
+    fontSize: 12,
+    fontFamily: FONTS.medium,
+    marginLeft: 4,
+  },
+  activeOrderFooterTimeButton: {
+    backgroundColor: '#E65C00',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  activeOrderFooterTime: {
+    alignItems: 'center',
+  },
+  activeOrderFooterTimeLabel: {
+    fontSize: 11,
+    fontFamily: FONTS.regular,
+    color: '#FFFFFF',
+    marginBottom: 2,
+  },
+  activeOrderFooterTimeBadge: {
+    color: '#FFFFFF',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  activeOrderFooterTimeText: {
+    fontSize: 12,
+    fontFamily: FONTS.semiBold,
+    color: '#FFFFFF',
+  },
+  activeOrdersFooterSeeAll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  activeOrdersFooterSeeAllText: {
+    fontSize: 14,
+    fontFamily: FONTS.medium,
+    color: COLORS.primary,
+    marginRight: 4,
+  },
+  // Cart Summary Styles
   cartSummary__container: {
-    bottom:30,
+    bottom: 30,
     backgroundColor: '#ffffff',
     borderRadius: 16,
     padding: 16,
