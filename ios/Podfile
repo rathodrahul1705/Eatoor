@@ -1,0 +1,51 @@
+# Resolve react_native_pods.rb with node to allow for hoisting
+require Pod::Executable.execute_command('node', ['-p',
+  'require.resolve(
+    "react-native/scripts/react_native_pods.rb",
+    {paths: [process.argv[1]]},
+  )', __dir__]).strip
+
+platform :ios, min_ios_version_supported
+prepare_react_native_project!
+
+# Only enable dynamic frameworks if explicitly set (avoid conflicts with static libs)
+linkage = ENV['USE_FRAMEWORKS']
+if linkage != nil
+  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
+  use_frameworks! :linkage => linkage.to_sym
+end
+
+target 'Eatoor' do
+  config = use_native_modules!
+
+  # Google Maps SDK (works with dynamic frameworks)
+  pod 'GoogleMaps'
+  # pod 'GoogleUtilities'
+  rn_maps_path = '../node_modules/react-native-maps'
+  pod 'react-native-maps/Google', :path => rn_maps_path
+  
+  # DO NOT include 'Google-Maps-iOS-Utils' here (it's a static lib)
+
+  use_react_native!(
+    :path => config[:reactNativePath],
+    :app_path => "#{Pod::Config.instance.installation_root}/.."
+  )
+
+  post_install do |installer|
+    react_native_post_install(
+      installer,
+      config[:reactNativePath],
+      :mac_catalyst_enabled => false
+    )
+
+    # Workaround for Google Maps + use_frameworks! issues
+    installer.pods_project.targets.each do |target|
+      if target.name == 'GoogleMaps'
+        target.build_configurations.each do |config|
+          # Ensure GoogleMaps is built as a dynamic framework
+          config.build_settings['MACH_O_TYPE'] = 'mh_dylib'
+        end
+      end
+    end
+  end
+end
