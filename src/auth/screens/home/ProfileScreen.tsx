@@ -13,7 +13,9 @@ import {
   Image,
   ActivityIndicator,
   Platform,
-  BackHandler
+  BackHandler,
+  Animated,
+  RefreshControl
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
@@ -21,6 +23,10 @@ import { StackActions } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getUserProfileDetails } from '../../../api/profile';
 import { AuthContext } from '../../../context/AuthContext';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const isSmallScreen = SCREEN_WIDTH < 375;
+const isTablet = SCREEN_WIDTH >= 768;
 
 const ProfileScreen = ({ navigation }) => {
   const [modalVisible, setModalVisible] = useState(false);
@@ -30,10 +36,37 @@ const ProfileScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const { logout } = useContext(AuthContext);
+  
+  // Animation values
+  const fadeAnim = useState(new Animated.Value(0))[0];
+  const slideAnim = useState(new Animated.Value(50))[0];
+  const scaleAnim = useState(new Animated.Value(0.9))[0];
 
   // Gradient colors
-  const gradientStart = '#E65C00';
-  const gradientEnd = '#DD2476';
+  const gradientColors = ['#FF6B35', '#FF512F', '#DD2476'];
+
+  // Handle animations
+  useEffect(() => {
+    if (!loading && user) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 700,
+          useNativeDriver: true,
+        })
+      ]).start();
+    }
+  }, [loading, user]);
 
   // Handle Android back button
   useEffect(() => {
@@ -41,7 +74,7 @@ const ProfileScreen = ({ navigation }) => {
       'hardwareBackPress',
       () => {
         navigation.navigate('HomeTabs');
-        return true; // Prevent default behavior
+        return true;
       }
     );
 
@@ -104,19 +137,23 @@ const ProfileScreen = ({ navigation }) => {
     }
   }, [user, fetchUserDetails]);
 
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchUserData();
+    fetchUserDetails().finally(() => setRefreshing(false));
+  }, []);
+
   const handleMenuPress = (event) => {
     const { pageY, pageX } = event.nativeEvent;
     const windowWidth = Dimensions.get('window').width;
     const windowHeight = Dimensions.get('window').height;
     
-    // Calculate modal position with boundary checks
-    const modalWidth = 180;
+    const modalWidth = isSmallScreen ? 160 : 180;
     const modalHeight = 100;
     
     let top = pageY + 10;
     let right = windowWidth - pageX - 20;
     
-    // Ensure modal doesn't go off screen
     if (top + modalHeight > windowHeight) {
       top = windowHeight - modalHeight - 20;
     }
@@ -163,24 +200,106 @@ const ProfileScreen = ({ navigation }) => {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={gradientStart} />
+          <ActivityIndicator size="large" color={gradientColors[0]} />
+          <Text style={styles.loadingText}>Loading your profile...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
+  const StatItem = ({ icon, value, label, index }) => (
+    <Animated.View 
+      style={[
+        styles.statItem,
+        {
+          opacity: fadeAnim,
+          transform: [
+            { 
+              translateY: slideAnim.interpolate({
+                inputRange: [0, 50],
+                outputRange: [0, 20 + index * 10]
+              })
+            }
+          ]
+        }
+      ]}
+    >
+      <LinearGradient
+        colors={[gradientColors[0], gradientColors[1]]}
+        style={styles.statIconContainer}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <Icon name={icon} size={isSmallScreen ? 18 : 20} color="#FFF" />
+      </LinearGradient>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </Animated.View>
+  );
+
+  const ActionCard = ({ icon, title, subtitle, onPress, index }) => (
+    <Animated.View
+      style={[
+        styles.actionCard,
+        {
+          opacity: fadeAnim,
+          transform: [
+            { 
+              translateX: slideAnim.interpolate({
+                inputRange: [0, 50],
+                outputRange: [0, 30 + index * 15]
+              })
+            },
+            { scale: scaleAnim }
+          ]
+        }
+      ]}
+    >
+      <TouchableOpacity onPress={onPress} style={styles.actionCardTouchable}>
+        <LinearGradient
+          colors={['#f8f9ff', '#ffffff']}
+          style={styles.actionIconContainer}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <Icon name={icon} size={isSmallScreen ? 20 : 22} color={gradientColors[0]} />
+        </LinearGradient>
+        <View style={styles.actionTextContainer}>
+          <Text style={styles.actionTitle}>{title}</Text>
+          <Text style={styles.actionSubtitle}>{subtitle}</Text>
+        </View>
+        <View style={styles.chevronContainer}>
+          <Icon name="chevron-forward" size={18} color="#C5C5D3" />
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
       
-      {/* Header with back button and menu */}
-      <View style={styles.header}>
+      {/* Animated Header */}
+      <Animated.View 
+        style={[
+          styles.header,
+          {
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }]
+          }
+        ]}
+      >
         <TouchableOpacity 
           onPress={handleBackPress}
           style={styles.headerButton}
           hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
         >
-          <Icon name={Platform.OS === 'ios' ? "chevron-back" : "arrow-back"} size={24} color="#333" />
+          <LinearGradient
+            colors={['#f8f9ff', '#e9ecef']}
+            style={styles.headerButtonGradient}
+          >
+            <Icon name={Platform.OS === 'ios' ? "chevron-back" : "arrow-back"} size={20} color="#333" />
+          </LinearGradient>
         </TouchableOpacity>
         
         <Text style={styles.headerTitle}>Profile</Text>
@@ -190,20 +309,44 @@ const ProfileScreen = ({ navigation }) => {
           style={styles.headerButton}
           hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
         >
-          <Icon name="ellipsis-vertical" size={24} color="#333" />
+          <LinearGradient
+            colors={['#f8f9ff', '#e9ecef']}
+            style={styles.headerButtonGradient}
+          >
+            <Icon name="ellipsis-vertical" size={20} color="#333" />
+          </LinearGradient>
         </TouchableOpacity>
-      </View>
+      </Animated.View>
 
       <ScrollView 
         style={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={gradientColors}
+            tintColor={gradientColors[0]}
+          />
+        }
       >
         {/* Profile Section */}
-        <View style={styles.profileSection}>
+        <Animated.View 
+          style={[
+            styles.profileSection,
+            {
+              opacity: fadeAnim,
+              transform: [
+                { translateY: slideAnim },
+                { scale: scaleAnim }
+              ]
+            }
+          ]}
+        >
           <View style={styles.avatarContainer}>
             <LinearGradient
-              colors={[gradientStart, gradientEnd]}
+              colors={gradientColors}
               style={styles.avatarBorder}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -211,116 +354,95 @@ const ProfileScreen = ({ navigation }) => {
               {user.avatar && user.avatar !== 'https://randomuser.me/api/portraits/men/1.jpg' ? (
                 <Image source={{ uri: user.avatar }} style={styles.avatarImage} />
               ) : (
-                <Icon name="person" size={40} color="#FFF" />
+                <View style={styles.avatarPlaceholder}>
+                  <Icon name="person" size={isSmallScreen ? 32 : 40} color="#FFF" />
+                </View>
               )}
             </LinearGradient>
+            <View style={styles.onlineIndicator} />
           </View>
           
           <View style={styles.userInfo}>
-            <Text style={styles.userName}>{user.name}</Text>
+            <Text style={styles.userName} numberOfLines={1}>{user.name}</Text>
             {user.email && user.email.includes('@eatoor.com') ? (
-              <Text style={styles.userDetail}>{user?.contact}</Text>
+              <Text style={styles.userDetail} numberOfLines={1}>{user?.contact}</Text>
             ) : (
-              <Text style={styles.userDetail}>{user.email}</Text>
+              <Text style={styles.userDetail} numberOfLines={1}>{user.email}</Text>
             )}
-            <Text style={styles.memberSince}>Member since {user.memberSince}</Text>
+            <View style={styles.memberSinceContainer}>
+              <Icon name="calendar-outline" size={12} color="#888" />
+              <Text style={styles.memberSince}>Member since {user.memberSince}</Text>
+            </View>
           </View>
-        </View>
+        </Animated.View>
 
         {/* Stats Section */}
         <View style={styles.statsContainer}>
-          <View style={styles.statItem}>
-            <View style={[styles.statIconContainer]}>
-              <Icon name="cart-outline" size={20} color="#FFF" />
-            </View>
-            <Text style={styles.statValue}>{userDetails?.orders || user.orders}</Text>
-            <Text style={styles.statLabel}>Orders</Text>
-          </View>
+          <StatItem 
+            icon="cart-outline" 
+            value={userDetails?.orders || user.orders} 
+            label="Orders" 
+            index={0}
+          />
           
           <View style={styles.statDivider} />
           
-          <View style={styles.statItem}>
-            <View style={[styles.statIconContainer]}>
-              <Icon name="heart-outline" size={20} color="#FFF" />
-            </View>
-            <Text style={styles.statValue}>{userDetails?.favorites || user.favorites}</Text>
-            <Text style={styles.statLabel}>Favorites</Text>
-          </View>
+          <StatItem 
+            icon="heart-outline" 
+            value={userDetails?.favorites || user.favorites} 
+            label="Favorites" 
+            index={1}
+          />
           
           <View style={styles.statDivider} />
           
-          <View style={styles.statItem}>
-            <View style={[styles.statIconContainer]}>
-              <Icon name="star-outline" size={20} color="#FFF" />
-            </View>
-            <Text style={styles.statValue}>{userDetails?.reviews || user.rating}</Text>
-            <Text style={styles.statLabel}>Reviews</Text>
-          </View>
+          <StatItem 
+            icon="star-outline" 
+            value={userDetails?.reviews || user.rating} 
+            label="Reviews" 
+            index={2}
+          />
         </View>
 
         {/* Account Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
           
-          <TouchableOpacity 
-            style={styles.actionCard}
+          <ActionCard 
+            icon="cart-outline"
+            title="Your Orders"
+            subtitle="View and track your orders"
             onPress={() => navigation.navigate('OrdersScreen')}
-          >
-            <View style={[styles.actionIconContainer, { backgroundColor: '#FFEFE5' }]}>
-              <Icon name="cart-outline" size={22} color={gradientStart} />
-            </View>
-            <View style={styles.actionTextContainer}>
-              <Text style={styles.actionTitle}>Your Orders</Text>
-              <Text style={styles.actionSubtitle}>View and track your orders</Text>
-            </View>
-            <Icon name="chevron-forward" size={20} color="#999" />
-          </TouchableOpacity>
+            index={0}
+          />
 
-          <TouchableOpacity 
-            style={styles.actionCard}
+          <ActionCard 
+            icon="heart-outline"
+            title="Favorites"
+            subtitle="Your saved items"
             onPress={() => navigation.navigate('FavoritesScreen')}
-          >
-            <View style={[styles.actionIconContainer, { backgroundColor: '#FFEFE5' }]}>
-              <Icon name="heart-outline" size={22} color={gradientStart} />
-            </View>
-            <View style={styles.actionTextContainer}>
-              <Text style={styles.actionTitle}>Favorites</Text>
-              <Text style={styles.actionSubtitle}>Your saved items</Text>
-            </View>
-            <Icon name="chevron-forward" size={20} color="#999" />
-          </TouchableOpacity>
+            index={1}
+          />
 
-          <TouchableOpacity 
-            style={styles.actionCard}
+          <ActionCard 
+            icon="person-outline"
+            title="Edit Profile"
+            subtitle="Update your information"
             onPress={handleEditProfile}
-          >
-            <View style={[styles.actionIconContainer, { backgroundColor: '#FFEFE5' }]}>
-              <Icon name="person-outline" size={22} color={gradientStart} />
-            </View>
-            <View style={styles.actionTextContainer}>
-              <Text style={styles.actionTitle}>Edit Profile</Text>
-              <Text style={styles.actionSubtitle}>Update your information</Text>
-            </View>
-            <Icon name="chevron-forward" size={20} color="#999" />
-          </TouchableOpacity>
+            index={2}
+          />
           
-          <TouchableOpacity 
-            style={styles.actionCard}
+          <ActionCard 
+            icon="location-outline"
+            title="Addresses"
+            subtitle="Manage your addresses"
             onPress={() => navigation.navigate('AddressScreen', {prevLocation: "ProfileScreen"})}
-          >
-            <View style={[styles.actionIconContainer, { backgroundColor: '#FFEFE5' }]}>
-              <Icon name="location-outline" size={22} color={gradientStart} />
-            </View>
-            <View style={styles.actionTextContainer}>
-              <Text style={styles.actionTitle}>Addresses</Text>
-              <Text style={styles.actionSubtitle}>Manage your addresses</Text>
-            </View>
-            <Icon name="chevron-forward" size={20} color="#999" />
-          </TouchableOpacity>
+            index={3}
+          />
         </View>
       </ScrollView>
 
-      {/* Options Modal */}
+      {/* Enhanced Options Modal */}
       <Modal
         animationType="fade"
         transparent={true}
@@ -331,30 +453,52 @@ const ProfileScreen = ({ navigation }) => {
           style={styles.modalOverlay} 
           onPress={() => setModalVisible(false)}
         >
-          <View style={[
-            styles.modalContent,
-            { 
-              top: modalPosition.top,
-              right: modalPosition.right,
-              width: 180
-            }
-          ]}>
-            <TouchableOpacity 
-              style={styles.modalOption}
-              onPress={handleEditProfile}
+          <Animated.View 
+            style={[
+              styles.modalContent,
+              { 
+                top: modalPosition.top,
+                right: modalPosition.right,
+                width: isSmallScreen ? 160 : 180,
+                opacity: fadeAnim,
+                transform: [{ scale: scaleAnim }]
+              }
+            ]}
+          >
+            <LinearGradient
+              colors={['#ffffff', '#f8f9ff']}
+              style={styles.modalGradient}
             >
-              <Icon name="create-outline" size={18} color="#333" style={styles.optionIcon} />
-              <Text style={styles.modalOptionText}>Edit Profile</Text>
-            </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.modalOption}
+                onPress={handleEditProfile}
+              >
+                <View style={styles.modalOptionContent}>
+                  <LinearGradient
+                    colors={[gradientColors[0], gradientColors[1]]}
+                    style={styles.modalOptionIcon}
+                  >
+                    <Icon name="create-outline" size={16} color="#FFF" />
+                  </LinearGradient>
+                  <Text style={styles.modalOptionText}>Edit Profile</Text>
+                </View>
+              </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={[styles.modalOption, styles.logoutOption]}
-              onPress={handleLogout}
-            >
-              <Icon name="log-out-outline" size={18} color="#E65C00" style={styles.optionIcon} />
-              <Text style={[styles.modalOptionText, styles.logoutText]}>Logout</Text>
-            </TouchableOpacity>
-          </View>
+              <View style={styles.modalDivider} />
+
+              <TouchableOpacity 
+                style={[styles.modalOption, styles.logoutOption]}
+                onPress={handleLogout}
+              >
+                <View style={styles.modalOptionContent}>
+                  <View style={[styles.modalOptionIcon, { backgroundColor: '#FF6B6B' }]}>
+                    <Icon name="log-out-outline" size={16} color="#FFF" />
+                  </View>
+                  <Text style={[styles.modalOptionText, styles.logoutText]}>Logout</Text>
+                </View>
+              </TouchableOpacity>
+            </LinearGradient>
+          </Animated.View>
         </Pressable>
       </Modal>
     </SafeAreaView>
@@ -364,112 +508,154 @@ const ProfileScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFF',
+    backgroundColor: '#FAFBFF',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFF',
+    backgroundColor: '#FAFBFF',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#667eea',
+    fontWeight: '500',
   },
   scrollContainer: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 16,
+    paddingHorizontal: isSmallScreen ? 12 : isTablet ? 24 : 16,
     paddingBottom: 30,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'ios' ? 16 : StatusBar.currentHeight + 16,
+    paddingHorizontal: isSmallScreen ? 12 : isTablet ? 24 : 16,
+    paddingTop: Platform.OS === 'ios' ? 16 : StatusBar.currentHeight,
     paddingBottom: 16,
     backgroundColor: '#FFF',
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: isSmallScreen ? 18 : 20,
     fontWeight: '700',
     color: '#333',
+    letterSpacing: -0.5,
   },
   headerButton: {
-    width: 40,
-    height: 40,
+    width: isSmallScreen ? 36 : 40,
+    height: isSmallScreen ? 36 : 40,
     borderRadius: 20,
+    overflow: 'hidden',
+  },
+  headerButtonGradient: {
+    width: '100%',
+    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F8F8F8',
+    borderRadius: 20,
   },
   profileSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 20,
+    padding: isSmallScreen ? 16 : 24,
     backgroundColor: '#FFF',
-    borderRadius: 12,
+    borderRadius: 20,
     marginTop: 20,
     marginBottom: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  avatarContainer: {
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
     elevation: 5,
   },
+  avatarContainer: {
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 8,
+  },
   avatarBorder: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: isSmallScreen ? 70 : isTablet ? 100 : 80,
+    height: isSmallScreen ? 70 : isTablet ? 100 : 80,
+    borderRadius: isSmallScreen ? 35 : isTablet ? 50 : 40,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 3,
   },
   avatarImage: {
-    width: 74,
-    height: 74,
-    borderRadius: 37,
+    width: '100%',
+    height: '100%',
+    borderRadius: isSmallScreen ? 32 : isTablet ? 47 : 37,
+  },
+  avatarPlaceholder: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: isSmallScreen ? 32 : isTablet ? 47 : 37,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  onlineIndicator: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#4CD964',
+    borderWidth: 2,
+    borderColor: '#FFF',
   },
   userInfo: {
     flex: 1,
-    marginLeft: 16,
+    marginLeft: isSmallScreen ? 12 : 16,
   },
   userName: {
-    fontSize: 20,
+    fontSize: isSmallScreen ? 18 : isTablet ? 24 : 20,
     fontWeight: '700',
     color: '#333',
     marginBottom: 4,
   },
   userDetail: {
-    fontSize: 14,
+    fontSize: isSmallScreen ? 13 : 14,
     color: '#666',
-    marginBottom: 4,
+    marginBottom: 6,
+  },
+  memberSinceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
   },
   memberSince: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#888',
-    marginTop: 4,
+    marginLeft: 4,
   },
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     backgroundColor: '#FFF',
-    borderRadius: 12,
+    borderRadius: 20,
     marginBottom: 24,
-    paddingHorizontal: 16,
-    paddingVertical: 20,
+    paddingHorizontal: isSmallScreen ? 12 : 16,
+    paddingVertical: isSmallScreen ? 16 : 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowRadius: 12,
+    elevation: 5,
   },
   statItem: {
     alignItems: 'center',
@@ -477,113 +663,143 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   statIconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: isSmallScreen ? 40 : 44,
+    height: isSmallScreen ? 40 : 44,
+    borderRadius: isSmallScreen ? 20 : 22,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,
-    backgroundColor: '#E65C00',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   statValue: {
-    fontSize: 18,
+    fontSize: isSmallScreen ? 16 : 18,
     fontWeight: '700',
     color: '#333',
     marginVertical: 4,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 10,
     color: '#666',
     textTransform: 'uppercase',
+    fontWeight: '600',
+    letterSpacing: 0.5,
   },
   statDivider: {
     width: 1,
     height: 40,
     backgroundColor: '#F0F0F0',
-    marginHorizontal: 8,
+    marginHorizontal: 4,
     alignSelf: 'center',
   },
   section: {
     marginBottom: 24,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: isSmallScreen ? 16 : 18,
+    fontWeight: '700',
     color: '#333',
-    marginBottom: 12,
+    marginBottom: 16,
     marginLeft: 4,
+    letterSpacing: -0.3,
   },
   actionCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+    overflow: 'hidden',
+  },
+  actionCardTouchable: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    padding: isSmallScreen ? 14 : 16,
+  },
+  actionIconContainer: {
+    width: isSmallScreen ? 40 : 44,
+    height: isSmallScreen ? 40 : 44,
+    borderRadius: isSmallScreen ? 12 : 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
     elevation: 2,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-  },
-  actionIconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
   },
   actionTextContainer: {
     flex: 1,
   },
   actionTitle: {
-    fontSize: 16,
+    fontSize: isSmallScreen ? 15 : 16,
     fontWeight: '600',
     color: '#333',
     marginBottom: 2,
   },
   actionSubtitle: {
     fontSize: 12,
-    color: '#666',
+    color: '#888',
+  },
+  chevronContainer: {
+    padding: 4,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.2)',
+    backgroundColor: 'rgba(0,0,0,0.3)',
   },
   modalContent: {
     position: 'absolute',
     backgroundColor: '#FFF',
-    borderRadius: 12,
-    paddingVertical: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
+    borderRadius: 16,
     overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  modalGradient: {
+    paddingVertical: 8,
   },
   modalOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingVertical: 12,
     paddingHorizontal: 16,
   },
-  optionIcon: {
+  modalOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  modalOptionIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: 12,
   },
   modalOptionText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#333',
+    fontWeight: '500',
+  },
+  modalDivider: {
+    height: 1,
+    backgroundColor: '#F0F0F0',
+    marginHorizontal: 12,
   },
   logoutOption: {
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
+    // No additional styles needed
   },
   logoutText: {
-    color: '#E65C00',
+    color: '#FF6B6B',
   },
 });
 

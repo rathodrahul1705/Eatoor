@@ -769,7 +769,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f8f8'
   },
   header: {
-    marginTop:20,
     height: HEADER_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',

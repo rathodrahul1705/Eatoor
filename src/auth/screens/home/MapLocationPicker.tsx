@@ -37,6 +37,14 @@ const DEFAULT_COORDINATES = {
 };
 const ADDRESS_TYPES = ['Home', 'Office', 'Other'];
 
+// Location timeout constants
+const LOCATION_TIMEOUT = 10000; // 10 seconds
+const LOCATION_OPTIONS = {
+  enableHighAccuracy: true,
+  timeout: LOCATION_TIMEOUT,
+  maximumAge: 30000, // Use cached location up to 30 seconds old
+};
+
 // Debounce utility function
 const debounce = (func, wait) => {
   let timeout;
@@ -95,11 +103,13 @@ const MapLocationPicker = () => {
     latitude: 0, 
     longitude: 0 
   });
+  const [locationError, setLocationError] = useState(false);
 
   // Refs
   const mapRef = useRef(null);
   const searchInputRef = useRef(null);
   const searchTimeoutRef = useRef(null);
+  const locationTimeoutRef = useRef(null);
   const isMountedRef = useRef(true);
   
   // Animation values
@@ -133,12 +143,17 @@ const MapLocationPicker = () => {
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
       }
+      if (locationTimeoutRef.current) {
+        clearTimeout(locationTimeoutRef.current);
+      }
     };
   }, []);
 
   const initializeComponent = async () => {
-    await fetchUserData();
-    getCurrentLocation();
+    await Promise.all([
+      fetchUserData(),
+      getCurrentLocation()
+    ]);
   };
 
   const fetchUserData = async () => {
@@ -150,6 +165,28 @@ const MapLocationPicker = () => {
     } catch (error) {
       console.error('Error fetching user data:', error);
     }
+  };
+
+  // Try to get last known location from storage first
+  const getLastKnownLocation = async () => {
+    try {
+      const [latitude, longitude] = await Promise.all([
+        AsyncStorage.getItem('Latitude'),
+        AsyncStorage.getItem('Longitude'),
+      ]);
+      
+      if (latitude && longitude) {
+        const lat = parseFloat(latitude);
+        const lng = parseFloat(longitude);
+        
+        if (!isNaN(lat) && !isNaN(lng)) {
+          return { latitude: lat, longitude: lng };
+        }
+      }
+    } catch (error) {
+      console.error('Error getting last known location:', error);
+    }
+    return null;
   };
 
   // Reverse geocode function with proper error handling
@@ -219,30 +256,84 @@ const MapLocationPicker = () => {
     }
   }, []);
 
-  // Get current location
-  const getCurrentLocation = () => {
+  // Get current location with improved timeout handling
+  const getCurrentLocation = async () => {
     setLoading(true);
-    Geolocation.getCurrentPosition(
-      async (position) => {
-        if (!isMountedRef.current) return;
-        
-        const { latitude, longitude } = position.coords;
-        updateLocation(latitude, longitude);
+    setLocationError(false);
+    
+    try {
+      // First try to get last known location
+      const lastKnownLocation = await getLastKnownLocation();
+      if (lastKnownLocation && isMountedRef.current) {
+        console.log('Using last known location');
+        updateLocation(lastKnownLocation.latitude, lastKnownLocation.longitude);
         setLoading(false);
-      },
-      (error) => {
-        console.error('Error getting location:', error);
-        Alert.alert('Error', 'Failed to get current location');
-        setLoading(false);
-        
-        // Fallback to default location
-        updateLocation(DEFAULT_COORDINATES.latitude, DEFAULT_COORDINATES.longitude);
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
-    );
+        return;
+      }
+
+      // Set timeout for location request
+      locationTimeoutRef.current = setTimeout(() => {
+        if (isMountedRef.current && loading) {
+          console.log('Location request timeout, using default location');
+          handleLocationError('Location request timeout');
+        }
+      }, LOCATION_TIMEOUT);
+
+      // Request current location
+      Geolocation.getCurrentPosition(
+        async (position) => {
+          if (locationTimeoutRef.current) {
+            clearTimeout(locationTimeoutRef.current);
+          }
+          
+          if (!isMountedRef.current) return;
+          
+          const { latitude, longitude } = position.coords;
+          console.log('Got current location:', latitude, longitude);
+          updateLocation(latitude, longitude);
+          setLoading(false);
+        },
+        (error) => {
+          if (locationTimeoutRef.current) {
+            clearTimeout(locationTimeoutRef.current);
+          }
+          console.error('Error getting location:', error);
+          handleLocationError(error.message);
+        },
+        LOCATION_OPTIONS
+      );
+
+    } catch (error) {
+      console.error('Error in getCurrentLocation:', error);
+      handleLocationError(error.message);
+    }
+  };
+
+  const handleLocationError = (errorMessage) => {
+    if (!isMountedRef.current) return;
+    
+    console.log('Falling back to default location');
+    setLocationError(true);
+    
+    // Use default location as fallback
+    updateLocation(DEFAULT_COORDINATES.latitude, DEFAULT_COORDINATES.longitude);
+    setLoading(false);
+    
+    // Show gentle warning instead of alert
+    setTimeout(() => {
+      if (isMountedRef.current) {
+        Alert.alert(
+          'Location Service',
+          'Using default location. You can manually select your location on the map.',
+          [{ text: 'OK' }]
+        );
+      }
+    }, 1000);
   };
 
   const updateLocation = async (latitude, longitude) => {
+    if (!isMountedRef.current) return;
+    
     setLocation({ latitude, longitude });
     const newRegion = {
       latitude,
@@ -252,13 +343,28 @@ const MapLocationPicker = () => {
     };
     setMapRegion(newRegion);
     setLastFetchedCoordinates({ latitude, longitude });
-    await reverseGeocode(latitude, longitude, false);
     
-    // Store coordinates
-    await AsyncStorage.multiSet([
-      ['Latitude', latitude.toString()],
-      ['Longitude', longitude.toString()],
-    ]);
+    // Reverse geocode in background without blocking UI
+    reverseGeocode(latitude, longitude, false);
+    
+    // Store coordinates for future use
+    try {
+      await AsyncStorage.multiSet([
+        ['Latitude', latitude.toString()],
+        ['Longitude', longitude.toString()],
+      ]);
+    } catch (error) {
+      console.error('Error storing coordinates:', error);
+    }
+
+    // Animate map to location
+    if (mapRef.current) {
+      setTimeout(() => {
+        if (mapRef.current && isMountedRef.current) {
+          mapRef.current.animateToRegion(newRegion, 1000);
+        }
+      }, 100);
+    }
   };
 
   // Search places with debouncing
@@ -539,15 +645,6 @@ const MapLocationPicker = () => {
     </View>
   );
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#E65C00" />
-        <Text style={styles.loadingText}>Getting your location...</Text>
-      </View>
-    );
-  }
-
   // Animation interpolation
   const formTranslateY = slideAnim.interpolate({
     inputRange: [0, 1],
@@ -576,234 +673,253 @@ const MapLocationPicker = () => {
 
           {/* Map Section */}
           <View style={styles.mapContainer}>
-            <MapView
-              ref={mapRef}
-              style={styles.map}
-              region={mapRegion}
-              provider={PROVIDER_GOOGLE}
-              showsUserLocation={true}
-              showsMyLocationButton={false}
-              onRegionChangeComplete={handleRegionChangeComplete}
-              onPanDrag={() => setIsDragging(true)}
-            >
-              {location && (
-                <Marker
-                  coordinate={location}
-                  draggable
-                  onDragStart={() => setIsDragging(true)}
-                  onDragEnd={(e) => {
-                    const newLocation = e.nativeEvent.coordinate;
-                    setLocation(newLocation);
-                    handleRegionChangeComplete({
-                      ...newLocation,
-                      latitudeDelta: mapRegion.latitudeDelta,
-                      longitudeDelta: mapRegion.longitudeDelta,
-                    });
-                  }}
+            {loading ? (
+              <View style={styles.mapLoadingContainer}>
+                <ActivityIndicator size="large" color="#E65C00" />
+                <Text style={styles.mapLoadingText}>Getting your location...</Text>
+                <Text style={styles.mapLoadingSubtext}>This should only take a moment</Text>
+              </View>
+            ) : (
+              <>
+                <MapView
+                  ref={mapRef}
+                  style={styles.map}
+                  region={mapRegion}
+                  provider={PROVIDER_GOOGLE}
+                  showsUserLocation={true}
+                  showsMyLocationButton={false}
+                  onRegionChangeComplete={handleRegionChangeComplete}
+                  onPanDrag={() => setIsDragging(true)}
                 >
-                  <View style={styles.markerContainer}>
-                    <View style={styles.markerPin}>
-                      <Icon name="location" size={16} color="#FFF" />
-                    </View>
-                    <View style={styles.markerBase} />
+                  {location && (
+                    <Marker
+                      coordinate={location}
+                      draggable
+                      onDragStart={() => setIsDragging(true)}
+                      onDragEnd={(e) => {
+                        const newLocation = e.nativeEvent.coordinate;
+                        setLocation(newLocation);
+                        handleRegionChangeComplete({
+                          ...newLocation,
+                          latitudeDelta: mapRegion.latitudeDelta,
+                          longitudeDelta: mapRegion.longitudeDelta,
+                        });
+                      }}
+                    >
+                      <View style={styles.markerContainer}>
+                        <View style={styles.markerPin}>
+                          <Icon name="location" size={16} color="#FFF" />
+                        </View>
+                        <View style={styles.markerBase} />
+                      </View>
+                    </Marker>
+                  )}
+                </MapView>
+                
+                {/* Search Bar */}
+                <View style={styles.searchContainer}>
+                  <View style={styles.searchInputContainer}>
+                    <Icon name="search" size={20} color="#999" style={styles.searchIcon} />
+                    <TextInput
+                      ref={searchInputRef}
+                      style={styles.searchInput}
+                      placeholder="Search for address or place"
+                      placeholderTextColor="#999"
+                      value={searchQuery}
+                      onChangeText={handleSearchChange}
+                      onFocus={() => setIsSearchFocused(true)}
+                      onBlur={() => setIsSearchFocused(false)}
+                      returnKeyType="search"
+                      onSubmitEditing={() => {
+                        if (searchQuery.trim().length > 0) {
+                          searchPlaces(searchQuery);
+                        }
+                      }}
+                    />
+                    {searchQuery.length > 0 && (
+                      <TouchableOpacity 
+                        onPress={() => {
+                          setSearchQuery('');
+                          setSearchResults([]);
+                          setShowSearchResults(false);
+                        }}
+                        style={styles.clearButton}
+                      >
+                        <Icon name="close-circle" size={20} color="#999" />
+                      </TouchableOpacity>
+                    )}
                   </View>
-                </Marker>
-              )}
-            </MapView>
-            
-            {/* Search Bar */}
-            <View style={styles.searchContainer}>
-              <View style={styles.searchInputContainer}>
-                <Icon name="search" size={20} color="#999" style={styles.searchIcon} />
-                <TextInput
-                  ref={searchInputRef}
-                  style={styles.searchInput}
-                  placeholder="Search for address or place"
-                  placeholderTextColor="#999"
-                  value={searchQuery}
-                  onChangeText={handleSearchChange}
-                  onFocus={() => setIsSearchFocused(true)}
-                  onBlur={() => setIsSearchFocused(false)}
-                  returnKeyType="search"
-                  onSubmitEditing={() => {
-                    if (searchQuery.trim().length > 0) {
-                      searchPlaces(searchQuery);
-                    }
-                  }}
-                />
-                {searchQuery.length > 0 && (
-                  <TouchableOpacity 
-                    onPress={() => {
-                      setSearchQuery('');
-                      setSearchResults([]);
-                      setShowSearchResults(false);
-                    }}
-                    style={styles.clearButton}
-                  >
-                    <Icon name="close-circle" size={20} color="#999" />
-                  </TouchableOpacity>
+                  {isSearching && (
+                    <ActivityIndicator size="small" color="#E65C00" style={styles.searchLoading} />
+                  )}
+                </View>
+
+                {/* Search Results */}
+                {showSearchResults && searchResults.length > 0 && (
+                  <View style={styles.searchResultsContainer}>
+                    <FlatList
+                      data={searchResults}
+                      renderItem={renderSearchItem}
+                      keyExtractor={(item) => item.place_id}
+                      keyboardShouldPersistTaps="handled"
+                      style={styles.searchResultsList}
+                    />
+                  </View>
                 )}
-              </View>
-              {isSearching && (
-                <ActivityIndicator size="small" color="#E65C00" style={styles.searchLoading} />
-              )}
-            </View>
 
-            {/* Search Results */}
-            {showSearchResults && searchResults.length > 0 && (
-              <View style={styles.searchResultsContainer}>
-                <FlatList
-                  data={searchResults}
-                  renderItem={renderSearchItem}
-                  keyExtractor={(item) => item.place_id}
-                  keyboardShouldPersistTaps="handled"
-                  style={styles.searchResultsList}
-                />
-              </View>
-            )}
+                {/* Current Location Button */}
+                <TouchableOpacity style={styles.currentLocationButton} onPress={getCurrentLocation}>
+                  <View style={styles.locationButtonInner}>
+                    <Icon name="locate" size={20} color="#E65C00" />
+                  </View>
+                </TouchableOpacity>
 
-            {/* Current Location Button */}
-            <TouchableOpacity style={styles.currentLocationButton} onPress={getCurrentLocation}>
-              <View style={styles.locationButtonInner}>
-                <Icon name="locate" size={20} color="#E65C00" />
-              </View>
-            </TouchableOpacity>
+                {locationError && (
+                  <View style={styles.locationErrorBanner}>
+                    <Icon name="warning-outline" size={16} color="#FFF" />
+                    <Text style={styles.locationErrorText}>Using default location</Text>
+                  </View>
+                )}
 
-            {isDragging && (
-              <View style={styles.draggingOverlay}>
-                <ActivityIndicator size="small" color="#FFFFFF" />
-                <Text style={styles.draggingText}>Updating address...</Text>
-              </View>
+                {isDragging && (
+                  <View style={styles.draggingOverlay}>
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                    <Text style={styles.draggingText}>Updating address...</Text>
+                  </View>
+                )}
+              </>
             )}
           </View>
 
           {/* Address Form Section */}
-          <Animated.View style={[
-            styles.formContainer, 
-            { transform: [{ translateY: formTranslateY }] }
-          ]}>
-            <ScrollView 
-              style={styles.formScrollContainer} 
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-            >
-              <Text style={styles.sectionTitle}>Save Address As</Text>
-              
-              {/* Address Type Selection */}
-              {renderAddressTypeButtons()}
-
-              {/* Custom Name Field (only for Other) */}
-              {address.addressType === 'Other' && (
-                <View style={styles.inputContainer}>
-                  <Text style={styles.label}>Name of location *</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={address.customName}
-                    onChangeText={(text) => handleInputChange('customName', text)}
-                    onBlur={handleInputBlur}
-                    placeholder="Enter location name"
-                    placeholderTextColor="#999"
-                  />
-                </View>
-              )}
-
-              {/* Complete Address */}
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Complete Address *</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  value={address.completeAddress}
-                  onChangeText={(text) => handleInputChange('completeAddress', text)}
-                  onBlur={handleInputBlur}
-                  placeholder="Full address"
-                  placeholderTextColor="#999"
-                  multiline
-                  numberOfLines={3}
-                />
-              </View>
-
-              {/* Landmark */}
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Landmark</Text>
-                <TextInput
-                  style={styles.input}
-                  value={address.landmark}
-                  onChangeText={(text) => handleInputChange('landmark', text)}
-                  onBlur={handleInputBlur}
-                  placeholder="Nearby landmark"
-                  placeholderTextColor="#999"
-                />
-              </View>
-
-              {/* City, Zipcode */}
-              <View style={styles.row}>
-                <View style={[styles.inputContainer, styles.flex1]}>
-                  <Text style={styles.label}>City *</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={address.city}
-                    onChangeText={(text) => handleInputChange('city', text)}
-                    onBlur={handleInputBlur}
-                    placeholder="City"
-                    placeholderTextColor="#999"
-                  />
-                </View>
-                <View style={[styles.inputContainer, styles.flex1, styles.zipInput]}>
-                  <Text style={styles.label}>Zipcode *</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={address.zipCode}
-                    onChangeText={(text) => handleInputChange('zipCode', text)}
-                    onBlur={handleInputBlur}
-                    placeholder="Zip code"
-                    placeholderTextColor="#999"
-                    keyboardType="numeric"
-                  />
-                </View>
-              </View>
-
-              {/* State, Country */}
-              <View style={styles.row}>
-                <View style={[styles.inputContainer, styles.flex1]}>
-                  <Text style={styles.label}>State *</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={address.state}
-                    onChangeText={(text) => handleInputChange('state', text)}
-                    onBlur={handleInputBlur}
-                    placeholder="State"
-                    placeholderTextColor="#999"
-                  />
-                </View>
-                <View style={[styles.inputContainer, styles.flex1]}>
-                  <Text style={styles.label}>Country *</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={address.country}
-                    onChangeText={(text) => handleInputChange('country', text)}
-                    onBlur={handleInputBlur}
-                    placeholder="Country"
-                    placeholderTextColor="#999"
-                  />
-                </View>
-              </View>
-
-              {/* Save Button */}
-              <TouchableOpacity 
-                style={[styles.saveButton, isSubmitting && styles.saveButtonDisabled]} 
-                onPress={handleSaveAddress}
-                disabled={isSubmitting}
+          {!loading && (
+            <Animated.View style={[
+              styles.formContainer, 
+              { transform: [{ translateY: formTranslateY }] }
+            ]}>
+              <ScrollView 
+                style={styles.formScrollContainer} 
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
               >
-                {isSubmitting ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.saveButtonText}>Save Address</Text>
-                )}
-              </TouchableOpacity>
+                <Text style={styles.sectionTitle}>Save Address As</Text>
+                
+                {/* Address Type Selection */}
+                {renderAddressTypeButtons()}
 
-              <View style={styles.spacer} />
-            </ScrollView>
-          </Animated.View>
+                {/* Custom Name Field (only for Other) */}
+                {address.addressType === 'Other' && (
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>Name of location *</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={address.customName}
+                      onChangeText={(text) => handleInputChange('customName', text)}
+                      onBlur={handleInputBlur}
+                      placeholder="Enter location name"
+                      placeholderTextColor="#999"
+                    />
+                  </View>
+                )}
+
+                {/* Complete Address */}
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Complete Address *</Text>
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    value={address.completeAddress}
+                    onChangeText={(text) => handleInputChange('completeAddress', text)}
+                    onBlur={handleInputBlur}
+                    placeholder="Full address"
+                    placeholderTextColor="#999"
+                    multiline
+                    numberOfLines={3}
+                  />
+                </View>
+
+                {/* Landmark */}
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Landmark</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={address.landmark}
+                    onChangeText={(text) => handleInputChange('landmark', text)}
+                    onBlur={handleInputBlur}
+                    placeholder="Nearby landmark"
+                    placeholderTextColor="#999"
+                  />
+                </View>
+
+                {/* City, Zipcode */}
+                <View style={styles.row}>
+                  <View style={[styles.inputContainer, styles.flex1]}>
+                    <Text style={styles.label}>City *</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={address.city}
+                      onChangeText={(text) => handleInputChange('city', text)}
+                      onBlur={handleInputBlur}
+                      placeholder="City"
+                      placeholderTextColor="#999"
+                    />
+                  </View>
+                  <View style={[styles.inputContainer, styles.flex1, styles.zipInput]}>
+                    <Text style={styles.label}>Zipcode *</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={address.zipCode}
+                      onChangeText={(text) => handleInputChange('zipCode', text)}
+                      onBlur={handleInputBlur}
+                      placeholder="Zip code"
+                      placeholderTextColor="#999"
+                      keyboardType="numeric"
+                    />
+                  </View>
+                </View>
+
+                {/* State, Country */}
+                <View style={styles.row}>
+                  <View style={[styles.inputContainer, styles.flex1]}>
+                    <Text style={styles.label}>State *</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={address.state}
+                      onChangeText={(text) => handleInputChange('state', text)}
+                      onBlur={handleInputBlur}
+                      placeholder="State"
+                      placeholderTextColor="#999"
+                    />
+                  </View>
+                  <View style={[styles.inputContainer, styles.flex1]}>
+                    <Text style={styles.label}>Country *</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={address.country}
+                      onChangeText={(text) => handleInputChange('country', text)}
+                      onBlur={handleInputBlur}
+                      placeholder="Country"
+                      placeholderTextColor="#999"
+                    />
+                  </View>
+                </View>
+
+                {/* Save Button */}
+                <TouchableOpacity 
+                  style={[styles.saveButton, isSubmitting && styles.saveButtonDisabled]} 
+                  onPress={handleSaveAddress}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.saveButtonText}>Save Address</Text>
+                  )}
+                </TouchableOpacity>
+
+                <View style={styles.spacer} />
+              </ScrollView>
+            </Animated.View>
+          )}
         </Animated.View>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
@@ -826,13 +942,29 @@ const styles = StyleSheet.create({
     color: '#333333',
     fontSize: 16,
   },
+  mapLoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F8F8F8',
+  },
+  mapLoadingText: {
+    marginTop: 16,
+    color: '#333333',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  mapLoadingSubtext: {
+    marginTop: 8,
+    color: '#666666',
+    fontSize: 14,
+  },
   header: {
-    marginTop:30,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'ios' ? 50 : 20,
+    paddingTop: Platform.OS === 'ios' ? 50 : 10,
     paddingBottom: 12,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
@@ -1031,6 +1163,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8F8F8',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  locationErrorBanner: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(255, 149, 0, 0.9)',
+    padding: 8,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  locationErrorText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    marginLeft: 8,
+    fontSize: 14,
   },
   draggingOverlay: {
     position: 'absolute',

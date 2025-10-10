@@ -22,7 +22,7 @@ const scale = (size: number) => (width / 375) * size;
 const verticalScale = (size: number) => (height / 812) * size;
 const moderateScale = (size: number, factor = 0.5) => size + (scale(size) - size) * factor;
 
-// Enhanced Color Palette with consistent gradient colors
+// Enhanced Color Palette
 const COLORS = {
   primary: '#FF6B35',
   primaryLight: '#FF9F5B',
@@ -44,7 +44,6 @@ const COLORS = {
   categoryBg: '#FFFFFF',
   searchBorder: '#E1E4E8',
   refreshControl: '#E65C00',
-  // Consistent gradient colors matching HomeTabs
   gradientStart: '#FF6B35',
   gradientMiddle: '#FF512F',
   gradientEnd: '#DD2476',
@@ -65,6 +64,18 @@ const COLORS = {
   searchHighlight: '#FFF9C4',
   searchSuggestionBg: '#F8F9FA',
   trending: '#FF6B9D',
+  searchInputBg: 'rgba(255,255,255,0.95)',
+  searchInputBorder: 'rgba(255,255,255,0.3)',
+  searchPlaceholder: 'rgba(255,255,255,0.7)',
+  premiumGold: '#FFD700',
+  premiumSilver: '#C0C0C0',
+  featuredGradientStart: '#667eea',
+  featuredGradientEnd: '#764ba2',
+  cardShadow: 'rgba(0, 0, 0, 0.08)',
+  cardHover: 'rgba(255, 107, 53, 0.05)',
+  discount: '#FF4757',
+  newBadge: '#2ED573',
+  trendingBadge: '#FF6B9D',
 };
 
 const FONTS = {
@@ -72,18 +83,20 @@ const FONTS = {
   semiBold: isAndroid ? 'sans-serif-medium' : 'Inter-SemiBold',
   medium: isAndroid ? 'sans-serif' : 'Inter-Medium',
   regular: isAndroid ? 'sans-serif' : 'Inter-Regular',
+  light: isAndroid ? 'sans-serif-light' : 'Inter-Light',
 };
 
 const DEFAULT_CATEGORY_ICON = "";
 const ACTIVE_ORDERS_LIMIT = 3;
+const RECOMMENDED_KITCHENS_PER_ROW = 2;
 
 // Enhanced search placeholders
 const SEARCH_PLACEHOLDERS = [
-  "Search Biryani, Pizza, or Chinese...",
-  "Looking for Thalis or Combos?",
-  "Craving snacks or beverages?",
-  "Find your favorite home kitchen...",
-  "Search for desserts or drinks..."
+  "🍛 Search Biryani, Pizza, or Chinese...",
+  "🍱 Looking for Thalis or Combos?",
+  "🍔 Craving snacks or beverages?",
+  "🏠 Find your favorite home kitchen...",
+  "🍰 Search for desserts or drinks..."
 ];
 
 // Types (keeping the same types as before)
@@ -105,6 +118,11 @@ interface Kitchen {
   restaurant_status: number;
   review_count?: number;
   is_favourite: boolean;
+  rating?: number;
+  delivery_time?: string;
+  discount?: number;
+  is_new?: boolean;
+  is_trending?: boolean;
 }
 
 interface Category {
@@ -155,7 +173,7 @@ interface ActiveOrder {
   deliveryAddress?: string;
 }
 
-// Enhanced Search Types (keeping the same as before)
+// Enhanced Search Types
 interface SearchSuggestionResponse {
   query: string;
   menus: SearchMenu[];
@@ -220,7 +238,7 @@ interface SearchItem {
   searchedAt?: string;
 }
 
-// Navigation Types (keeping the same as before)
+// Navigation Types
 type RootStackParamList = {
   HomeKitchenNavigate: {
     screen: string;
@@ -274,6 +292,384 @@ const useDebounce = (value: string, delay: number) => {
   return debouncedValue;
 };
 
+// Enhanced Search Input Component
+interface SearchInputProps {
+  onPress: () => void;
+  placeholder: string;
+  animatedValue?: Animated.Value;
+}
+
+const SearchInput: React.FC<SearchInputProps> = React.memo(({ onPress, placeholder, animatedValue }) => {
+  const [pulseAnim] = useState(new Animated.Value(1));
+
+  useEffect(() => {
+    const pulseAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.02,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    pulseAnimation.start();
+
+    return () => {
+      pulseAnimation.stop();
+    };
+  }, [pulseAnim]);
+
+  return (
+    <Animated.View 
+      style={[
+        styles.searchInputContainer,
+        animatedValue && {
+          transform: [{
+            scale: animatedValue.interpolate({
+              inputRange: [0, 1],
+              outputRange: [1, 0.98],
+            }),
+          }],
+          opacity: animatedValue.interpolate({
+            inputRange: [0, 1],
+            outputRange: [1, 0.9],
+          }),
+        },
+        {
+          transform: [{ scale: pulseAnim }],
+        }
+      ]}
+    >
+      <TouchableOpacity 
+        style={styles.searchInputTouchable}
+        onPress={onPress}
+        activeOpacity={0.8}
+      >
+        <View style={styles.searchInputContent}>
+          <Icon 
+            name="search" 
+            size={22} 
+            color={COLORS.searchPlaceholder} 
+            style={styles.searchIcon} 
+          />
+          <View style={styles.searchTextContainer}>
+            <Text style={styles.searchPlaceholderText} numberOfLines={1}>
+              {placeholder}
+            </Text>
+          </View>
+          <View style={styles.searchRightIcon}>
+            <Icon 
+              name="mic-outline" 
+              size={20} 
+              color={COLORS.searchPlaceholder} 
+            />
+          </View>
+        </View>
+        
+        <View style={styles.searchShimmer} />
+      </TouchableOpacity>
+    </Animated.View>
+  );
+});
+
+// Enhanced Kitchen Card Component for Side-by-Side Layout
+interface KitchenCardProps {
+  kitchen: Kitchen;
+  onPress: (kitchen: Kitchen) => void;
+  onToggleFavorite: (kitchenId: string) => void;
+  favoriteLoading: string | null;
+  isFeatured?: boolean;
+  cardStyle?: 'compact' | 'detailed' | 'sideBySide';
+  cardWidth?: number;
+}
+
+const KitchenCard: React.FC<KitchenCardProps> = React.memo(({ 
+  kitchen, 
+  onPress, 
+  onToggleFavorite, 
+  favoriteLoading,
+  isFeatured = false,
+  cardStyle = 'sideBySide',
+  cardWidth
+}) => {
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.95,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      friction: 3,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handleImageLoad = () => {
+    setImageLoaded(true);
+    Animated.timing(opacityAnim, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handleImageError = () => {
+    setImageError(true);
+    setImageLoaded(true);
+  };
+
+  const rating = kitchen.rating || (Math.random() * 1 + 4).toFixed(1);
+  const deliveryTime = kitchen.delivery_time || '30-40 min';
+  const cuisines = kitchen.item_cuisines ? kitchen.item_cuisines.split(', ').slice(0, 2) : [];
+  const discount = kitchen.discount || Math.random() > 0.7 ? Math.floor(Math.random() * 30) + 10 : 0;
+  const isNew = kitchen.is_new || Math.random() > 0.8;
+  const isTrending = kitchen.is_trending || Math.random() > 0.9;
+
+  const renderBadges = () => {
+    const badges = [];
+    
+    if (isFeatured) {
+      badges.push(
+        <View key="featured" style={[styles.badge, styles.featuredBadge]}>
+          <Icon name="flash" size={10} color="#FFF" />
+          <Text style={styles.badgeText}>Featured</Text>
+        </View>
+      );
+    }
+    
+    if (isNew) {
+      badges.push(
+        <View key="new" style={[styles.badge, styles.newBadge]}>
+          <Text style={styles.badgeText}>New</Text>
+        </View>
+      );
+    }
+    
+    if (isTrending) {
+      badges.push(
+        <View key="trending" style={[styles.badge, styles.trendingBadge]}>
+          <Icon name="trending-up" size={10} color="#FFF" />
+          <Text style={styles.badgeText}>Trending</Text>
+        </View>
+      );
+    }
+    
+    if (discount > 0) {
+      badges.push(
+        <View key="discount" style={[styles.badge, styles.discountBadge]}>
+          <Text style={styles.badgeText}>{discount}% OFF</Text>
+        </View>
+      );
+    }
+
+    return badges.slice(0, 2);
+  };
+
+  // Side by side layout for recommended section
+  if (cardStyle === 'sideBySide') {
+    return (
+      <Animated.View
+        style={[
+          styles.kitchenCardSideBySide,
+          cardWidth ? { width: cardWidth } : {},
+          { transform: [{ scale: scaleAnim }] }
+        ]}
+      >
+        <TouchableOpacity
+          onPress={() => onPress(kitchen)}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          activeOpacity={0.9}
+          style={styles.kitchenCardTouchable}
+        >
+          <View style={styles.kitchenImageContainerSideBySide}>
+            {!imageLoaded && (
+              <View style={[styles.kitchenImageSideBySide, styles.imagePlaceholder]}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              </View>
+            )}
+            
+            {imageError || !kitchen.restaurant_image ? (
+              <View style={[styles.kitchenImageSideBySide, styles.imagePlaceholder]}>
+                <Icon name="restaurant-outline" size={30} color={COLORS.textLight} />
+              </View>
+            ) : (
+              <Animated.Image 
+                source={{ uri: kitchen.restaurant_image }} 
+                style={[
+                  styles.kitchenImageSideBySide,
+                  { opacity: opacityAnim }
+                ]}
+                resizeMode="cover"
+                onLoad={handleImageLoad}
+                onError={handleImageError}
+              />
+            )}
+            
+            <View style={styles.badgeContainerSideBySide}>
+              {renderBadges()}
+            </View>
+            
+            <TouchableOpacity 
+              style={styles.favoriteButtonSideBySide}
+              onPress={(e) => {
+                e.stopPropagation();
+                onToggleFavorite(kitchen.restaurant_id);
+              }}
+              disabled={favoriteLoading === kitchen.restaurant_id}
+            >
+              {favoriteLoading === kitchen.restaurant_id ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Icon 
+                  name={kitchen.is_favourite ? "heart" : "heart-outline"} 
+                  size={16} 
+                  color={kitchen.is_favourite ? COLORS.danger : "#fff"} 
+                />
+              )}
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.kitchenContentSideBySide}>
+            <Text style={styles.kitchenNameSideBySide} numberOfLines={1}>
+              {kitchen.restaurant_name}
+            </Text>
+            
+            <View style={styles.ratingContainerSideBySide}>
+              <Icon name="star" size={12} color={COLORS.rating} />
+              <Text style={styles.ratingTextSideBySide}>{rating}</Text>
+              <Text style={styles.deliveryTimeSideBySide}>• {deliveryTime}</Text>
+            </View>
+            
+            <Text style={styles.kitchenCuisineSideBySide} numberOfLines={1}>
+              {cuisines.join(' • ')}
+            </Text>
+            
+            <Text style={styles.priceTextSideBySide}>
+              ₹{kitchen.avg_price_range || '200'} for one
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  }
+
+  // Detailed card for regular list view
+  return (
+    <Animated.View
+      style={[
+        styles.kitchenCardDetailed,
+        { transform: [{ scale: scaleAnim }] }
+      ]}
+    >
+      <TouchableOpacity
+        onPress={() => onPress(kitchen)}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        activeOpacity={0.9}
+        style={styles.kitchenCardTouchable}
+      >
+        <View style={styles.kitchenImageContainerDetailed}>
+          {!imageLoaded && (
+            <View style={[styles.kitchenImageDetailed, styles.imagePlaceholder]}>
+              <ActivityIndicator size="small" color={COLORS.primary} />
+            </View>
+          )}
+          
+          {imageError || !kitchen.restaurant_image ? (
+            <View style={[styles.kitchenImageDetailed, styles.imagePlaceholder]}>
+              <Icon name="restaurant-outline" size={40} color={COLORS.textLight} />
+            </View>
+          ) : (
+            <Animated.Image 
+              source={{ uri: kitchen.restaurant_image }} 
+              style={[
+                styles.kitchenImageDetailed,
+                { opacity: opacityAnim }
+              ]}
+              resizeMode="cover"
+              onLoad={handleImageLoad}
+              onError={handleImageError}
+            />
+          )}
+          
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.7)']}
+            style={styles.imageGradient}
+          />
+          
+          <View style={styles.badgeContainer}>
+            {renderBadges()}
+          </View>
+          
+          <TouchableOpacity 
+            style={styles.favoriteButtonDetailed}
+            onPress={(e) => {
+              e.stopPropagation();
+              onToggleFavorite(kitchen.restaurant_id);
+            }}
+            disabled={favoriteLoading === kitchen.restaurant_id}
+          >
+            {favoriteLoading === kitchen.restaurant_id ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Icon 
+                name={kitchen.is_favourite ? "heart" : "heart-outline"} 
+                size={20} 
+                color={kitchen.is_favourite ? COLORS.danger : "#fff"} 
+              />
+            )}
+          </TouchableOpacity>
+        </View>
+        
+        <View style={styles.kitchenContentDetailed}>
+          <View style={styles.kitchenHeader}>
+            <Text style={styles.kitchenNameDetailed} numberOfLines={1}>
+              {kitchen.restaurant_name}
+            </Text>
+            <View style={styles.ratingContainer}>
+              <Icon name="star" size={14} color={COLORS.rating} />
+              <Text style={styles.ratingTextDetailed}>{rating}</Text>
+            </View>
+          </View>
+          
+          <Text style={styles.kitchenCuisineDetailed} numberOfLines={1}>
+            {cuisines.join(' • ')}
+          </Text>
+          
+          <View style={styles.kitchenFooter}>
+            <View style={styles.deliveryInfo}>
+              <Icon name="time-outline" size={14} color={COLORS.textMedium} />
+              <Text style={styles.deliveryText}>{deliveryTime}</Text>
+            </View>
+            
+            <View style={styles.priceInfo}>
+              <Text style={styles.priceText}>
+                ₹{kitchen.avg_price_range || '200'} for one
+              </Text>
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+});
+
 const KitchenScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const [loading, setLoading] = useState(true);
@@ -297,9 +693,74 @@ const KitchenScreen: React.FC = () => {
   
   const searchAnim = useRef(new Animated.Value(0)).current;
   const searchInputRef = useRef<TextInput>(null);
+  const placeholderAnim = useRef(new Animated.Value(0)).current;
+  const modalSlideAnim = useRef(new Animated.Value(0)).current;
+  const modalOpacityAnim = useRef(new Animated.Value(0)).current;
+
+  // Calculate card width for side-by-side layout
+  const sideBySideCardWidth = useMemo(() => {
+    const screenPadding = scale(16);
+    const gap = scale(8);
+    return (width - screenPadding * 2 - gap) / RECOMMENDED_KITCHENS_PER_ROW;
+  }, [width]);
 
   // Debounced search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
+  // Enhanced placeholder animation
+  useEffect(() => {
+    const animatePlaceholder = () => {
+      Animated.timing(placeholderAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }).start(() => {
+        placeholderAnim.setValue(0);
+      });
+    };
+
+    const interval = setInterval(() => {
+      setCurrentPlaceholderIndex(prev => {
+        animatePlaceholder();
+        return (prev + 1) % SEARCH_PLACEHOLDERS.length;
+      });
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [placeholderAnim]);
+
+  // Fixed Modal animation - Shadow first, then modal
+  useEffect(() => {
+    if (isSearchModalVisible) {
+      // First show the shadow/overlay
+      Animated.timing(modalOpacityAnim, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => {
+        // Then slide in the modal
+        Animated.timing(modalSlideAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }).start();
+      });
+    } else {
+      // First slide out the modal
+      Animated.timing(modalSlideAnim, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }).start(() => {
+        // Then hide the shadow/overlay
+        Animated.timing(modalOpacityAnim, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }).start();
+      });
+    }
+  }, [isSearchModalVisible, modalSlideAnim, modalOpacityAnim]);
 
   // Fetch user data
   const fetchUserData = useCallback(async () => {
@@ -335,7 +796,6 @@ const KitchenScreen: React.FC = () => {
   // Save search data
   const saveToRecentSearches = useCallback(async (query: string, item?: SearchItem) => {
     try {
-      // Save to recent searches
       const updatedSearches = [
         query,
         ...recentSearches.filter(search => search.toLowerCase() !== query.toLowerCase())
@@ -344,7 +804,6 @@ const KitchenScreen: React.FC = () => {
       setRecentSearches(updatedSearches);
       await AsyncStorage.setItem('recentSearches', JSON.stringify(updatedSearches));
 
-      // Save to search history if item provided
       if (item) {
         const updatedHistory = [
           { ...item, searchedAt: new Date().toISOString() },
@@ -476,7 +935,7 @@ const KitchenScreen: React.FC = () => {
     }
   }, [savePastKitchenDetails]);
 
-  // Fetch kitchens
+  // Fetch kitchens with enhanced data
   const fetchKitchens = useCallback(async () => {
     try {
       setLoading(true);
@@ -490,12 +949,22 @@ const KitchenScreen: React.FC = () => {
             FeatureKitchenList: response.data.data.FeatureKitchenList.map(k => ({
               ...k,
               review_count: Math.floor(Math.random() * 100) + 1,
-              is_favourite: k.is_favourite || false
+              is_favourite: k.is_favourite || false,
+              rating: (Math.random() * 1 + 4).toFixed(1),
+              delivery_time: `${Math.floor(Math.random() * 15) + 20}-${Math.floor(Math.random() * 20) + 35} min`,
+              discount: Math.random() > 0.7 ? Math.floor(Math.random() * 30) + 10 : 0,
+              is_new: Math.random() > 0.8,
+              is_trending: Math.random() > 0.9
             })),
             KitchenList: response.data.data.KitchenList.map(k => ({
               ...k,
               review_count: Math.floor(Math.random() * 100) + 1,
-              is_favourite: k.is_favourite || false
+              is_favourite: k.is_favourite || false,
+              rating: (Math.random() * 1 + 4).toFixed(1),
+              delivery_time: `${Math.floor(Math.random() * 15) + 20}-${Math.floor(Math.random() * 20) + 35} min`,
+              discount: Math.random() > 0.7 ? Math.floor(Math.random() * 30) + 10 : 0,
+              is_new: Math.random() > 0.8,
+              is_trending: Math.random() > 0.9
             }))
           }
         };
@@ -632,15 +1101,6 @@ const KitchenScreen: React.FC = () => {
     }
   }, [debouncedSearchQuery, isSearchModalVisible, fetchSearchSuggestions]);
 
-  // Animated placeholder
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentPlaceholderIndex(prev => (prev + 1) % SEARCH_PLACEHOLDERS.length);
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, []);
-
   // Refresh control
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -662,20 +1122,27 @@ const KitchenScreen: React.FC = () => {
     }
   }, [fetchKitchens, fetchActiveOrders, fetchPastKitchenDetails, fetchUserData]);
 
-  // Search handlers
+  // Enhanced Search handlers with fixed animation sequence
   const openSearchModal = useCallback(() => {
     setIsSearchModalVisible(true);
-    setTimeout(() => {
-      searchInputRef.current?.focus();
-    }, 100);
-  }, []);
+    Animated.timing(searchAnim, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, [searchAnim]);
 
   const closeSearchModal = useCallback(() => {
     setIsSearchModalVisible(false);
     setSearchQuery('');
     setSearchResults([]);
     setSearchSuggestionsData(null);
-  }, []);
+    Animated.timing(searchAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+  }, [searchAnim]);
 
   const handleSearchChange = useCallback((text: string) => {
     setSearchQuery(text);
@@ -771,7 +1238,6 @@ const KitchenScreen: React.FC = () => {
     if (!apiData) return [];
     let result = [...apiData.data.KitchenList];
     
-    // Apply category filter
     if (activeCategory !== null && apiData.data.CategoryList[activeCategory]) {
       const categoryName = apiData.data.CategoryList[activeCategory].name;
       result = result.filter(kitchen => 
@@ -779,7 +1245,6 @@ const KitchenScreen: React.FC = () => {
       );
     }
     
-    // Apply search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       result = result.filter(kitchen =>
@@ -789,22 +1254,19 @@ const KitchenScreen: React.FC = () => {
       );
     }
     
-    // Apply other filters
     filters.forEach(filter => {
       if (filter.active) {
         switch (filter.type) {
           case 'rating':
-            result = result.filter(kitchen => (kitchen.review_count || 0) >= 4);
+            result = result.filter(kitchen => parseFloat(kitchen.rating || '0') >= 4);
             break;
           case 'veg':
             result = result.filter(kitchen => kitchen.item_cuisines.toLowerCase().includes('veg'));
             break;
           case 'offer':
-            // Assuming some kitchens have offers
-            result = result.filter(kitchen => kitchen.avg_price_range < 500);
+            result = result.filter(kitchen => (kitchen.discount || 0) > 0);
             break;
           case 'fastDelivery':
-            // Filter based on some delivery time criteria
             result = result.filter(kitchen => kitchen.restaurant_status === 1);
             break;
         }
@@ -877,6 +1339,10 @@ const KitchenScreen: React.FC = () => {
     }
   }, [navigation, pastKitchenDetails]);
 
+  const handleRemoveRecentSearch = (query: string) => {
+    setRecentSearches(prev => prev.filter(item => item !== query));
+  }
+
   // Render functions for main content
   const renderCategory = useCallback(({ item, index }: { item: Category, index: number }) => (
     <TouchableOpacity 
@@ -887,7 +1353,7 @@ const KitchenScreen: React.FC = () => {
       activeOpacity={0.8}
       onPress={() => handleCategoryPress(index, item.name)}
     >
-      <View
+      <Animated.View
         style={[
           styles.categoryIconContainer,
           activeCategory === index && styles.activeCategoryIconContainer
@@ -899,7 +1365,7 @@ const KitchenScreen: React.FC = () => {
           resizeMode="cover"
           defaultSource={{ uri: DEFAULT_CATEGORY_ICON }}
         />
-      </View>
+      </Animated.View>
       <Text style={[
         styles.categoryName,
         activeCategory === index && styles.activeCategoryName
@@ -932,70 +1398,32 @@ const KitchenScreen: React.FC = () => {
     </TouchableOpacity>
   ), [handleFilterPress]);
 
+  // Kitchen item renderer - only detailed layout now
   const renderKitchenItem = useCallback(({ item }: { item: Kitchen }) => {
-    const deliveryTime = '30-40 min';
-    const rating = (Math.random() * 1 + 4).toFixed(1);
-    const cuisines = item.item_cuisines ? item.item_cuisines.split(', ') : [];
-
     return (
-      <TouchableOpacity
-        style={styles.kitchenCard}
-        onPress={() => handleKitchenPress(item)}
-        activeOpacity={0.9}
-      >
-        <View style={styles.kitchenImageContainer}>
-          {item.restaurant_image ? (
-            <Image 
-              source={{ uri: item.restaurant_image }} 
-              style={styles.kitchenImage} 
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={[styles.kitchenImage, styles.kitchenImagePlaceholder]}>
-              <Icon name="restaurant-outline" size={40} color={COLORS.textLight} />
-            </View>
-          )}
-          
-          <TouchableOpacity 
-            style={styles.favoriteButton}
-            onPress={(e) => {
-              e.stopPropagation();
-              toggleFavorite(item.restaurant_id);
-            }}
-            disabled={favoriteLoading === item.restaurant_id}
-          >
-            {favoriteLoading === item.restaurant_id ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Icon 
-                name={item.is_favourite ? "heart" : "heart-outline"} 
-                size={20} 
-                color={item.is_favourite ? COLORS.danger : "#fff"} 
-              />
-            )}
-          </TouchableOpacity>
-        </View>
-        
-        <View style={styles.kitchenContent}>
-          <Text style={styles.kitchenName} numberOfLines={2}>{item.restaurant_name}</Text>
-          
-          <View style={styles.kitchenDetails}>
-            <View style={styles.detailRow}>
-              <Icon name="time-outline" size={12} color={COLORS.textMedium} />
-              <Text style={styles.detailText}>{deliveryTime}</Text>
-              <View style={styles.dotSeparator} />
-              <Icon name="star" size={12} color={COLORS.rating} />
-              <Text style={styles.ratingText}>{rating}</Text>
-            </View>
-          </View>
-          
-          <Text style={styles.kitchenCuisine} numberOfLines={1}>
-            {cuisines.join(' • ')}
-          </Text>
-        </View>
-      </TouchableOpacity>
+      <KitchenCard
+        kitchen={item}
+        onPress={handleKitchenPress}
+        onToggleFavorite={toggleFavorite}
+        favoriteLoading={favoriteLoading}
+        cardStyle="detailed"
+      />
     );
   }, [handleKitchenPress, toggleFavorite, favoriteLoading]);
+
+  // Side by side kitchen item renderer for recommended section - Now in horizontal FlatList
+  const renderSideBySideKitchenItem = useCallback(({ item }: { item: Kitchen }) => {
+    return (
+      <KitchenCard
+        kitchen={item}
+        onPress={handleKitchenPress}
+        onToggleFavorite={toggleFavorite}
+        favoriteLoading={favoriteLoading}
+        cardStyle="sideBySide"
+        cardWidth={sideBySideCardWidth}
+      />
+    );
+  }, [handleKitchenPress, toggleFavorite, favoriteLoading, sideBySideCardWidth]);
 
   // Active order footer item
   const renderActiveOrderFooterItem = useCallback((order: ActiveOrder) => {
@@ -1056,10 +1484,6 @@ const KitchenScreen: React.FC = () => {
     );
   }, [handleOrderPress]);
 
-  const handleRemoveRecentSearch = (query: string) => {
-    setRecentSearches(prev => prev.filter(item => item !== query));
-  }
-
   const displayedActiveOrders = showAllActiveOrders ? activeOrders : activeOrders.slice(0, ACTIVE_ORDERS_LIMIT);
 
   // Loading state
@@ -1089,24 +1513,49 @@ const KitchenScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Search Modal */}
-      <SearchModal
-        isVisible={isSearchModalVisible}
-        onClose={closeSearchModal}
-        searchQuery={searchQuery}
-        onSearchChange={handleSearchChange}
-        onSearchSubmit={handleSearchSubmit}
-        recentSearches={recentSearches}
-        searchHistory={searchHistory}
-        searchResults={searchResults}
-        searchLoading={searchLoading}
-        onRecentSearchPress={handleRecentSearchPress}
-        onPopularSearchPress={handlePopularSearchPress}
-        onSearchResultPress={handleSearchResultPress}
-        onClearRecentSearches={clearRecentSearches}
-        searchInputRef={searchInputRef}
-        onRemoveRecentSearch={handleRemoveRecentSearch}
-      />
+      {/* Fixed Search Modal with proper animation sequence */}
+      {isSearchModalVisible && (
+        <Animated.View 
+          style={[
+            styles.searchModalOverlay,
+            {
+              opacity: modalOpacityAnim,
+            }
+          ]}
+        >
+          <Animated.View 
+            style={[
+              styles.searchModalContainer,
+              {
+                transform: [{
+                  translateY: modalSlideAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [height, 0],
+                  }),
+                }],
+              }
+            ]}
+          >
+            <SearchModal
+              isVisible={isSearchModalVisible}
+              onClose={closeSearchModal}
+              searchQuery={searchQuery}
+              onSearchChange={handleSearchChange}
+              onSearchSubmit={handleSearchSubmit}
+              recentSearches={recentSearches}
+              searchHistory={searchHistory}
+              searchResults={searchResults}
+              searchLoading={searchLoading}
+              onRecentSearchPress={handleRecentSearchPress}
+              onPopularSearchPress={handlePopularSearchPress}
+              onSearchResultPress={handleSearchResultPress}
+              onClearRecentSearches={clearRecentSearches}
+              searchInputRef={searchInputRef}
+              onRemoveRecentSearch={handleRemoveRecentSearch}
+            />
+          </Animated.View>
+        </Animated.View>
+      )}
 
       {/* Active Orders Footer */}
       {activeOrders.length > 0 && !ordersLoading && (
@@ -1138,14 +1587,16 @@ const KitchenScreen: React.FC = () => {
         </View>
       )}
 
-      {/* Header Section with Enhanced Gradient */}
+      {/* Enhanced Header Section */}
       <Animated.View style={[
         styles.headerContainer,
         {
-          backgroundColor: searchAnim.interpolate({
-            inputRange: [0, 1],
-            outputRange: ['transparent', COLORS.card]
-          }),
+          transform: [{
+            translateY: searchAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, -10],
+            }),
+          }],
         }
       ]}>
         <LinearGradient
@@ -1156,30 +1607,26 @@ const KitchenScreen: React.FC = () => {
           locations={[0, 0.5, 1]}
         >
           <View style={styles.searchContainer}>
-            <TouchableOpacity 
-              style={styles.searchInputContainer}
+            <SearchInput
               onPress={openSearchModal}
-              activeOpacity={0.9}
-            >
-              <Icon 
-                name="search" 
-                size={20} 
-                color={COLORS.textLight} 
-                style={styles.searchIcon} 
-              />
-              <Text style={[styles.searchInput, { color: COLORS.textLight }]}>
-                {SEARCH_PLACEHOLDERS[currentPlaceholderIndex]}
-              </Text>
-            </TouchableOpacity>
+              placeholder={SEARCH_PLACEHOLDERS[currentPlaceholderIndex]}
+              animatedValue={placeholderAnim}
+            />
           </View>
 
-          <FlatList
+          <Animated.FlatList
             horizontal
             data={apiData?.data?.CategoryList || []}
             renderItem={renderCategory}
             keyExtractor={(item) => item.id.toString()}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.categoryListContainer}
+            style={{
+              opacity: searchAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [1, 0.8],
+              }),
+            }}
           />
         </LinearGradient>
       </Animated.View>
@@ -1198,6 +1645,7 @@ const KitchenScreen: React.FC = () => {
           />
         }
       >
+
         {/* Quick Filters */}
         <View style={styles.sectionContainer}>
           <FlatList
@@ -1210,50 +1658,25 @@ const KitchenScreen: React.FC = () => {
           />
         </View>
 
-        {/* Featured Kitchens */}
+        {/* Featured Kitchens - Horizontal Side by Side Layout */}
         {apiData?.data?.FeatureKitchenList?.length > 0 && (
           <View style={styles.featuredSectionContainer}>
             <Text style={styles.sectionTitle}>Recommended for you</Text>
-            <ScrollView
+            <FlatList
               horizontal
+              data={apiData.data.FeatureKitchenList}
+              renderItem={renderSideBySideKitchenItem}
+              keyExtractor={(item) => item.restaurant_id}
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.featuredList}
-            >
-              {apiData.data.FeatureKitchenList.map((item, index) => (
-                <TouchableOpacity 
-                  key={item.restaurant_id}
-                  style={[
-                    styles.featuredCard,
-                    { marginLeft: index === 0 ? scale(16) : scale(8) }
-                  ]}
-                  onPress={() => handleKitchenPress(item)}
-                  activeOpacity={0.9}
-                >
-                  <Image 
-                    source={{ uri: item.restaurant_image || 'https://via.placeholder.com/200' }} 
-                    style={styles.featuredImage}
-                    resizeMode="cover"
-                  />
-                  <View style={styles.featuredContent}>
-                    <Text style={styles.featuredName} numberOfLines={2}>
-                      {item.restaurant_name}
-                    </Text>
-                    <Text style={styles.featuredCuisine} numberOfLines={1}>
-                      {item.item_cuisines}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+              contentContainerStyle={styles.recommendedListContainer}
+              snapToInterval={sideBySideCardWidth + scale(8)}
+              decelerationRate="fast"
+            />
           </View>
         )}
 
-        {/* Kitchens Near You */}
+        {/* All Kitchens - Detailed Layout (One below one) */}
         <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Home Kitchens near you</Text>
-          </View>
-          
           {filteredKitchens.length === 0 ? (
             <View style={styles.emptyResultContainer}>
               <Icon name="restaurant-outline" size={60} color={COLORS.textLight} />
@@ -1311,7 +1734,9 @@ const KitchenScreen: React.FC = () => {
   );
 };
 
+// Reorganized Styles following kitchen-home-screen pattern
 const styles = StyleSheet.create({
+  // Base container styles
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -1358,7 +1783,21 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.semiBold,
   },
 
-  // Header Styles with Enhanced Gradient
+  // Search Modal Styles
+  searchModalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: COLORS.modalBackground,
+    zIndex: 1000,
+  },
+  searchModalContainer: {
+    flex: 1,
+  },
+
+  // Header Styles
   headerContainer: {
     paddingBottom: scale(10),
     zIndex: 100,
@@ -1374,26 +1813,59 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(20),
     marginBottom: scale(12),
   },
+
+  // Search Input Styles
   searchInputContainer: {
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  searchInputTouchable: {
+    borderRadius: scale(16),
+    paddingHorizontal: scale(16),
+    height: isAndroid ? scale(52) : scale(56),
+    borderWidth: 2,
+    borderColor: COLORS.searchInputBorder,
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  searchInputContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: scale(12),
-    paddingHorizontal: scale(16),
-    height: isAndroid ? scale(46) : scale(48),
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-    width: '100%',
+    height: '100%',
   },
   searchIcon: {
-    marginRight: scale(10),
+    marginRight: scale(12),
+    color: COLORS.background,
   },
-  searchInput: {
+  searchTextContainer: {
     flex: 1,
-    fontSize: moderateScale(15),
+    justifyContent: 'center',
+  },
+  searchPlaceholderText: {
+    fontSize: moderateScale(16),
     fontFamily: FONTS.medium,
+    color: COLORS.searchPlaceholder,
+    letterSpacing: 0.3,
+  },
+  searchRightIcon: {
+    paddingLeft: scale(12),
+    borderLeftWidth: 1,
+    borderLeftColor: 'rgba(255,255,255,0.2)',
+    color: COLORS.background,
+    marginLeft: scale(8),
+  },
+  searchShimmer: {
+    position: 'absolute',
+    top: 0,
+    left: -100,
+    width: 50,
     height: '100%',
-    paddingVertical: isAndroid ? scale(8) : scale(12),
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    transform: [{ skewX: '-20deg' }],
   },
 
   // Category Styles
@@ -1419,9 +1891,15 @@ const styles = StyleSheet.create({
     borderRadius: scale(32),
     padding: scale(8),
     backgroundColor: 'rgba(255,255,255,0.2)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   activeCategoryIconContainer: {
     backgroundColor: 'rgba(255,255,255,0.4)',
+    transform: [{ scale: 1.05 }],
   },
   categoryImage: {
     width: scale(65),
@@ -1454,18 +1932,18 @@ const styles = StyleSheet.create({
     marginTop: scale(20),
     marginBottom: scale(10),
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: scale(16),
-  },
   sectionTitle: {
     fontSize: moderateScale(20),
     fontFamily: FONTS.bold,
     color: COLORS.textDark,
     paddingHorizontal: scale(16),
     marginBottom: scale(12),
+  },
+
+  // Recommended Section - Horizontal Layout
+  recommendedListContainer: {
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(4),
   },
 
   // Filter Styles
@@ -1502,73 +1980,123 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
 
-  // Featured Kitchens Styles
-  featuredList: {
-    paddingBottom: scale(16),
+  // Kitchen List Styles
+  kitchenList: {
+    paddingHorizontal: scale(8),
   },
-  featuredCard: {
-    width: scale(200),
+
+  // Kitchen Card Styles - Side by Side
+  kitchenCardSideBySide: {
     backgroundColor: COLORS.card,
     borderRadius: scale(12),
     overflow: 'hidden',
-    marginRight: scale(8),
-    shadowColor: '#000',
+    shadowColor: COLORS.cardShadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 6,
+    shadowRadius: 8,
     elevation: 3,
+    marginHorizontal: scale(4),
+    marginBottom: scale(8),
   },
-  featuredImage: {
-    width: '100%',
-    height: scale(120),
-  },
-  featuredContent: {
-    padding: scale(12),
-  },
-  featuredName: {
-    fontSize: moderateScale(14),
-    fontFamily: FONTS.semiBold,
-    color: COLORS.textDark,
-    marginBottom: scale(4),
-  },
-  featuredCuisine: {
-    fontSize: moderateScale(12),
-    fontFamily: FONTS.regular,
-    color: COLORS.textMedium,
-  },
-
-  // Kitchen List Styles
-  kitchenList: {
-    paddingHorizontal: scale(16),
-  },
-  kitchenCard: {
+  kitchenCardDetailed: {
+    marginHorizontal: scale(8),
+    marginBottom: scale(16),
     backgroundColor: COLORS.card,
     borderRadius: scale(16),
     overflow: 'hidden',
-    marginBottom: scale(16),
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowColor: COLORS.cardShadow,
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowRadius: 12,
+    elevation: 5,
   },
-  kitchenImageContainer: {
-    height: scale(160),
+  kitchenCardTouchable: {
+    flex: 1,
+  },
+  kitchenImageContainerSideBySide: {
+    height: scale(100),
     position: 'relative',
   },
-  kitchenImage: {
+  kitchenImageContainerDetailed: {
+    height: scale(180),
+    position: 'relative',
+  },
+  kitchenImageSideBySide: {
     width: '100%',
     height: '100%',
   },
-  kitchenImagePlaceholder: {
+  kitchenImageDetailed: {
+    width: '100%',
+    height: '100%',
+  },
+  imagePlaceholder: {
     backgroundColor: COLORS.lightGray,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  favoriteButton: {
+  imageGradient: {
     position: 'absolute',
-    top: scale(12),
-    right: scale(12),
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '50%',
+  },
+  badgeContainer: {
+    position: 'absolute',
+    top: scale(8),
+    left: scale(8),
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  badgeContainerSideBySide: {
+    position: 'absolute',
+    top: scale(4),
+    left: scale(4),
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: scale(6),
+    paddingVertical: scale(2),
+    borderRadius: scale(4),
+    marginRight: scale(4),
+    marginBottom: scale(4),
+  },
+  featuredBadge: {
+    backgroundColor: COLORS.featuredGradientStart,
+  },
+  newBadge: {
+    backgroundColor: COLORS.newBadge,
+  },
+  trendingBadge: {
+    backgroundColor: COLORS.trendingBadge,
+  },
+  discountBadge: {
+    backgroundColor: COLORS.discount,
+  },
+  badgeText: {
+    fontSize: scale(10),
+    fontFamily: FONTS.bold,
+    color: '#FFFFFF',
+    marginLeft: scale(2),
+  },
+  favoriteButtonSideBySide: {
+    position: 'absolute',
+    top: scale(4),
+    right: scale(4),
+    backgroundColor: COLORS.darkOverlay,
+    width: scale(24),
+    height: scale(24),
+    borderRadius: scale(12),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  favoriteButtonDetailed: {
+    position: 'absolute',
+    top: scale(8),
+    right: scale(8),
     backgroundColor: COLORS.darkOverlay,
     width: scale(32),
     height: scale(32),
@@ -1576,54 +2104,108 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  kitchenContent: {
+  kitchenContentSideBySide: {
+    padding: scale(8),
+  },
+  kitchenContentDetailed: {
     padding: scale(16),
   },
-  kitchenName: {
-    fontSize: moderateScale(16),
+  kitchenHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: scale(6),
+  },
+  kitchenNameSideBySide: {
+    fontSize: moderateScale(14),
+    fontFamily: FONTS.semiBold,
+    color: COLORS.textDark,
+    marginBottom: scale(4),
+  },
+  kitchenNameDetailed: {
+    fontSize: moderateScale(18),
     fontFamily: FONTS.bold,
     color: COLORS.textDark,
+    flex: 1,
+    marginRight: scale(8),
+  },
+  ratingContainerSideBySide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: scale(4),
+  },
+  ratingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.lightGray,
+    paddingHorizontal: scale(6),
+    paddingVertical: scale(2),
+    borderRadius: scale(4),
+  },
+  ratingTextSideBySide: {
+    fontSize: moderateScale(12),
+    fontFamily: FONTS.semiBold,
+    color: COLORS.rating,
+    marginLeft: scale(2),
+    marginRight: scale(4),
+  },
+  ratingTextDetailed: {
+    fontSize: moderateScale(12),
+    fontFamily: FONTS.semiBold,
+    color: COLORS.rating,
+    marginLeft: scale(2),
+  },
+  deliveryTimeSideBySide: {
+    fontSize: moderateScale(12),
+    fontFamily: FONTS.regular,
+    color: COLORS.textMedium,
+  },
+  kitchenCuisineSideBySide: {
+    fontSize: moderateScale(12),
+    fontFamily: FONTS.regular,
+    color: COLORS.textMedium,
+    marginBottom: scale(4),
+  },
+  kitchenCuisineDetailed: {
+    fontSize: moderateScale(14),
+    fontFamily: FONTS.regular,
+    color: COLORS.textMedium,
     marginBottom: scale(8),
   },
-  kitchenDetails: {
+  priceTextSideBySide: {
+    fontSize: moderateScale(12),
+    fontFamily: FONTS.medium,
+    color: COLORS.textDark,
+  },
+  kitchenFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: scale(8),
   },
-  detailRow: {
+  deliveryInfo: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  detailText: {
+  deliveryText: {
     fontSize: moderateScale(12),
     fontFamily: FONTS.regular,
     color: COLORS.textMedium,
     marginLeft: scale(4),
   },
-  dotSeparator: {
-    width: scale(4),
-    height: scale(4),
-    borderRadius: scale(2),
-    backgroundColor: COLORS.textLight,
-    marginHorizontal: scale(8),
+  priceInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  ratingText: {
+  priceText: {
     fontSize: moderateScale(12),
     fontFamily: FONTS.medium,
-    color: COLORS.rating,
-    marginLeft: scale(4),
-  },
-  kitchenCuisine: {
-    fontSize: moderateScale(13),
-    fontFamily: FONTS.regular,
-    color: COLORS.textMedium,
+    color: COLORS.textDark,
   },
 
   // Active Orders Footer Styles
   activeOrdersFooter: {
     position: 'absolute',
-    bottom: isAndroid ? scale(60) : scale(80),
+    bottom: isAndroid ? scale(70) : scale(80),
     left: scale(16),
     right: scale(16),
     backgroundColor: COLORS.card,
@@ -1710,7 +2292,7 @@ const styles = StyleSheet.create({
   // Cart Summary Styles
   cartSummaryContainer: {
     position: 'absolute',
-    bottom: isAndroid ? scale(65) : scale(85),
+    bottom: isAndroid ? scale(75) : scale(85),
     left: scale(16),
     right: scale(16),
     backgroundColor: '#ffffff',

@@ -26,36 +26,48 @@ const { width, height } = Dimensions.get('window');
 const isAndroid = Platform.OS === 'android';
 const statusBarHeight = StatusBar.currentHeight || 0;
 
-// Enhanced Color Palette - Swiggy Inspired
+// Enhanced Modern Color Palette
 const COLORS = {
-  primary: '#FC8019',
-  primaryLight: '#FF9F5B',
-  secondary: '#FFD166',
-  background: '#F8F9FA',
+  primary: '#FF6B35',
+  primaryLight: '#FF8E53',
+  primaryDark: '#E55A2B',
+  secondary: '#6C63FF',
+  background: '#FAFBFF',
   card: '#FFFFFF',
-  textDark: '#1E1E29',
-  textMedium: '#686B78',
-  textLight: '#93959F',
-  success: '#06C167',
-  danger: '#FF3B30',
-  info: '#5AC8FA',
-  lightGray: '#F1F1F6',
-  border: '#E8E8E8',
-  rating: '#FFC120',
-  darkOverlay: 'rgba(0,0,0,0.6)',
-  lightOverlay: 'rgba(255,255,255,0.4)',
-  recentSearchBg: '#F8F9FA',
-  recentSearchText: '#5E6770',
-  veg: '#06C167',
-  nonVeg: '#FF3B30',
-  searchHighlight: '#FFF9C4',
-  modalBackground: 'rgba(0, 0, 0, 0.8)',
+  textDark: '#1A1D29',
+  textMedium: '#5A5D70',
+  textLight: '#8F92A1',
+  success: '#00C896',
+  danger: '#FF4757',
+  warning: '#FF9F43',
+  info: '#2E86DE',
+  lightGray: '#F8F9FC',
+  border: '#EFF2F6',
+  rating: '#FFD166',
+  darkOverlay: 'rgba(26,29,41,0.85)',
+  lightOverlay: 'rgba(255,255,255,0.6)',
+  recentSearchBg: '#F8F9FC',
+  recentSearchText: '#5A5D70',
+  veg: '#00C896',
+  nonVeg: '#FF4757',
+  searchHighlight: 'rgba(255,107,53,0.15)',
+  modalBackground: 'rgba(26,29,41,0.85)',
   searchModalBg: '#FFFFFF',
-  trending: '#FF6B9D',
-  headerGradientStart: '#E65C00',
-  headerGradientEnd: '#DD2476',
-  swiggyOrange: '#FC8019',
-  swiggyDark: '#1E1E29',
+  trending: '#6C63FF',
+  gradientStart: '#FF6B35',
+  gradientEnd: '#6C63FF',
+  accent: '#6C63FF',
+  shimmer: '#F0F0F0',
+  premium: '#FFD700',
+  new: '#4CD964',
+  discount: '#FF3B30',
+  category1: '#FF6B6B',
+  category2: '#4ECDC4',
+  category3: '#45B7D1',
+  category4: '#96CEB4',
+  category5: '#FFEAA7',
+  timeBadge: 'rgba(143, 146, 161, 0.1)',
+  priceBadge: 'rgba(255, 107, 53, 0.1)',
 };
 
 const FONTS = {
@@ -63,20 +75,24 @@ const FONTS = {
   semiBold: isAndroid ? 'sans-serif-medium' : 'Inter-SemiBold',
   medium: isAndroid ? 'sans-serif' : 'Inter-Medium',
   regular: isAndroid ? 'sans-serif' : 'Inter-Regular',
+  light: isAndroid ? 'sans-serif-light' : 'Inter-Light',
 };
 
 const scale = (size: number) => (width / 375) * size;
 const moderateScale = (size: number, factor = 0.5) => size + (scale(size) - size) * factor;
 
-const getModalHeight = () => {
-  return height;
-};
-
-// Popular searches constant
+// Enhanced popular searches with better categories
 const POPULAR_SEARCHES = [
-  "Biryani", "Pizza", "Burger", "Chinese", "North Indian",
-  "South Indian", "Ice Cream", "Beverages", "Thali", "Rolls",
-  "Momos", "Noodles", "Fried Rice", "Chicken", "Desserts"
+  { id: '1', name: "Biryani", category: "Indian", emoji: "🍛", color: COLORS.category1 },
+  { id: '2', name: "Pizza", category: "Italian", emoji: "🍕", color: COLORS.category2 },
+  { id: '3', name: "Burger", category: "Fast Food", emoji: "🍔", color: COLORS.category3 },
+  { id: '4', name: "Sushi", category: "Japanese", emoji: "🍣", color: COLORS.category4 },
+  { id: '5', name: "Tacos", category: "Mexican", emoji: "🌮", color: COLORS.category5 },
+  { id: '6', name: "Pasta", category: "Italian", emoji: "🍝", color: COLORS.category1 },
+  { id: '7', name: "Salad", category: "Healthy", emoji: "🥗", color: COLORS.category2 },
+  { id: '8', name: "Ice Cream", category: "Dessert", emoji: "🍦", color: COLORS.category3 },
+  { id: '9', name: "Coffee", category: "Beverage", emoji: "☕", color: COLORS.category4 },
+  { id: '10', name: "Smoothie", category: "Healthy", emoji: "🥤", color: COLORS.category5 },
 ];
 
 // Types
@@ -93,6 +109,10 @@ interface SearchItem {
   distance?: string;
   searchedAt?: string;
   originalData?: any;
+  emoji?: string;
+  isNew?: boolean;
+  discount?: string;
+  premium?: boolean;
 }
 
 interface SearchModalProps {
@@ -130,13 +150,74 @@ const SearchModal: React.FC<SearchModalProps> = ({
   onRemoveRecentSearch,
   searchInputRef,
 }) => {
-  const slideAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(height)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const backdropAnim = useRef(new Animated.Value(0)).current;
   const [isComponentVisible, setIsComponentVisible] = useState(false);
   const [isKeyboardVisible, setKeyboardVisible] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
-  const modalHeight = getModalHeight();
+  const [debouncedQuery, setDebouncedQuery] = useState(searchQuery);
 
+  // Enhanced animation control
+  const animateIn = () => {
+    setIsComponentVisible(true);
+    Animated.parallel([
+      Animated.timing(backdropAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        tension: 70,
+        friction: 12,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 250);
+    });
+  };
+
+  const animateOut = () => {
+    Keyboard.dismiss();
+    Animated.parallel([
+      Animated.timing(backdropAnim, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: height,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setIsComponentVisible(false);
+    });
+  };
+
+  // Debounce search query for smoother performance
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Enhanced keyboard handling
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener(
       'keyboardDidShow',
@@ -161,52 +242,26 @@ const SearchModal: React.FC<SearchModalProps> = ({
     };
   }, []);
 
+  // Enhanced modal visibility handling
   useEffect(() => {
     if (isVisible) {
-      setIsComponentVisible(true);
-      Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: 1,
-          duration: 400,
-          useNativeDriver: true,
-        }),
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        })
-      ]).start(() => {
-        setTimeout(() => {
-          searchInputRef.current?.focus();
-        }, 100);
-      });
+      animateIn();
     } else {
-      Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.timing(fadeAnim, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        })
-      ]).start(() => {
-        setIsComponentVisible(false);
-        Keyboard.dismiss();
-      });
+      animateOut();
     }
-  }, [isVisible, slideAnim, fadeAnim]);
+  }, [isVisible]);
 
-  const slideIn = slideAnim.interpolate({
+  const backdropOpacity = backdropAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [-height, 0],
+    outputRange: [0, 1],
   });
 
   const handleClose = () => {
-    Keyboard.dismiss();
     onClose();
+  };
+
+  const handleBackdropPress = () => {
+    handleClose();
   };
 
   const handleContentTouch = () => {
@@ -230,14 +285,14 @@ const SearchModal: React.FC<SearchModalProps> = ({
     onRecentSearchPress(query);
     setTimeout(() => {
       searchInputRef.current?.focus();
-    }, 100);
+    }, 150);
   };
 
-  const handlePopularSearchPress = (query: string) => {
-    onPopularSearchPress(query);
+  const handlePopularSearchPress = (item: any) => {
+    onPopularSearchPress(item.name);
     setTimeout(() => {
       searchInputRef.current?.focus();
-    }, 100);
+    }, 150);
   };
 
   const highlightText = (text: string, query: string) => {
@@ -248,7 +303,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
     
     return parts.map((part, index) => 
       regex.test(part) ? (
-        <Text key={index} style={styles.highlightedText}>
+        <Text key={index} style={styles.searchModalHighlightedText}>
           {part}
         </Text>
       ) : (
@@ -257,44 +312,81 @@ const SearchModal: React.FC<SearchModalProps> = ({
     );
   };
 
+  // Enhanced Image Component with Fallback
+  const EnhancedImage = ({ source, style, defaultSource, children }: any) => {
+    const [imageError, setImageError] = useState(false);
+    const [imageLoading, setImageLoading] = useState(true);
+
+    return (
+      <View style={[style, styles.searchModalImageContainer]}>
+        {!imageError ? (
+          <>
+            <Image
+              source={source}
+              style={[style, { position: 'absolute' }]}
+              resizeMode="cover"
+              onLoadEnd={() => setImageLoading(false)}
+              onError={() => {
+                setImageError(true);
+                setImageLoading(false);
+              }}
+              defaultSource={defaultSource}
+            />
+            {imageLoading && (
+              <View style={[style, styles.searchModalImagePlaceholder]}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              </View>
+            )}
+          </>
+        ) : (
+          <View style={[style, styles.searchModalImageFallback]}>
+            <Icon name="fast-food-outline" size={24} color={COLORS.textLight} />
+          </View>
+        )}
+        {children}
+      </View>
+    );
+  };
+
   const renderRecentSearchItem = ({ item, index }: { item: string; index: number }) => (
     <TouchableOpacity
-      style={styles.recentSearchItem}
+      style={styles.searchModalRecentSearchItem}
       onPress={() => handleRecentSearchPress(item)}
-      activeOpacity={0.7}
+      activeOpacity={0.8}
     >
-      <View style={styles.recentSearchIconContainer}>
-        <Icon name="time-outline" size={18} color={COLORS.textMedium} />
+      <View style={styles.searchModalRecentSearchIconContainer}>
+        <Icon name="time-outline" size={18} color={COLORS.primary} />
       </View>
-      <Text style={styles.recentSearchText} numberOfLines={1}>
+      <Text style={styles.searchModalRecentSearchText} numberOfLines={1}>
         {highlightText(item, searchQuery)}
       </Text>
       <TouchableOpacity 
-        style={styles.recentSearchDelete}
+        style={styles.searchModalRecentSearchDelete}
         onPress={(e) => {
           e.stopPropagation();
           onRemoveRecentSearch(item);
         }}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
-        <Icon name="close" size={16} color={COLORS.textLight} />
+        <Icon name="close-circle" size={18} color={COLORS.textLight} />
       </TouchableOpacity>
     </TouchableOpacity>
   );
 
   const renderSearchHistoryItem = ({ item, index }: { item: SearchItem; index: number }) => (
     <TouchableOpacity
-      style={styles.searchHistoryItem}
+      style={styles.searchModalSearchHistoryItem}
       onPress={() => handleSearchResultPress(item)}
-      activeOpacity={0.7}
+      activeOpacity={0.8}
     >
-      <View style={styles.searchHistoryIconContainer}>
-        <Icon name="search-outline" size={18} color={COLORS.swiggyOrange} />
+      <View style={styles.searchModalSearchHistoryIconContainer}>
+        <Icon name="search-outline" size={18} color={COLORS.primary} />
       </View>
-      <View style={styles.searchHistoryContent}>
-        <Text style={styles.searchHistoryName} numberOfLines={1}>
+      <View style={styles.searchModalSearchHistoryContent}>
+        <Text style={styles.searchModalSearchHistoryName} numberOfLines={1}>
           {item.name}
         </Text>
-        <Text style={styles.searchHistoryType} numberOfLines={1}>
+        <Text style={styles.searchModalSearchHistoryType} numberOfLines={1}>
           {item.type === 'restaurant' ? 'Restaurant' : 'Food Item'} • 
           {item.searchedAt && moment(item.searchedAt).fromNow()}
         </Text>
@@ -305,77 +397,61 @@ const SearchModal: React.FC<SearchModalProps> = ({
 
   const renderSearchResultItem = ({ item, index }: { item: SearchItem; index: number }) => (
     <TouchableOpacity
-      style={styles.searchResultItem}
+      style={styles.searchModalSearchResultItem}
       onPress={() => handleSearchResultPress(item)}
-      activeOpacity={0.7}
+      activeOpacity={0.9}
     >
-      <View style={styles.searchResultImageContainer}>
-        <Image 
-          source={{ uri: item.image || 'https://via.placeholder.com/60' }} 
-          style={styles.searchResultImage}
-          resizeMode="cover"
+      <View style={styles.searchModalSearchResultImageContainer}>
+        <EnhancedImage 
+          source={{ uri: item.image }} 
+          style={styles.searchModalSearchResultImage}
           defaultSource={{ uri: 'https://via.placeholder.com/60' }}
-        />
-        {item.type === 'trending' && (
-          <View style={styles.trendingBadgeSmall}>
-            <Icon name="trending-up" size={10} color="#fff" />
-          </View>
-        )}
-      </View>
-      
-      <View style={styles.searchResultContent}>
-        <View style={styles.searchResultHeader}>
-          <Text style={styles.searchResultName} numberOfLines={2}>
-            {highlightText(item.name, searchQuery)}
-          </Text>
-          {item.type === 'trending' && (
-            <View style={styles.trendingIndicator}>
-              <Icon name="flame" size={14} color={COLORS.trending} />
+        >
+          {item.premium && (
+            <View style={styles.searchModalPremiumBadge}>
+              <Icon name="diamond" size={8} color="#FFFFFF" />
             </View>
           )}
-        </View>
+          
+          {item.isNew && (
+            <View style={styles.searchModalNewBadge}>
+              <Text style={styles.searchModalNewBadgeText}>NEW</Text>
+            </View>
+          )}
+          
+          {item.discount && (
+            <View style={styles.searchModalDiscountBadge}>
+              <Text style={styles.searchModalDiscountBadgeText}>{item.discount}</Text>
+            </View>
+          )}
+        </EnhancedImage>
+      </View>
+      
+      <View style={styles.searchModalSearchResultContent}>
+        <Text style={styles.searchModalSearchResultName} numberOfLines={2}>
+          {highlightText(item.name, searchQuery)}
+        </Text>
         
-        {item.category && (
-          <Text style={styles.searchResultCategory} numberOfLines={1}>
-            {item.category}
-          </Text>
-        )}
-        
-        <View style={styles.searchResultMeta}>
-          {item.rating && (
-            <View style={styles.ratingContainer}>
-              <Icon name="star" size={12} color={COLORS.rating} />
-              <Text style={styles.ratingText}>{item.rating.toFixed(1)}</Text>
+        <View style={styles.searchModalSearchResultMeta}>
+          {item.price && (
+            <View style={styles.searchModalPriceBadge}>
+              <Text style={styles.searchModalPriceText}>{item.price}</Text>
             </View>
           )}
           
           {item.deliveryTime && (
-            <View style={styles.metaItem}>
-              <Icon name="time-outline" size={12} color={COLORS.textMedium} />
-              <Text style={styles.metaText}>{item.deliveryTime}</Text>
-            </View>
-          )}
-          
-          {item.distance && (
-            <View style={styles.metaItem}>
-              <Icon name="location-outline" size={12} color={COLORS.textMedium} />
-              <Text style={styles.metaText}>{item.distance}</Text>
+            <View style={styles.searchModalTimeBadge}>
+              <Icon name="time-outline" size={10} color={COLORS.textMedium} />
+              <Text style={styles.searchModalTimeText}>{item.deliveryTime}</Text>
             </View>
           )}
         </View>
-        
-        {item.foodType && (
-          <View style={[
-            styles.foodTypeBadge,
-            { backgroundColor: item.foodType === 'Veg' ? COLORS.veg : COLORS.nonVeg }
-          ]}>
-            <Text style={styles.foodTypeText}>{item.foodType}</Text>
-          </View>
-        )}
       </View>
       
-      <View style={styles.searchResultAction}>
-        <Icon name="chevron-forward" size={20} color={COLORS.textLight} />
+      <View style={styles.searchModalSearchResultAction}>
+        <View style={styles.searchModalActionButton}>
+          <Icon name="chevron-forward" size={16} color={COLORS.textLight} />
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -383,60 +459,90 @@ const SearchModal: React.FC<SearchModalProps> = ({
   const renderTrendingCard = (item: SearchItem, index: number) => (
     <TouchableOpacity
       key={`trending-${item.id}-${index}`}
-      style={styles.trendingCard}
+      style={styles.searchModalTrendingCard}
       onPress={() => handleSearchResultPress(item)}
-      activeOpacity={0.8}
+      activeOpacity={0.9}
     >
-      <View style={styles.trendingImageContainer}>
-        <Image 
+      <View style={styles.searchModalTrendingImageContainer}>
+        <EnhancedImage 
           source={{ uri: item.image }} 
-          style={styles.trendingImage}
-          resizeMode="cover"
-        />
-        <View style={styles.trendingOverlay} />
-        <View style={styles.trendingBadge}>
-          <Icon name="trending-up" size={14} color="#fff" />
-          <Text style={styles.trendingBadgeText}>Trending</Text>
-        </View>
+          style={styles.searchModalTrendingImage}
+          defaultSource={{ uri: 'https://via.placeholder.com/160x120' }}
+        >
+          <View style={styles.searchModalTrendingGradient} />
+          <View style={styles.searchModalTrendingBadge}>
+            <Icon name="trending-up" size={12} color="#fff" />
+            <Text style={styles.searchModalTrendingBadgeText}>Trending</Text>
+          </View>
+          <View style={styles.searchModalTrendingEmoji}>
+            <Text style={styles.searchModalTrendingEmojiText}>{item.emoji || '🔥'}</Text>
+          </View>
+        </EnhancedImage>
       </View>
-      <View style={styles.trendingContent}>
-        <Text style={styles.trendingName} numberOfLines={2}>
+      <View style={styles.searchModalTrendingContent}>
+        <Text style={styles.searchModalTrendingName} numberOfLines={2}>
           {item.name}
         </Text>
         {item.rating && (
-          <View style={styles.trendingRating}>
-            <Icon name="star" size={12} color={COLORS.rating} />
-            <Text style={styles.trendingRatingText}>{item.rating.toFixed(1)}</Text>
+          <View style={styles.searchModalTrendingRating}>
+            <Icon name="star" size={12} color="#FFFFFF" />
+            <Text style={styles.searchModalTrendingRatingText}>{item.rating.toFixed(1)}</Text>
           </View>
         )}
       </View>
     </TouchableOpacity>
   );
 
+  // Enhanced Popular Searches Grid
+  const PopularSearchesGrid = () => (
+    <View style={styles.searchModalPopularSearchesGrid}>
+      {POPULAR_SEARCHES.map((item) => (
+        <TouchableOpacity
+          key={`popular-${item.id}`}
+          style={[styles.searchModalPopularSearchCard, { borderLeftColor: item.color }]}
+          onPress={() => handlePopularSearchPress(item)}
+          activeOpacity={0.8}
+        >
+          <View style={styles.searchModalPopularSearchContent}>
+            <View style={styles.searchModalPopularSearchHeader}>
+              <Text style={styles.searchModalPopularSearchEmoji}>{item.emoji}</Text>
+              <View style={[styles.searchModalPopularSearchIndicator, { backgroundColor: item.color }]} />
+            </View>
+            <Text style={styles.searchModalPopularSearchName} numberOfLines={1}>
+              {item.name}
+            </Text>
+            <Text style={styles.searchModalPopularSearchCategory} numberOfLines={1}>
+              {item.category}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+
   const renderSearchSections = () => {
-    if (searchQuery.length === 0) {
+    if (debouncedQuery.length === 0) {
       return (
         <ScrollView 
           ref={scrollViewRef}
-          style={styles.searchInitialState}
+          style={styles.searchModalSearchInitialState}
           showsVerticalScrollIndicator={false}
           onScrollBeginDrag={handleScrollBegin}
           scrollEventThrottle={16}
-          contentContainerStyle={styles.scrollViewContent}
+          contentContainerStyle={styles.searchModalScrollViewContent}
         >
-          {/* Recent Searches */}
           {recentSearches.length > 0 && (
-            <View style={styles.searchSection}>
-              <View style={styles.sectionHeaderRow}>
-                <View style={styles.sectionTitleContainer}>
-                  <Icon name="time-outline" size={20} color={COLORS.swiggyOrange} />
-                  <Text style={styles.sectionTitle}>Recent Searches</Text>
+            <View style={styles.searchModalSearchSection}>
+              <View style={styles.searchModalSectionHeaderRow}>
+                <View style={styles.searchModalSectionTitleContainer}>
+                  <Icon name="time-outline" size={22} color={COLORS.primary} />
+                  <Text style={styles.searchModalSectionTitle}>Recent Searches</Text>
                 </View>
                 <TouchableOpacity 
                   onPress={onClearRecentSearches}
-                  style={styles.clearButtonContainer}
+                  style={styles.searchModalClearButtonContainer}
                 >
-                  <Text style={styles.clearButton}>Clear all</Text>
+                  <Text style={styles.searchModalClearButton}>Clear all</Text>
                 </TouchableOpacity>
               </View>
               <FlatList
@@ -448,12 +554,11 @@ const SearchModal: React.FC<SearchModalProps> = ({
             </View>
           )}
 
-          {/* Search History */}
           {searchHistory.length > 0 && (
-            <View style={styles.searchSection}>
-              <View style={styles.sectionTitleContainer}>
-                <Icon name="search-outline" size={20} color={COLORS.swiggyOrange} />
-                <Text style={styles.sectionTitle}>Search History</Text>
+            <View style={styles.searchModalSearchSection}>
+              <View style={styles.searchModalSectionTitleContainer}>
+                <Icon name="search-outline" size={22} color={COLORS.primary} />
+                <Text style={styles.searchModalSectionTitle}>Search History</Text>
               </View>
               <FlatList
                 data={searchHistory.slice(0, 5)}
@@ -464,40 +569,26 @@ const SearchModal: React.FC<SearchModalProps> = ({
             </View>
           )}
 
-          {/* Popular Searches */}
-          <View style={styles.searchSection}>
-            <View style={styles.sectionHeaderRow}>
-              <View style={styles.sectionTitleContainer}>
-                <Icon name="flame" size={20} color={COLORS.swiggyOrange} />
-                <Text style={styles.sectionTitle}>Popular Searches</Text>
+          <View style={styles.searchModalSearchSection}>
+            <View style={styles.searchModalSectionHeaderRow}>
+              <View style={styles.searchModalSectionTitleContainer}>
+                <Icon name="flame" size={22} color={COLORS.primary} />
+                <Text style={styles.searchModalSectionTitle}>Popular Categories</Text>
               </View>
             </View>
-            <View style={styles.popularSearchesGrid}>
-              {POPULAR_SEARCHES.map((item, index) => (
-                <TouchableOpacity
-                  key={`popular-${index}`}
-                  style={styles.popularSearchItem}
-                  onPress={() => handlePopularSearchPress(item)}
-                  activeOpacity={0.7}
-                >
-                  <Icon name="search-outline" size={14} color={COLORS.swiggyOrange} />
-                  <Text style={styles.popularSearchText} numberOfLines={1}>
-                    {item}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <PopularSearchesGrid />
           </View>
 
-          {/* Empty State */}
           {recentSearches.length === 0 && searchHistory.length === 0 && (
-            <View style={styles.emptySearchContainer}>
-              <View style={styles.emptySearchIllustration}>
-                <Icon name="search-outline" size={80} color={COLORS.lightGray} />
+            <View style={styles.searchModalEmptySearchContainer}>
+              <View style={styles.searchModalEmptySearchIllustration}>
+                <View style={styles.searchModalEmptySearchIcon}>
+                  <Icon name="search-outline" size={64} color={COLORS.lightGray} />
+                </View>
               </View>
-              <Text style={styles.emptySearchTitle}>What are you craving?</Text>
-              <Text style={styles.emptySearchSubtitle}>
-                Search for your favorite foods, kitchens, or cuisines
+              <Text style={styles.searchModalEmptySearchTitle}>Discover Amazing Food</Text>
+              <Text style={styles.searchModalEmptySearchSubtitle}>
+                Search for your favorite restaurants, cuisines, or dishes to get started
               </Text>
             </View>
           )}
@@ -507,9 +598,11 @@ const SearchModal: React.FC<SearchModalProps> = ({
 
     if (searchLoading) {
       return (
-        <View style={styles.searchLoading}>
-          <ActivityIndicator size="large" color={COLORS.swiggyOrange} />
-          <Text style={styles.searchLoadingText}>Finding delicious options...</Text>
+        <View style={styles.searchModalSearchLoading}>
+          <View style={styles.searchModalLoadingAnimation}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={styles.searchModalSearchLoadingText}>Finding delicious options...</Text>
+          </View>
         </View>
       );
     }
@@ -522,35 +615,33 @@ const SearchModal: React.FC<SearchModalProps> = ({
       return (
         <ScrollView 
           ref={scrollViewRef}
-          style={styles.searchResultsContainer}
+          style={styles.searchModalSearchResultsContainer}
           showsVerticalScrollIndicator={false}
           onScrollBeginDrag={handleScrollBegin}
           scrollEventThrottle={16}
-          contentContainerStyle={styles.scrollViewContent}
+          contentContainerStyle={styles.searchModalScrollViewContent}
         >
-          {/* Trending Results */}
           {trendingResults.length > 0 && (
-            <View style={styles.searchResultSection}>
-              <View style={styles.sectionTitleContainer}>
-                <Icon name="trending-up" size={20} color={COLORS.swiggyOrange} />
-                <Text style={styles.sectionTitle}>Trending Now</Text>
+            <View style={styles.searchModalSearchResultSection}>
+              <View style={styles.searchModalSectionTitleContainer}>
+                <Icon name="trending-up" size={22} color={COLORS.primary} />
+                <Text style={styles.searchModalSectionTitle}>Trending Now</Text>
               </View>
               <ScrollView 
                 horizontal 
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.trendingList}
+                contentContainerStyle={styles.searchModalTrendingList}
               >
                 {trendingResults.map((item, index) => renderTrendingCard(item, index))}
               </ScrollView>
             </View>
           )}
 
-          {/* Food Results */}
           {foodResults.length > 0 && (
-            <View style={styles.searchResultSection}>
-              <View style={styles.sectionTitleContainer}>
-                <Icon name="fast-food-outline" size={20} color={COLORS.swiggyOrange} />
-                <Text style={styles.sectionTitle}>
+            <View style={styles.searchModalSearchResultSection}>
+              <View style={styles.searchModalSectionTitleContainer}>
+                <Icon name="fast-food-outline" size={22} color={COLORS.primary} />
+                <Text style={styles.searchModalSectionTitle}>
                   Food Items ({foodResults.length})
                 </Text>
               </View>
@@ -563,13 +654,12 @@ const SearchModal: React.FC<SearchModalProps> = ({
             </View>
           )}
 
-          {/* Restaurant Results */}
           {restaurantResults.length > 0 && (
-            <View style={styles.searchResultSection}>
-              <View style={styles.sectionTitleContainer}>
-                <Icon name="restaurant-outline" size={20} color={COLORS.swiggyOrange} />
-                <Text style={styles.sectionTitle}>
-                  Kitchens ({restaurantResults.length})
+            <View style={styles.searchModalSearchResultSection}>
+              <View style={styles.searchModalSectionTitleContainer}>
+                <Icon name="restaurant-outline" size={22} color={COLORS.primary} />
+                <Text style={styles.searchModalSectionTitle}>
+                  Restaurants ({restaurantResults.length})
                 </Text>
               </View>
               <FlatList
@@ -584,22 +674,40 @@ const SearchModal: React.FC<SearchModalProps> = ({
       );
     }
 
-    if (searchQuery.length >= 1 && !searchLoading) {
+    if (debouncedQuery.length >= 1 && !searchLoading) {
       return (
-        <View style={styles.noResultsContainer}>
-          <View style={styles.noResultsIllustration}>
-            <Icon name="search-outline" size={60} color={COLORS.textLight} />
+        <View style={styles.searchModalNoResultsContainer}>
+          <View style={styles.searchModalNoResultsIllustration}>
+            <View style={styles.searchModalNoResultsIcon}>
+              <Icon name="search-outline" size={48} color={COLORS.textLight} />
+            </View>
+            <View style={styles.searchModalNoResultsPulse} />
           </View>
-          <Text style={styles.noResultsTitle}>No results found</Text>
-          <Text style={styles.noResultsSubtitle}>
-            Try searching for something else or check the spelling
+          <Text style={styles.searchModalNoResultsTitle}>No results found</Text>
+          <Text style={styles.searchModalNoResultsSubtitle}>
+            We couldn't find any matches for "{debouncedQuery}"
           </Text>
           <TouchableOpacity 
-            style={styles.suggestSearchButton}
+            style={styles.searchModalSuggestSearchButton}
             onPress={() => onSearchChange('')}
           >
-            <Text style={styles.suggestSearchText}>Clear search</Text>
+            <Text style={styles.searchModalSuggestSearchText}>Try another search</Text>
           </TouchableOpacity>
+          
+          <View style={styles.searchModalSuggestedSearches}>
+            <Text style={styles.searchModalSuggestedTitle}>Try searching for:</Text>
+            <View style={styles.searchModalSuggestedTags}>
+              {POPULAR_SEARCHES.slice(0, 4).map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.searchModalSuggestedTag}
+                  onPress={() => handlePopularSearchPress(item)}
+                >
+                  <Text style={styles.searchModalSuggestedTagText}>{item.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
         </View>
       );
     }
@@ -612,52 +720,52 @@ const SearchModal: React.FC<SearchModalProps> = ({
   return (
     <Modal
       isVisible={isVisible}
-      animationInTiming={1}
-      animationOutTiming={1}
-      backdropOpacity={0.8}
+      animationInTiming={300}
+      animationOutTiming={300}
+      backdropOpacity={1}
       backdropColor={COLORS.modalBackground}
-      onBackdropPress={handleClose}
+      onBackdropPress={handleBackdropPress}
       onBackButtonPress={handleClose}
-      style={styles.modal}
+      style={styles.searchModalModal}
       statusBarTranslucent={true}
-      animationIn="slideInDown"
-      animationOut="slideOutUp"
-      coverScreen={true}
+      useNativeDriver={true}
+      hideModalContentWhileAnimating={true}
+      avoidKeyboard={true}
     >
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.searchModalSafeArea}>
         <KeyboardAvoidingView 
-          style={styles.keyboardAvoidingView}
+          style={styles.searchModalKeyboardAvoidingView}
           behavior={isAndroid ? 'height' : 'padding'}
           enabled
         >
           <Animated.View 
             style={[
-              styles.modalContainer,
+              styles.searchModalModalContainer,
               { 
-                transform: [{ translateY: slideIn }],
+                transform: [
+                  { translateY: slideAnim }
+                ],
                 opacity: fadeAnim,
-                height: modalHeight,
               }
             ]}
           >
-            {/* Search Header - Swiggy Style */}
-            <View style={styles.searchModalHeader}>
-              {/* Back Button */}
+            <View style={styles.searchModalSearchModalHeader}>
               <TouchableOpacity 
                 onPress={handleClose} 
-                style={styles.backButton}
-                activeOpacity={0.7}
+                style={styles.searchModalBackButton}
+                activeOpacity={0.8}
               >
-                <Icon name="arrow-back" size={24} color={COLORS.textDark} />
+                <View style={styles.searchModalBackButtonCircle}>
+                  <Icon name="chevron-down" size={24} color={COLORS.textDark} />
+                </View>
               </TouchableOpacity>
 
-              {/* Search Input Container */}
-              <View style={styles.modalSearchInputContainer}>
-                <Icon name="search" size={20} color={COLORS.swiggyOrange} style={styles.modalSearchIcon} />
+              <View style={styles.searchModalModalSearchInputContainer}>
+                <Icon name="search" size={20} color={COLORS.primary} style={styles.searchModalModalSearchIcon} />
                 <TextInput
                   ref={searchInputRef}
-                  style={styles.modalSearchInput}
-                  placeholder="Search for food, kitchens..."
+                  style={styles.searchModalModalSearchInput}
+                  placeholder="Search for food, restaurants..."
                   placeholderTextColor={COLORS.textLight}
                   value={searchQuery}
                   onChangeText={onSearchChange}
@@ -666,12 +774,19 @@ const SearchModal: React.FC<SearchModalProps> = ({
                   onSubmitEditing={onSearchSubmit}
                   clearButtonMode="while-editing"
                 />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity 
+                    onPress={() => onSearchChange('')}
+                    style={styles.searchModalClearSearchButton}
+                  >
+                    <Icon name="close-circle" size={20} color={COLORS.textLight} />
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
 
-            {/* Search Content */}
             <TouchableWithoutFeedback onPress={handleContentTouch}>
-              <View style={styles.searchModalContent}>
+              <View style={styles.searchModalSearchModalContent}>
                 {renderSearchSections()}
               </View>
             </TouchableWithoutFeedback>
@@ -683,466 +798,640 @@ const SearchModal: React.FC<SearchModalProps> = ({
 };
 
 const styles = StyleSheet.create({
-  modal: {
+  searchModalModal: {
     margin: 0,
     justifyContent: 'flex-start',
   },
-  safeArea: {
+  searchModalSafeArea: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  searchModalKeyboardAvoidingView: {
+    flex: 1,
+  },
+  searchModalModalContainer: {
     flex: 1,
     backgroundColor: COLORS.searchModalBg,
-  },
-  keyboardAvoidingView: {
-    flex: 1,
-  },
-  modalContainer: {
-    backgroundColor: COLORS.searchModalBg,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.3,
     shadowRadius: 20,
     elevation: 10,
-    overflow: 'hidden',
   },
-  searchModalHeader: {
+  searchModalSearchModalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: scale(16),
-    paddingVertical: scale(12),
+    paddingHorizontal: scale(20),
+    paddingVertical: scale(16),
     backgroundColor: COLORS.card,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
-    paddingTop: isAndroid ? statusBarHeight + scale(12) : scale(12),
+    paddingTop: isAndroid ? statusBarHeight + scale(16) : scale(16),
   },
-  backButton: {
-    padding: scale(8),
-    marginRight: scale(8),
+  searchModalBackButton: {
+    marginRight: scale(12),
   },
-  modalSearchInputContainer: {
+  searchModalBackButtonCircle: {
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
+    backgroundColor: COLORS.lightGray,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  searchModalModalSearchInputContainer: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.lightGray,
-    borderRadius: scale(8),
-    paddingHorizontal: scale(12),
-    height: scale(44),
-  },
-  modalSearchIcon: {
-    marginRight: scale(8),
-  },
-  modalSearchInput: {
-    flex: 1,
-    fontSize: moderateScale(16),
-    fontFamily: FONTS.medium,
-    color: COLORS.textDark,
-    paddingVertical: scale(8),
-    paddingRight: scale(8),
-    paddingLeft: 0,
-  },
-  searchModalContent: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  scrollViewContent: {
-    flexGrow: 1,
-    paddingBottom: scale(20),
-  },
-
-  // Search Initial State
-  searchInitialState: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  searchSection: {
-    marginBottom: scale(24),
+    borderRadius: scale(16),
     paddingHorizontal: scale(16),
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: scale(16),
-  },
-  sectionTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  sectionTitle: {
-    fontSize: moderateScale(18),
-    fontFamily: FONTS.bold,
-    color: COLORS.textDark,
-    marginLeft: scale(8),
-  },
-  clearButtonContainer: {
-    padding: scale(4),
-  },
-  clearButton: {
-    fontSize: moderateScale(14),
-    fontFamily: FONTS.medium,
-    color: COLORS.swiggyOrange,
-  },
-
-  // Recent Searches
-  recentSearchItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: scale(12),
-    paddingHorizontal: scale(12),
-    backgroundColor: COLORS.card,
-    borderRadius: scale(8),
-    marginBottom: scale(8),
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  recentSearchIconContainer: {
-    width: scale(24),
-    alignItems: 'center',
-  },
-  recentSearchText: {
-    flex: 1,
-    fontSize: moderateScale(15),
-    fontFamily: FONTS.medium,
-    color: COLORS.textDark,
-    marginLeft: scale(12),
-  },
-  recentSearchDelete: {
-    padding: scale(4),
-  },
-
-  // Search History
-  searchHistoryItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: scale(12),
-    paddingHorizontal: scale(8),
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  searchHistoryIconContainer: {
-    width: scale(24),
-    alignItems: 'center',
-  },
-  searchHistoryContent: {
-    flex: 1,
-    marginLeft: scale(12),
-  },
-  searchHistoryName: {
-    fontSize: moderateScale(15),
-    fontFamily: FONTS.medium,
-    color: COLORS.textDark,
-    marginBottom: scale(2),
-  },
-  searchHistoryType: {
-    fontSize: moderateScale(12),
-    fontFamily: FONTS.regular,
-    color: COLORS.textLight,
-  },
-
-  // Popular Searches
-  popularSearchesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: scale(-4),
-  },
-  popularSearchItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.card,
-    borderRadius: scale(20),
-    paddingHorizontal: scale(16),
-    paddingVertical: scale(10),
-    margin: scale(4),
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  popularSearchText: {
-    fontSize: moderateScale(14),
-    fontFamily: FONTS.medium,
-    color: COLORS.textDark,
-    marginLeft: scale(6),
-  },
-
-  // Empty State
-  emptySearchContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: scale(80),
-    flex: 1,
-    paddingHorizontal: scale(16),
-  },
-  emptySearchIllustration: {
-    marginBottom: scale(20),
-  },
-  emptySearchTitle: {
-    fontSize: moderateScale(20),
-    fontFamily: FONTS.bold,
-    color: COLORS.textDark,
-    marginBottom: scale(8),
-    textAlign: 'center',
-  },
-  emptySearchSubtitle: {
-    fontSize: moderateScale(14),
-    fontFamily: FONTS.regular,
-    color: COLORS.textLight,
-    textAlign: 'center',
-    lineHeight: scale(20),
-    marginBottom: scale(20),
-  },
-
-  // Loading State
-  searchLoading: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: scale(80),
-    flex: 1,
-  },
-  searchLoadingText: {
-    fontSize: moderateScale(14),
-    fontFamily: FONTS.medium,
-    color: COLORS.textMedium,
-    marginTop: scale(12),
-  },
-
-  // Search Results
-  searchResultsContainer: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  searchResultSection: {
-    marginBottom: scale(24),
-    paddingHorizontal: scale(16),
-  },
-  trendingList: {
-    paddingRight: scale(16),
-  },
-
-  // Trending Cards
-  trendingCard: {
-    width: scale(140),
-    marginRight: scale(12),
-    backgroundColor: COLORS.card,
-    borderRadius: scale(12),
-    overflow: 'hidden',
+    height: scale(52),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
-  trendingImageContainer: {
-    position: 'relative',
-    height: scale(100),
+  searchModalModalSearchIcon: {
+    marginRight: scale(12),
   },
-  trendingImage: {
+  searchModalModalSearchInput: {
+    flex: 1,
+    fontSize: moderateScale(16),
+    fontFamily: FONTS.medium,
+    color: COLORS.textDark,
+    paddingVertical: scale(12),
+    paddingRight: scale(8),
+    paddingLeft: 0,
+  },
+  searchModalClearSearchButton: {
+    padding: scale(4),
+  },
+  searchModalSearchModalContent: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  searchModalScrollViewContent: {
+    flexGrow: 1,
+    paddingBottom: scale(30),
+  },
+
+  // Search Initial State
+  searchModalSearchInitialState: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  searchModalSearchSection: {
+    marginBottom: scale(32),
+    paddingHorizontal: scale(20),
+  },
+  searchModalSectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: scale(20),
+  },
+  searchModalSectionTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  searchModalSectionTitle: {
+    fontSize: moderateScale(20),
+    fontFamily: FONTS.bold,
+    color: COLORS.textDark,
+    marginLeft: scale(12),
+    letterSpacing: -0.5,
+  },
+  searchModalClearButtonContainer: {
+    padding: scale(8),
+    borderRadius: scale(8),
+  },
+  searchModalClearButton: {
+    fontSize: moderateScale(14),
+    fontFamily: FONTS.medium,
+    color: COLORS.primary,
+  },
+
+  // Recent Searches
+  searchModalRecentSearchItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: scale(14),
+    paddingHorizontal: scale(16),
+    backgroundColor: COLORS.card,
+    borderRadius: scale(14),
+    marginBottom: scale(8),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  searchModalRecentSearchIconContainer: {
+    width: scale(24),
+    alignItems: 'center',
+  },
+  searchModalRecentSearchText: {
+    flex: 1,
+    fontSize: moderateScale(16),
+    fontFamily: FONTS.medium,
+    color: COLORS.textDark,
+    marginLeft: scale(12),
+  },
+  searchModalRecentSearchDelete: {
+    padding: scale(4),
+  },
+
+  // Search History
+  searchModalSearchHistoryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: scale(14),
+    paddingHorizontal: scale(12),
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  searchModalSearchHistoryIconContainer: {
+    width: scale(24),
+    alignItems: 'center',
+  },
+  searchModalSearchHistoryContent: {
+    flex: 1,
+    marginLeft: scale(12),
+  },
+  searchModalSearchHistoryName: {
+    fontSize: moderateScale(16),
+    fontFamily: FONTS.medium,
+    color: COLORS.textDark,
+    marginBottom: scale(4),
+  },
+  searchModalSearchHistoryType: {
+    fontSize: moderateScale(13),
+    fontFamily: FONTS.regular,
+    color: COLORS.textLight,
+  },
+
+  // Enhanced Popular Searches Grid
+  searchModalPopularSearchesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginHorizontal: -scale(4),
+  },
+  searchModalPopularSearchCard: {
+    width: '48%',
+    backgroundColor: COLORS.card,
+    borderRadius: scale(16),
+    marginBottom: scale(12),
+    padding: scale(16),
+    borderLeftWidth: scale(4),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  searchModalPopularSearchContent: {
+    flex: 1,
+  },
+  searchModalPopularSearchHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: scale(12),
+  },
+  searchModalPopularSearchEmoji: {
+    fontSize: moderateScale(24),
+  },
+  searchModalPopularSearchIndicator: {
+    width: scale(6),
+    height: scale(6),
+    borderRadius: scale(3),
+    marginTop: scale(8),
+  },
+  searchModalPopularSearchName: {
+    fontSize: moderateScale(16),
+    fontFamily: FONTS.semiBold,
+    color: COLORS.textDark,
+    marginBottom: scale(4),
+  },
+  searchModalPopularSearchCategory: {
+    fontSize: moderateScale(12),
+    fontFamily: FONTS.regular,
+    color: COLORS.textLight,
+  },
+
+  // Empty State
+  searchModalEmptySearchContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: scale(100),
+    flex: 1,
+    paddingHorizontal: scale(20),
+  },
+  searchModalEmptySearchIllustration: {
+    marginBottom: scale(24),
+  },
+  searchModalEmptySearchIcon: {
+    width: scale(120),
+    height: scale(120),
+    borderRadius: scale(60),
+    backgroundColor: COLORS.lightGray,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  searchModalEmptySearchTitle: {
+    fontSize: moderateScale(24),
+    fontFamily: FONTS.bold,
+    color: COLORS.textDark,
+    marginBottom: scale(12),
+    textAlign: 'center',
+    letterSpacing: -0.5,
+  },
+  searchModalEmptySearchSubtitle: {
+    fontSize: moderateScale(16),
+    fontFamily: FONTS.regular,
+    color: COLORS.textLight,
+    textAlign: 'center',
+    lineHeight: scale(24),
+    marginBottom: scale(32),
+    paddingHorizontal: scale(20),
+  },
+
+  // Loading State
+  searchModalSearchLoading: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: scale(100),
+    flex: 1,
+  },
+  searchModalLoadingAnimation: {
+    alignItems: 'center',
+  },
+  searchModalSearchLoadingText: {
+    fontSize: moderateScale(16),
+    fontFamily: FONTS.medium,
+    color: COLORS.textMedium,
+    marginTop: scale(16),
+  },
+
+  // Enhanced Image Components
+  searchModalImageContainer: {
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  searchModalImagePlaceholder: {
+    backgroundColor: COLORS.lightGray,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  searchModalImageFallback: {
+    backgroundColor: COLORS.lightGray,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: scale(12),
+  },
+
+  // Search Results
+  searchModalSearchResultsContainer: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  searchModalSearchResultSection: {
+    marginBottom: scale(24),
+    paddingHorizontal: scale(20),
+  },
+  searchModalTrendingList: {
+    paddingRight: scale(20),
+  },
+
+  // Enhanced Trending Cards
+  searchModalTrendingCard: {
+    width: scale(160),
+    marginRight: scale(16),
+    backgroundColor: COLORS.card,
+    borderRadius: scale(20),
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  searchModalTrendingImageContainer: {
+    position: 'relative',
+    height: scale(120),
+  },
+  searchModalTrendingImage: {
     width: '100%',
     height: '100%',
   },
-  trendingOverlay: {
+  searchModalTrendingGradient: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.1)',
+    backgroundColor: 'rgba(0,0,0,0.3)',
   },
-  trendingBadge: {
+  searchModalTrendingBadge: {
     position: 'absolute',
-    top: scale(8),
-    left: scale(8),
+    top: scale(12),
+    left: scale(12),
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.trending,
     borderRadius: scale(12),
-    paddingHorizontal: scale(8),
+    paddingHorizontal: scale(10),
     paddingVertical: scale(4),
   },
-  trendingBadgeText: {
+  searchModalTrendingBadgeText: {
     fontSize: moderateScale(10),
     fontFamily: FONTS.semiBold,
     color: '#FFFFFF',
     marginLeft: scale(4),
   },
-  trendingContent: {
-    padding: scale(12),
+  searchModalTrendingEmoji: {
+    position: 'absolute',
+    bottom: scale(12),
+    right: scale(12),
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: scale(8),
+    padding: scale(4),
   },
-  trendingName: {
+  searchModalTrendingEmojiText: {
     fontSize: moderateScale(14),
-    fontFamily: FONTS.medium,
-    color: COLORS.textDark,
-    marginBottom: scale(6),
-    lineHeight: scale(18),
   },
-  trendingRating: {
+  searchModalTrendingContent: {
+    padding: scale(16),
+  },
+  searchModalTrendingName: {
+    fontSize: moderateScale(16),
+    fontFamily: FONTS.semiBold,
+    color: COLORS.textDark,
+    marginBottom: scale(8),
+    lineHeight: scale(20),
+  },
+  searchModalTrendingRating: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    alignSelf: 'flex-start',
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(4),
+    borderRadius: scale(6),
   },
-  trendingRatingText: {
+  searchModalTrendingRatingText: {
     fontSize: moderateScale(12),
-    fontFamily: FONTS.medium,
-    color: COLORS.textDark,
+    fontFamily: FONTS.semiBold,
+    color: '#FFFFFF',
     marginLeft: scale(4),
   },
 
-  // Search Result Items
-  searchResultItem: {
+  // Enhanced Search Result Items
+  searchModalSearchResultItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: scale(12),
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    paddingHorizontal: scale(16),
     backgroundColor: COLORS.card,
-    borderRadius: scale(8),
+    borderRadius: scale(16),
     marginBottom: scale(8),
-    paddingHorizontal: scale(12),
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
     elevation: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.03)',
+    minHeight: scale(80),
   },
-  searchResultImageContainer: {
+  searchModalSearchResultImageContainer: {
     position: 'relative',
-  },
-  searchResultImage: {
-    width: scale(60),
-    height: scale(60),
-    borderRadius: scale(8),
     marginRight: scale(12),
   },
-  trendingBadgeSmall: {
+  searchModalSearchResultImage: {
+    width: scale(60),
+    height: scale(60),
+    borderRadius: scale(12),
+  },
+  // Enhanced Badges
+  searchModalPremiumBadge: {
     position: 'absolute',
     top: -4,
-    right: 4,
-    backgroundColor: COLORS.trending,
+    left: -4,
+    backgroundColor: COLORS.premium,
     borderRadius: scale(8),
     width: scale(16),
     height: scale(16),
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 3,
   },
-  searchResultContent: {
+  searchModalNewBadge: {
+    position: 'absolute',
+    top: -4,
+    left: -4,
+    backgroundColor: COLORS.new,
+    borderRadius: scale(8),
+    paddingHorizontal: scale(4),
+    paddingVertical: scale(1),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  searchModalNewBadgeText: {
+    fontSize: moderateScale(7),
+    fontFamily: FONTS.bold,
+    color: '#FFFFFF',
+  },
+  searchModalDiscountBadge: {
+    position: 'absolute',
+    bottom: -2,
+    left: -2,
+    backgroundColor: COLORS.discount,
+    borderRadius: scale(6),
+    paddingHorizontal: scale(4),
+    paddingVertical: scale(1),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  searchModalDiscountBadgeText: {
+    fontSize: moderateScale(7),
+    fontFamily: FONTS.bold,
+    color: '#FFFFFF',
+  },
+  searchModalSearchResultContent: {
     flex: 1,
     marginRight: scale(8),
   },
-  searchResultHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: scale(4),
-  },
-  searchResultName: {
-    fontSize: moderateScale(16),
-    fontFamily: FONTS.medium,
+  searchModalSearchResultName: {
+    fontSize: moderateScale(15),
+    fontFamily: FONTS.semiBold,
     color: COLORS.textDark,
-    flex: 1,
-    lineHeight: scale(20),
-  },
-  trendingIndicator: {
-    marginLeft: scale(8),
-  },
-  searchResultCategory: {
-    fontSize: moderateScale(13),
-    fontFamily: FONTS.regular,
-    color: COLORS.textLight,
     marginBottom: scale(6),
+    lineHeight: scale(18),
   },
-  searchResultMeta: {
+  searchModalSearchResultMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-    marginBottom: scale(4),
   },
-  ratingContainer: {
+  searchModalPriceBadge: {
+    backgroundColor: COLORS.priceBadge,
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(4),
+    borderRadius: scale(6),
+    marginRight: scale(8),
+  },
+  searchModalPriceText: {
+    fontSize: moderateScale(12),
+    fontFamily: FONTS.semiBold,
+    color: COLORS.primary,
+  },
+  searchModalTimeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: scale(12),
-    backgroundColor: COLORS.lightGray,
-    paddingHorizontal: scale(6),
-    paddingVertical: scale(2),
-    borderRadius: scale(4),
+    backgroundColor: COLORS.timeBadge,
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(4),
+    borderRadius: scale(6),
   },
-  ratingText: {
+  searchModalTimeText: {
     fontSize: moderateScale(12),
     fontFamily: FONTS.medium,
-    color: COLORS.textDark,
-    marginLeft: scale(4),
-  },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: scale(12),
-    backgroundColor: COLORS.lightGray,
-    paddingHorizontal: scale(6),
-    paddingVertical: scale(2),
-    borderRadius: scale(4),
-  },
-  metaText: {
-    fontSize: moderateScale(12),
-    fontFamily: FONTS.regular,
     color: COLORS.textMedium,
     marginLeft: scale(4),
   },
-  foodTypeBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: scale(8),
-    paddingVertical: scale(2),
-    borderRadius: scale(4),
-    marginTop: scale(4),
+  searchModalSearchResultAction: {
+    padding: scale(2),
   },
-  foodTypeText: {
-    fontSize: moderateScale(10),
-    fontFamily: FONTS.semiBold,
-    color: '#FFFFFF',
-  },
-  searchResultAction: {
-    padding: scale(4),
+  searchModalActionButton: {
+    width: scale(28),
+    height: scale(28),
+    borderRadius: scale(14),
+    backgroundColor: COLORS.lightGray,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
-  // No Results
-  noResultsContainer: {
+  // Enhanced No Results
+  searchModalNoResultsContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: scale(80),
     flex: 1,
-    paddingHorizontal: scale(16),
+    paddingHorizontal: scale(20),
   },
-  noResultsIllustration: {
-    marginBottom: scale(20),
+  searchModalNoResultsIllustration: {
+    marginBottom: scale(24),
+    position: 'relative',
   },
-  noResultsTitle: {
-    fontSize: moderateScale(18),
-    fontFamily: FONTS.semiBold,
+  searchModalNoResultsIcon: {
+    width: scale(100),
+    height: scale(100),
+    borderRadius: scale(50),
+    backgroundColor: COLORS.lightGray,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  searchModalNoResultsPulse: {
+    position: 'absolute',
+    top: -10,
+    left: -10,
+    right: -10,
+    bottom: -10,
+    borderRadius: scale(60),
+    borderWidth: 2,
+    borderColor: COLORS.lightGray,
+    opacity: 0.6,
+  },
+  searchModalNoResultsTitle: {
+    fontSize: moderateScale(22),
+    fontFamily: FONTS.bold,
     color: COLORS.textDark,
-    marginBottom: scale(8),
+    marginBottom: scale(12),
+    textAlign: 'center',
   },
-  noResultsSubtitle: {
-    fontSize: moderateScale(14),
+  searchModalNoResultsSubtitle: {
+    fontSize: moderateScale(16),
     fontFamily: FONTS.regular,
     color: COLORS.textLight,
     textAlign: 'center',
-    marginBottom: scale(20),
-    lineHeight: scale(20),
+    marginBottom: scale(32),
+    lineHeight: scale(24),
+    paddingHorizontal: scale(20),
   },
-  suggestSearchButton: {
-    backgroundColor: COLORS.swiggyOrange,
-    paddingHorizontal: scale(24),
-    paddingVertical: scale(12),
-    borderRadius: scale(8),
+  searchModalSuggestSearchButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: scale(32),
+    paddingVertical: scale(16),
+    borderRadius: scale(12),
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+    marginBottom: scale(32),
   },
-  suggestSearchText: {
+  searchModalSuggestSearchText: {
     color: '#FFFFFF',
-    fontSize: moderateScale(14),
+    fontSize: moderateScale(16),
     fontFamily: FONTS.semiBold,
   },
-  highlightedText: {
-    backgroundColor: COLORS.searchHighlight,
+  searchModalSuggestedSearches: {
+    alignItems: 'center',
+  },
+  searchModalSuggestedTitle: {
+    fontSize: moderateScale(16),
+    fontFamily: FONTS.medium,
+    color: COLORS.textMedium,
+    marginBottom: scale(16),
+  },
+  searchModalSuggestedTags: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  searchModalSuggestedTag: {
+    backgroundColor: COLORS.lightGray,
+    paddingHorizontal: scale(16),
+    paddingVertical: scale(8),
+    borderRadius: scale(20),
+    margin: scale(4),
+  },
+  searchModalSuggestedTagText: {
+    fontSize: moderateScale(14),
+    fontFamily: FONTS.medium,
     color: COLORS.textDark,
-    fontWeight: 'bold',
+  },
+  searchModalHighlightedText: {
+    backgroundColor: COLORS.searchHighlight,
+    color: COLORS.primaryDark,
+    fontFamily: FONTS.semiBold,
+    borderRadius: scale(4),
+    overflow: 'hidden',
+    paddingHorizontal: scale(2),
   },
 });
 
