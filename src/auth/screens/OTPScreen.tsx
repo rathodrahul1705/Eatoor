@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback, useContext } from 'rea
 import {
   View, Text, StyleSheet, TouchableOpacity, Keyboard,
   TouchableWithoutFeedback, Animated, Platform, StatusBar, 
-  ActivityIndicator, TextInput, Alert, Dimensions, ScrollView
+  ActivityIndicator, TextInput, Dimensions, ScrollView,
+  KeyboardAvoidingView
 } from 'react-native';
 import { useNavigation, StackActions, useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
@@ -28,21 +29,47 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [activeInput, setActiveInput] = useState(0);
   const [shouldVerify, setShouldVerify] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const shakeAnimation = useRef(new Animated.Value(0)).current;
   const inputRefs = useRef<Array<TextInput | null>>([]);
   const manualInputRef = useRef<TextInput>(null);
   const { login } = useContext(AuthContext);
-  const fadeAnim = useRef(new Animated.Value(1)).current; // Add fade animation for consistency
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const scrollViewRef = useRef<ScrollView>(null);
 
   // Calculate responsive sizes for OTP boxes
-  const MAX_CONTAINER_WIDTH = width * 0.9;
+  const MAX_CONTAINER_WIDTH = width * 0.85;
   const DIGIT_BOX_SIZE = Math.min(
-    isVerySmallDevice ? width * 0.12 : width * 0.13,
-    (MAX_CONTAINER_WIDTH - (OTP_LENGTH * 6)) / OTP_LENGTH
+    isVerySmallDevice ? width * 0.14 : width * 0.16,
+    (MAX_CONTAINER_WIDTH - (OTP_LENGTH * 8)) / OTP_LENGTH
   );
-  const DIGIT_BOX_MARGIN = Math.min(width * 0.01, 4);
+  const DIGIT_BOX_MARGIN = Math.min(width * 0.015, 6);
 
-  // Reset fade animation when screen comes back into focus
+  // Keyboard visibility handler
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      () => {
+        setKeyboardVisible(true);
+        setTimeout(() => {
+          scrollViewRef.current?.scrollTo({ y: 50, animated: true });
+        }, 100);
+      }
+    );
+    const keyboardDidHideListener = Keyboard.addListener(
+      'keyboardDidHide',
+      () => {
+        setKeyboardVisible(false);
+      }
+    );
+
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, []);
+
+  // Reset fade animation when screen comes back into focus and focus first input
   useFocusEffect(
     useCallback(() => {
       Animated.timing(fadeAnim, {
@@ -51,11 +78,25 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
         useNativeDriver: true,
       }).start();
 
+      // Auto focus the hidden input when screen comes into focus for better autofill
+      const timer = setTimeout(() => {
+        manualInputRef.current?.focus();
+      }, 300);
+
       return () => {
-        // Optional cleanup when screen loses focus
+        clearTimeout(timer);
       };
     }, [fadeAnim])
   );
+
+  // Auto focus hidden input on initial mount for autofill
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      manualInputRef.current?.focus();
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, []);
 
   // Countdown timer for resend OTP
   useEffect(() => {
@@ -75,35 +116,53 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
     }
   }, [shouldVerify, manualOtp]);
 
-  // Listen for OTP autofill
+  // Enhanced autofill handling
   useEffect(() => {
     const handleAutoFill = (text: string) => {
       if (/^\d+$/.test(text) && text.length === OTP_LENGTH) {
         setManualOtp(text);
-        inputRefs.current[OTP_LENGTH - 1]?.focus();
-        setActiveInput(OTP_LENGTH - 1);
         setShouldVerify(true);
+        Keyboard.dismiss();
       }
     };
 
-    // Listen for clipboard changes (for Android)
-    let clipboardInterval: NodeJS.Timeout;
-    if (Platform.OS === 'android') {
-      clipboardInterval = setInterval(async () => {
-        try {
-          const text = await Clipboard.getString();
-          if (/^\d+$/.test(text) && text.length === OTP_LENGTH) {
-            handleAutoFill(text);
-            clearInterval(clipboardInterval);
-          }
-        } catch (error) {
-          console.error('Clipboard error:', error);
+    // Check clipboard on mount for autofill
+    const checkClipboard = async () => {
+      try {
+        const text = await Clipboard.getString();
+        if (/^\d+$/.test(text) && text.length === OTP_LENGTH) {
+          handleAutoFill(text);
         }
-      }, 1000);
-    }
+      } catch (error) {
+        console.error('Clipboard error:', error);
+      }
+    };
+
+    checkClipboard();
+
+    // Set up interval to check for autofill
+    let clipboardInterval: NodeJS.Timeout;
+    
+    clipboardInterval = setInterval(async () => {
+      try {
+        const text = await Clipboard.getString();
+        if (/^\d+$/.test(text) && text.length === OTP_LENGTH) {
+          handleAutoFill(text);
+          clearInterval(clipboardInterval);
+        }
+      } catch (error) {
+        console.error('Clipboard error:', error);
+      }
+    }, 1000);
+
+    // Clear interval after 10 seconds
+    const timeout = setTimeout(() => {
+      if (clipboardInterval) clearInterval(clipboardInterval);
+    }, 10000);
 
     return () => {
       if (clipboardInterval) clearInterval(clipboardInterval);
+      clearTimeout(timeout);
     };
   }, []);
 
@@ -139,7 +198,7 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
         duration: 300,
         useNativeDriver: true,
       }).start(() => {
-        navigation.navigate(response.data.navigate_to);
+        navigation.navigate(response.data.navigate_to as never);
       });
 
     } catch (err: any) {
@@ -148,7 +207,7 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
       // Clear OTP on invalid verification
       setOtp(Array(OTP_LENGTH).fill(''));
       setManualOtp('');
-      inputRefs.current[0]?.focus();
+      manualInputRef.current?.focus();
     } finally {
       setIsLoading(false);
     }
@@ -167,7 +226,7 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
       const response = await resendOTP({ contact_number: userInput });
       
       if (response.status === 200) {
-        inputRefs.current[0]?.focus();
+        manualInputRef.current?.focus();
       } else {
         setError('Failed to resend OTP. Please try again.');
       }
@@ -214,29 +273,25 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
 
   const handleManualOtpChange = (text: string) => {
     if (/^\d*$/.test(text)) {
-      setManualOtp(text);
+      const cleanText = text.replace(/[^0-9]/g, '');
+      setManualOtp(cleanText);
       setError('');
       
       // Update individual boxes
-      const newOtp = [...otp];
-      for (let i = 0; i < text.length && i < OTP_LENGTH; i++) {
-        newOtp[i] = text[i];
-      }
-      // Clear remaining boxes if text is shorter
-      for (let i = text.length; i < OTP_LENGTH; i++) {
-        newOtp[i] = '';
+      const newOtp = Array(OTP_LENGTH).fill('');
+      for (let i = 0; i < cleanText.length && i < OTP_LENGTH; i++) {
+        newOtp[i] = cleanText[i];
       }
       setOtp(newOtp);
       
       // Focus the appropriate box
-      const newActiveInput = Math.min(text.length, OTP_LENGTH - 1);
+      const newActiveInput = Math.min(cleanText.length, OTP_LENGTH - 1);
       setActiveInput(newActiveInput);
-      if (text.length < OTP_LENGTH) {
+      
+      if (cleanText.length < OTP_LENGTH) {
         inputRefs.current[newActiveInput]?.focus();
-      }
-
-      // Set shouldVerify when OTP is complete
-      if (text.length === OTP_LENGTH) {
+      } else {
+        Keyboard.dismiss();
         setShouldVerify(true);
       }
     }
@@ -244,15 +299,6 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
 
   const handleBoxFocus = (index: number) => {
     setActiveInput(index);
-    // When focusing a box, position cursor at end of manual OTP
-    if (manualOtp.length > 0) {
-      manualInputRef.current?.setNativeProps({
-        selection: {
-          start: manualOtp.length,
-          end: manualOtp.length,
-        },
-      });
-    }
   };
 
   const handleKeyPress = (e: any, index: number) => {
@@ -282,21 +328,14 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
     }
   };
 
-  const handlePaste = async () => {
-    try {
-      const text = await Clipboard.getString();
-      if (/^\d+$/.test(text)) {
-        const pastedDigits = text.substring(0, OTP_LENGTH);
-        setManualOtp(pastedDigits);
-        inputRefs.current[OTP_LENGTH - 1]?.focus();
-        setActiveInput(OTP_LENGTH - 1);
-        if (pastedDigits.length === OTP_LENGTH) {
-          setShouldVerify(true);
-        }
-      }
-    } catch (error) {
-      console.error('Paste error:', error);
-    }
+  const handleBackPress = () => {
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      navigation.goBack();
+    });
   };
 
   const animatedStyle = {
@@ -306,33 +345,44 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
   return (
     <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={styles.container}>
+        <KeyboardAvoidingView 
+          style={styles.container}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
           <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
-          <TouchableOpacity 
-            style={[styles.backButton, isSmallDevice && styles.backButtonSmall]} 
-            onPress={() => {
-              // Fade out animation before going back
-              Animated.timing(fadeAnim, {
-                toValue: 0,
-                duration: 300,
-                useNativeDriver: true,
-              }).start(() => {
-                navigation.goBack();
-              });
-            }}
-            activeOpacity={0.7}
-          >
-            <Icon name="arrow-back" size={isSmallDevice ? 20 : 24} color="#000" />
-          </TouchableOpacity>
+          {/* Fixed Header with Back Button */}
+          <View style={styles.headerContainer}>
+            <TouchableOpacity 
+              style={[styles.backButton, isSmallDevice && styles.backButtonSmall]} 
+              onPress={handleBackPress}
+              activeOpacity={0.7}
+            >
+              <Icon name="chevron-back" size={isSmallDevice ? 24 : 28} color="#000" />
+            </TouchableOpacity>
+            <View style={styles.headerTitleContainer}>
+              <Text style={[styles.headerTitle, isSmallDevice && styles.headerTitleSmall]}>
+                Verification
+              </Text>
+            </View>
+            <View style={styles.headerPlaceholder} />
+          </View>
 
           <ScrollView 
-            contentContainerStyle={styles.scrollContent}
+            ref={scrollViewRef}
+            contentContainerStyle={[
+              styles.scrollContent,
+              keyboardVisible && styles.scrollContentKeyboardVisible
+            ]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
+            automaticallyAdjustContentInsets={true}
+            contentInsetAdjustmentBehavior="always"
           >
             <View style={styles.content}>
-              <View style={[styles.header, isSmallDevice && styles.headerSmall]}>
+              {/* Updated Illustration Container without security icon */}
+
+              <View style={[styles.textHeader, isSmallDevice && styles.textHeaderSmall]}>
                 <Text style={[styles.title, isSmallDevice && styles.titleSmall]}>Enter Verification Code</Text>
                 <Text style={[styles.subtitle, isSmallDevice && styles.subtitleSmall]}>
                   We've sent a 6-digit code to{"\n"}
@@ -340,7 +390,7 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
                 </Text>
               </View>
 
-              {/* Hidden manual OTP input for better keyboard support and autofill */}
+              {/* Enhanced Hidden OTP Input for Autofill with better attributes */}
               <TextInput
                 ref={manualInputRef}
                 style={styles.hiddenInput}
@@ -349,26 +399,31 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
                 keyboardType="number-pad"
                 maxLength={OTP_LENGTH}
                 textContentType="oneTimeCode"
-                autoComplete="one-time-code"
+                autoComplete="sms-otp"
                 importantForAutofill="yes"
                 autoFocus={true}
-                onPaste={handlePaste}
                 caretHidden={true}
                 autoCorrect={false}
                 spellCheck={false}
                 dataDetectorTypes="none"
                 contextMenuHidden={true}
+                autoCapitalize="none"
+                enterKeyHint="done"
+                inputMode="numeric"
+                enablesReturnKeyAutomatically={true}
+                returnKeyType="done"
+                onSubmitEditing={() => {
+                  if (manualOtp.length === OTP_LENGTH) {
+                    handleVerify();
+                  }
+                }}
               />
 
-              {/* OTP Boxes - Now in a single row with no wrapping */}
+              {/* OTP Boxes Container */}
               <Animated.View 
                 style={[
                   styles.otpContainer, 
                   animatedStyle,
-                  { 
-                    maxWidth: MAX_CONTAINER_WIDTH,
-                    flexWrap: 'nowrap',
-                  }
                 ]}
               >
                 {Array(OTP_LENGTH).fill(0).map((_, index) => (
@@ -379,9 +434,7 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
                       inputRefs.current[index]?.focus();
                       setActiveInput(index);
                     }}
-                    style={[styles.otpBoxTouchable, {
-                      marginHorizontal: DIGIT_BOX_MARGIN
-                    }]}
+                    style={[styles.otpBoxTouchable]}
                   >
                     <View style={[
                       styles.otpBox,
@@ -393,14 +446,16 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
                       error ? styles.otpBoxError : null,
                       activeInput === index ? styles.otpBoxActive : null
                     ]}>
-                      <Text style={[styles.otpText, isSmallDevice && styles.otpTextSmall]}>{otp[index]}</Text>
+                      <Text style={[styles.otpText, isSmallDevice && styles.otpTextSmall]}>
+                        {otp[index] || ''}
+                      </Text>
+                      {activeInput === index && !otp[index] && (
+                        <Text style={styles.cursor}>|</Text>
+                      )}
                     </View>
                     <TextInput
                       ref={(ref) => (inputRefs.current[index] = ref)}
-                      style={[styles.otpInputHidden, {
-                        width: DIGIT_BOX_SIZE,
-                        height: DIGIT_BOX_SIZE,
-                      }]}
+                      style={[styles.otpInputHidden]}
                       keyboardType="number-pad"
                       value={otp[index]}
                       onChangeText={(text) => handleBoxChangeText(text, index)}
@@ -408,11 +463,9 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
                       maxLength={1}
                       onFocus={() => handleBoxFocus(index)}
                       contextMenuHidden={true}
-                      selectTextOnFocus={false}
+                      selectTextOnFocus={true}
                       caretHidden={true}
-                      textContentType="oneTimeCode"
-                      autoComplete="one-time-code"
-                      importantForAutofill="yes"
+                      inputMode="numeric"
                     />
                   </TouchableOpacity>
                 ))}
@@ -420,7 +473,7 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
 
               {error ? (
                 <View style={[styles.errorContainer, isSmallDevice && styles.errorContainerSmall]}>
-                  <Icon name="warning" size={isSmallDevice ? 14 : 16} color="#ff4444" />
+                  <Icon name="warning-outline" size={isSmallDevice ? 16 : 18} color="#ff4444" />
                   <Text style={[styles.errorText, isSmallDevice && styles.errorTextSmall]}>{error}</Text>
                 </View>
               ) : null}
@@ -430,7 +483,7 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
                   styles.buttonContainer, 
                   ((otp.join('').length !== OTP_LENGTH && manualOtp.length !== OTP_LENGTH) || isLoading) && styles.buttonDisabled
                 ]}
-                onPress={() => setShouldVerify(true)}
+                onPress={handleVerify}
                 disabled={(otp.join('').length !== OTP_LENGTH && manualOtp.length !== OTP_LENGTH) || isLoading}
                 activeOpacity={0.9}
               >
@@ -461,7 +514,7 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
               </View>
             </View>
           </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
       </TouchableWithoutFeedback>
     </Animated.View>
   );
@@ -476,56 +529,107 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingBottom: 20,
   },
+  scrollContentKeyboardVisible: {
+    paddingBottom: 100,
+  },
+  headerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 60 : (StatusBar.currentHeight || 0) + 20,
+    paddingBottom: 20,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
   backButton: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 44 : (StatusBar.currentHeight || 0) + 10,
-    left: 20,
-    zIndex: 10,
-    padding: 8,
+    width: 40,
+    height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+    backgroundColor: '#f8f8f8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
   },
   backButtonSmall: {
-    padding: 6,
+    width: 36,
+    height: 36,
     borderRadius: 18,
-    top: Platform.OS === 'ios' ? 40 : (StatusBar.currentHeight || 0) + 8,
+  },
+  headerTitleContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+  },
+  headerTitleSmall: {
+    fontSize: 16,
+  },
+  headerPlaceholder: {
+    width: 40,
   },
   content: {
     flex: 1,
-    paddingHorizontal: width * 0.05,
-    paddingTop: Platform.select({
-      ios: height < 700 ? height * 0.12 : height * 0.14,
-      android: height < 600 ? height * 0.10 : height * 0.12
-    }),
+    paddingHorizontal: 30,
+    paddingTop: 20,
     alignItems: 'center',
+    minHeight: height * 0.7,
   },
-  header: {
+  illustrationContainer: {
     alignItems: 'center',
-    marginBottom: height * 0.05,
+    marginBottom: 30,
+  },
+  illustrationContainerSmall: {
+    marginBottom: 20,
+  },
+  illustrationCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#FFF5EF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#E65C00',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  textHeader: {
+    alignItems: 'center',
+    marginBottom: 40,
     width: '100%',
   },
-  headerSmall: {
-    marginBottom: height * 0.04,
+  textHeaderSmall: {
+    marginBottom: 30,
   },
   title: {
-    fontSize: height < 700 ? 22 : 26,
+    fontSize: 28,
     fontWeight: '700',
     textAlign: 'center',
     color: '#333',
     marginBottom: 12,
   },
   titleSmall: {
-    fontSize: 20,
+    fontSize: 24,
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: height < 700 ? 14 : 16,
+    fontSize: 16,
     color: '#666',
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: 24,
   },
   subtitleSmall: {
-    fontSize: 13,
+    fontSize: 14,
     lineHeight: 20,
   },
   phoneNumber: {
@@ -535,34 +639,34 @@ const styles = StyleSheet.create({
   otpContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 24,
-    alignSelf: 'center',
+    marginBottom: 30,
     width: '100%',
   },
   otpBoxTouchable: {
-    // marginHorizontal handled inline based on calculated value
+    marginHorizontal: 4,
   },
   otpBox: {
-    borderWidth: 1.5,
+    borderWidth: 2,
     borderColor: '#E0E0E0',
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: '#FAFAFA',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 10, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
     elevation: 2,
+    position: 'relative',
   },
   otpBoxFilled: {
     borderColor: '#E65C00',
     backgroundColor: '#FFF5EF',
     shadowColor: '#E65C00',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   otpBoxError: {
     borderColor: '#ff4444',
@@ -571,27 +675,35 @@ const styles = StyleSheet.create({
     borderColor: '#E65C00',
     backgroundColor: '#FFF',
     shadowColor: '#E65C00',
-    shadowOffset: { width: 0, height: 3 },
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 4,
+    shadowRadius: 12,
+    elevation: 6,
   },
   otpText: {
     color: '#333',
     fontWeight: '600',
-    fontSize: 22,
+    fontSize: 24,
   },
   otpTextSmall: {
     fontSize: 20,
   },
+  cursor: {
+    color: '#E65C00',
+    fontSize: 24,
+    fontWeight: 'bold',
+    position: 'absolute',
+  },
   otpInputHidden: {
     position: 'absolute',
+    width: '100%',
+    height: '100%',
     opacity: 0,
   },
   hiddenInput: {
     position: 'absolute',
-    width: 0,
-    height: 0,
+    width: 1,
+    height: 1,
     opacity: 0,
   },
   errorContainer: {
@@ -599,14 +711,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
     backgroundColor: '#FFF2F2',
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 16,
-    borderRadius: 8,
+    borderRadius: 12,
     alignSelf: 'stretch',
   },
   errorContainerSmall: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     marginBottom: 16,
   },
   errorText: {
@@ -621,28 +733,28 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   buttonContainer: {
-    borderRadius: 14,
+    borderRadius: 16,
     overflow: 'hidden',
     alignSelf: 'stretch',
     marginTop: 10,
-    marginBottom: 20,
+    marginBottom: 25,
     shadowColor: '#E65C00',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowRadius: 12,
+    elevation: 8,
   },
   button: {
-    padding: 18,
+    padding: 20,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#E65C00',
   },
   buttonSmall: {
-    padding: 16,
+    padding: 18,
   },
   buttonDisabled: {
-    opacity: 0.7,
+    opacity: 0.6,
   },
   buttonText: {
     color: '#fff',
@@ -656,11 +768,11 @@ const styles = StyleSheet.create({
   resendContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
     flexWrap: 'wrap',
   },
   resendContainerSmall: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   resendText: {
     color: '#666',
@@ -679,24 +791,6 @@ const styles = StyleSheet.create({
   },
   resendDisabled: {
     color: '#999',
-  },
-  pasteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-  },
-  pasteButtonSmall: {
-    padding: 8,
-  },
-  pasteText: {
-    color: '#E65C00',
-    fontWeight: '500',
-    fontSize: 14,
-    marginLeft: 6,
-  },
-  pasteTextSmall: {
-    fontSize: 13,
-    marginLeft: 5,
   },
 });
 

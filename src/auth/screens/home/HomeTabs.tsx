@@ -61,34 +61,28 @@ const tabIconsFocused: { [key in keyof HomeTabParamList]: string } = {
   Cart: 'cart',
 };
 
-// Color palette
+// Enhanced Color palette with smooth gradient colors
 const COLORS = {
-  primary: '#FF6B35',       // Primary orange
-  primaryDark: '#E65C00',   // Darker orange
-  primaryLight: '#FF9F5B',  // Lighter orange
-  background: '#FFFFFF',    // White background
-  text: '#333333',          // Dark text
-  textLight: '#666666',     // Lighter text
-  border: '#EEEEEE',        // Light border
-  inactive: '#999999',      // Inactive tab color
-  error: '#FF3B30',         // Error red
-  success: '#34C759',       // Success green
-  warning: '#FF9500',       // Warning orange
-  info: '#5AC8FA',          // Info blue
-  gradientStart: '#E65C00', // Gradient start (primary)
-  gradientEnd: '#DD2476',   // Gradient end (primary dark)
+  primary: '#FF6B35',
+  primaryDark: '#E65C00',
+  primaryLight: '#FF9F5B',
+  background: '#FFFFFF',
+  text: '#333333',
+  textLight: '#666666',
+  border: '#EEEEEE',
+  inactive: '#999999',
+  error: '#FF3B30',
+  success: '#34C759',
+  warning: '#FF9500',
+  info: '#5AC8FA',
+  // Enhanced gradient colors for smooth transitions
+  gradientStart: '#FF6B35',    // Primary orange
+  gradientMiddle: '#FF512F',   // Intermediate orange
+  gradientEnd: '#DD2476',      // Primary dark with pink tone
+  // Additional gradient variations
+  gradientLight: '#FF9F5B',    // Light orange
+  gradientDark: '#E65C00',     // Dark orange
 };
-
-interface LocationData {
-  address: string;
-  loading: boolean;
-  error: string | null;
-  coords: { lat: number; lng: number } | null;
-  showEnableLocationPrompt: boolean;
-  showPermissionPrompt: boolean;
-  homeType: string;
-  addressId?: string | null;
-}
 
 // Storage keys for consistency
 const STORAGE_KEYS = {
@@ -97,6 +91,37 @@ const STORAGE_KEYS = {
   HOME_TYPE: 'HomeType',
   LATITUDE: 'Latitude',
   LONGITUDE: 'Longitude',
+};
+
+// Enhanced ProfileButton component with better touch handling
+const EnhancedProfileButton = () => {
+  const navigation = useNavigation();
+  
+  const handleProfilePress = useCallback(() => {
+    console.log('Profile button pressed - navigating to ProfileScreen');
+    navigation.navigate('ProfileScreen' as never);
+  }, [navigation]);
+
+  return (
+    <TouchableOpacity
+      onPress={handleProfilePress}
+      style={styles.profileButton}
+      activeOpacity={0.7}
+      hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+    >
+      <Animatable.View
+        animation="pulse"
+        duration={500}
+        useNativeDriver
+      >
+        <Icon 
+          name="person-circle-outline" 
+          size={32} 
+          color={COLORS.background} 
+        />
+      </Animatable.View>
+    </TouchableOpacity>
+  );
 };
 
 const AddressHeaderLeft = () => {
@@ -251,7 +276,6 @@ const AddressHeaderLeft = () => {
       return false;
     }
   };
-
 
   const checkLocationEnabled = async (): Promise<boolean> => {
     try {
@@ -535,11 +559,13 @@ const AddressHeaderLeft = () => {
     }
   }, [location.showPermissionPrompt, showPermissionAlert]);
 
-  const handleRefreshLocation = () => {
+  const handleRefreshLocation = useCallback(() => {
+    console.log('Refreshing location...');
     getCurrentLocation();
-  };
+  }, [getCurrentLocation]);
 
-  const handleAddressPress = () => {
+  const handleAddressPress = useCallback(() => {
+    console.log('Address header pressed - navigating to AddressScreen');
     // Navigation to AddressScreen
     navigation.navigate('AddressScreen', {
       prevLocation: "HomeTabs",
@@ -579,14 +605,15 @@ const AddressHeaderLeft = () => {
           }
         })();
       }
-    });
-  };
+    } as never);
+  }, [navigation, location.coords, location.address]);
 
   return (
     <TouchableOpacity
       style={styles.addressHeader}
       onPress={handleAddressPress}
       activeOpacity={0.7}
+      hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
     >
       <View style={styles.addressLine}>
         <Icon name="location-outline" size={16} color={COLORS.background} />
@@ -632,11 +659,19 @@ const AddressHeaderLeft = () => {
         
         {!location.loading && (
           <TouchableOpacity 
-            onPress={handleRefreshLocation} 
-            style={{ marginLeft: 8 }}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            onPress={(e) => {
+              e.stopPropagation();
+              handleRefreshLocation();
+            }} 
+            style={styles.refreshButton}
+            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
           >
-            <Animatable.View animation="pulse" iterationCount={1}>
+            <Animatable.View 
+              animation="pulse" 
+              iterationCount={1}
+              duration={500}
+              useNativeDriver
+            >
               <Icon 
                 name="reload-outline" 
                 size={14} 
@@ -726,13 +761,12 @@ const HomeTabsNavigator = () => {
 };
 
 const HomeTabs = () => {
-  const navigation = useNavigation();
-  
   return (
     <>
       <StatusBar 
         barStyle="light-content" 
-        backgroundColor={COLORS.primaryDark} 
+        backgroundColor={COLORS.gradientStart} 
+        translucent={false}
       />
       <Stack.Navigator>
         <Stack.Screen
@@ -741,13 +775,14 @@ const HomeTabs = () => {
           options={{
             headerTitle: '',
             headerLeft: () => <AddressHeaderLeft />,
-            headerRight: () => <ProfileButton navigation={navigation} />,
+            headerRight: () => <EnhancedProfileButton />,
             headerBackground: () => (
               <LinearGradient
-                colors={[COLORS.gradientStart, COLORS.gradientEnd]}
+                colors={[COLORS.gradientStart, COLORS.gradientMiddle, COLORS.gradientEnd]}
                 style={StyleSheet.absoluteFill}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
+                locations={[0, 0.5, 1]}
               />
             ),
             headerStyle: [
@@ -765,6 +800,9 @@ const HomeTabs = () => {
             headerTitleStyle: {
               color: COLORS.background,
             },
+            // Improved header configuration for better touch handling
+            headerLeftContainerStyle: styles.headerLeftContainer,
+            headerRightContainerStyle: styles.headerRightContainer,
           }}
         />
       </Stack.Navigator>
@@ -780,6 +818,26 @@ const styles = StyleSheet.create({
   header: {
     elevation: 0,
     shadowOpacity: 0,
+    borderBottomWidth: 0,
+  },
+  // Improved container styles for better touch handling
+  headerLeftContainer: {
+    paddingLeft: isIOS ? 16 : 16,
+    paddingRight: isIOS ? 0 : 16,
+    zIndex: 999,
+    elevation: 999,
+  },
+  headerRightContainer: {
+    paddingRight: isIOS ? 16 : 16,
+    paddingLeft: isIOS ? 0 : 16,
+    zIndex: 999,
+    elevation: 999,
+  },
+  profileButton: {
+    padding: 8,
+    borderRadius: 20,
+    zIndex: 1000,
+    elevation: 1000,
   },
   tabBar: {
     position: 'absolute',
@@ -795,6 +853,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderTopWidth: 0,
     borderRadius: isIOS ? 0 : 0,
+    zIndex: 100,
   },
   tabLabel: {
     fontSize: isIOS ? (isSmallDevice ? 11 : 12) : (isSmallDevice ? 10 : 11),
@@ -809,9 +868,13 @@ const styles = StyleSheet.create({
   },
   addressHeader: {
     flexDirection: 'column',
-    paddingLeft: 5,
+    paddingLeft: isIOS ? 0 : 0,
     paddingTop: isIOS ? 8 : 4,
     maxWidth: isIOS ? (isSmallDevice ? 220 : 240) : (isSmallDevice ? 200 : 220),
+    minHeight: 50,
+    justifyContent: 'center',
+    zIndex: 1000,
+    elevation: 1000,
   },
   addressLine: {
     flexDirection: 'row',
@@ -828,6 +891,11 @@ const styles = StyleSheet.create({
     fontSize: isIOS ? (isSmallDevice ? 13 : 14) : (isSmallDevice ? 12 : 13),
     marginLeft: 6,
     maxWidth: isIOS ? (isSmallDevice ? 160 : 180) : (isSmallDevice ? 140 : 160),
+    flexShrink: 1,
+  },
+  refreshButton: {
+    marginLeft: 8,
+    padding: 4,
   },
 });
 

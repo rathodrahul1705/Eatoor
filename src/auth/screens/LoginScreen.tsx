@@ -48,12 +48,13 @@ const LoginScreen = () => {
   const [error, setError] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedCountry, setSelectedCountry] = useState<Country>(countries[0]);
+  const [selectedCountry, setSelectedCountry] = useState<Country>(countries.find(country => country.code === 'IN') || countries[0]);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const shakeAnimation = useRef(new Animated.Value(0)).current;
-  const fadeAnim = useRef(new Animated.Value(1)).current; // Start with value 1 to prevent blank screen
+  const fadeAnim = useRef(new Animated.Value(1)).current;
   const inputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -74,9 +75,12 @@ const LoginScreen = () => {
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
       (e) => {
         setKeyboardVisible(true);
-        // Scroll to bottom when keyboard appears
+        const keyboardHeight = e.endCoordinates.height;
+        setKeyboardHeight(keyboardHeight);
+        
+        // Scroll to input when keyboard appears
         setTimeout(() => {
-          scrollViewRef.current?.scrollToEnd({ animated: true });
+          scrollViewRef.current?.scrollTo({ y: 100, animated: true });
         }, 100);
       }
     );
@@ -85,6 +89,9 @@ const LoginScreen = () => {
       Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
       () => {
         setKeyboardVisible(false);
+        setKeyboardHeight(0);
+        // Scroll back to top when keyboard hides
+        scrollViewRef.current?.scrollTo({ y: 0, animated: true });
       }
     );
 
@@ -129,13 +136,7 @@ const LoginScreen = () => {
 
       if (response?.status == 200) {
         // Success animation before navigation
-        Animated.timing(fadeAnim, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }).start(() => {
           navigation.navigate('OTP', { userInput: fullNumber });
-        });
       } else {
         setError(response?.data?.message || 'Failed to send OTP. Please try again.');
         shakeInput();
@@ -150,8 +151,68 @@ const LoginScreen = () => {
   };
 
   const handleInputChange = (text: string) => {
+    // Remove all non-digit characters and limit to maxLength
     const numericText = text.replace(/[^0-9]/g, '');
-    setMobileNumber(numericText.slice(0, selectedCountry.maxLength));
+    
+    // Auto-detect and remove country code if it matches selected country
+    let processedText = numericText;
+    const countryDialCodeWithoutPlus = selectedCountry.dialCode.replace('+', '');
+    
+    // Check if input starts with country code and remove it
+    if (numericText.startsWith(countryDialCodeWithoutPlus)) {
+      processedText = numericText.slice(countryDialCodeWithoutPlus.length);
+    }
+    
+    // Also check for common country codes that might be auto-filled
+    const commonCountryCodes = ['91', '1', '44', '86', '81', '49', '33', '7', '39', '34'];
+    for (const code of commonCountryCodes) {
+      if (numericText.startsWith(code) && numericText.length > code.length) {
+        // Only remove if the remaining digits are valid phone number length
+        const remainingDigits = numericText.slice(code.length);
+        if (remainingDigits.length >= 7 && remainingDigits.length <= 15) {
+          processedText = remainingDigits;
+          break;
+        }
+      }
+    }
+    
+    setMobileNumber(processedText.slice(0, selectedCountry.maxLength));
+    setError('');
+  };
+
+  // Handle autofill specifically for contacts
+  const handleAutoFill = (text: string) => {
+    console.log('Autofill text:', text);
+    
+    // Remove all non-digit characters including +, spaces, hyphens
+    const cleanText = text.replace(/[^0-9]/g, '');
+    
+    if (!cleanText) {
+      setMobileNumber('');
+      return;
+    }
+
+    let finalNumber = cleanText;
+    
+    // Remove country code if present (for India +91)
+    if (cleanText.startsWith('91') && cleanText.length > 10) {
+      finalNumber = cleanText.slice(2);
+    }
+    
+    // Remove leading 0 if present (some countries use 0 after country code)
+    if (finalNumber.startsWith('0') && finalNumber.length > 10) {
+      finalNumber = finalNumber.slice(1);
+    }
+    
+    // Limit to 10 digits for Indian numbers
+    if (selectedCountry.code === 'IN') {
+      finalNumber = finalNumber.slice(0, 10);
+    } else {
+      finalNumber = finalNumber.slice(0, selectedCountry.maxLength);
+    }
+    
+    console.log('Processed number:', finalNumber);
+    setMobileNumber(finalNumber);
     setError('');
   };
 
@@ -195,33 +256,87 @@ const LoginScreen = () => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+      
+      {/* Country Picker Modal - Positioned above everything */}
+      <Modal
+        visible={showCountryPicker}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setShowCountryPicker(false)}
+        statusBarTranslucent={false}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select Country</Text>
+            <TouchableOpacity 
+              style={styles.closeButton}
+              onPress={() => {
+                setShowCountryPicker(false);
+                setSearchQuery('');
+              }}
+            >
+              <Icon name="close" size={24} color={textColor} />
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.searchContainer}>
+            <Icon name="search" size={20} color={lightTextColor} style={styles.searchIcon} />
+            <TextInput
+              placeholder="Search country"
+              style={styles.searchInput}
+              placeholderTextColor={lightTextColor}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus={true}
+            />
+          </View>
+          
+          <FlatList
+            data={filteredCountries}
+            renderItem={renderCountryItem}
+            keyExtractor={(item) => item.code}
+            keyboardShouldPersistTaps="always"
+            ItemSeparatorComponent={() => <View style={styles.separator} />}
+            contentContainerStyle={styles.modalContent}
+          />
+        </SafeAreaView>
+      </Modal>
+
       <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
         <KeyboardAvoidingView
           style={styles.container}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? (isSmallDevice ? 40 : 20) : 0}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         >
+          {/* Fixed Image Section - Always visible */}
+          <View style={[
+            styles.imageContainer,
+            keyboardVisible && styles.imageContainerWithKeyboard
+          ]}>
+            <Image
+              source={{ uri: 'https://eatoorprod.s3.amazonaws.com/uploads/7b4762adb1e841d6b248ecd5b8ff55c2.jpg' }}
+              style={styles.topImage}
+              resizeMode="cover"
+            />
+          </View>
+
+          {/* Scrollable Form Section */}
           <ScrollView 
             ref={scrollViewRef}
             contentContainerStyle={[
               styles.scrollContainer,
-              keyboardVisible && Platform.OS === 'ios' && styles.scrollContainerKeyboardVisible
+              { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 20 : 40 }
             ]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             bounces={false}
+            scrollEventThrottle={16}
           >
-            {/* Top Image Section */}
-            <View style={styles.imageContainer}>
-              <Image
-                source={{ uri: 'https://eatoorprod.s3.amazonaws.com/uploads/7b4762adb1e841d6b248ecd5b8ff55c2.jpg' }}
-                style={styles.topImage}
-                resizeMode="cover"
-              />
-            </View>
-
             {/* Card-like Form Section */}
-            <View style={styles.cardContainer}>
+            <View style={[
+              styles.cardContainer,
+              keyboardVisible && styles.cardContainerWithKeyboard
+            ]}>
               <View style={styles.content}>
                 <View style={styles.titleContainer}>
                   <Text style={styles.title}>Login or Signup</Text>
@@ -251,7 +366,7 @@ const LoginScreen = () => {
                         style={styles.input}
                         placeholderTextColor={lightTextColor}
                         value={mobileNumber}
-                        onChangeText={handleInputChange}
+                        onChangeText={handleAutoFill} // Use the improved autofill handler
                         onFocus={() => setIsFocused(true)}
                         onBlur={() => setIsFocused(false)}
                         keyboardType="number-pad"
@@ -262,6 +377,7 @@ const LoginScreen = () => {
                         textAlignVertical="center"
                         maxLength={selectedCountry.maxLength}
                         editable={!isLoading}
+                        autoFocus={false}
                       />
                     </View>
                   </TouchableWithoutFeedback>
@@ -311,49 +427,6 @@ const LoginScreen = () => {
               </View>
             </View>
           </ScrollView>
-
-          {/* Country Picker Modal */}
-          <Modal
-            visible={showCountryPicker}
-            animationType="slide"
-            transparent={false}
-            onRequestClose={() => setShowCountryPicker(false)}
-          >
-            <SafeAreaView style={styles.modalContainer}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Select Country</Text>
-                <TouchableOpacity 
-                  style={styles.closeButton}
-                  onPress={() => {
-                    setShowCountryPicker(false);
-                    setSearchQuery('');
-                  }}
-                >
-                  <Icon name="close" size={24} color={textColor} />
-                </TouchableOpacity>
-              </View>
-              
-              <View style={styles.searchContainer}>
-                <Icon name="search" size={20} color={lightTextColor} style={styles.searchIcon} />
-                <TextInput
-                  placeholder="Search country"
-                  style={styles.searchInput}
-                  placeholderTextColor={lightTextColor}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                />
-              </View>
-              
-              <FlatList
-                data={filteredCountries}
-                renderItem={renderCountryItem}
-                keyExtractor={(item) => item.code}
-                keyboardShouldPersistTaps="always"
-                ItemSeparatorComponent={() => <View style={styles.separator} />}
-                contentContainerStyle={styles.modalContent}
-              />
-            </SafeAreaView>
-          </Modal>
         </KeyboardAvoidingView>
       </Animated.View>
     </SafeAreaView>
@@ -371,24 +444,28 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     flexGrow: 1,
-  },
-  scrollContainerKeyboardVisible: {
-    paddingBottom: Platform.OS === 'ios' ? (isSmallDevice ? 120 : 100) : 20,
+    paddingTop: isSmallDevice ? height * 0.3 : height * 0.35,
   },
   imageContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     width: '100%',
     height: isSmallDevice ? height * 0.3 : height * 0.35,
+    zIndex: 1,
+  },
+  imageContainerWithKeyboard: {
+    height: isSmallDevice ? height * 0.2 : height * 0.25,
   },
   topImage: {
     width: '100%',
     height: '100%',
   },
   cardContainer: {
-    flex: 1,
     backgroundColor: '#fff',
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
-    marginTop: -30,
     paddingTop: 30,
     shadowColor: '#000',
     shadowOffset: {
@@ -398,10 +475,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 10,
     elevation: 10,
+    minHeight: height * 0.65,
+  },
+  cardContainerWithKeyboard: {
+    minHeight: height * 0.5,
   },
   content: {
     paddingHorizontal: 25,
-    paddingBottom: Platform.OS === 'ios' ? (isSmallDevice ? 15 : 30) : 20,
+    paddingBottom: 20,
   },
   titleContainer: {
     marginBottom: isSmallDevice ? 24 : 30,
@@ -451,6 +532,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     paddingRight: 12,
+    borderRightWidth: 1,
+    borderRightColor: borderColor,
+    marginRight: 12,
   },
   countryFlag: {
     fontSize: isSmallDevice ? 20 : 24,
@@ -474,7 +558,6 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
     fontWeight: '500',
     paddingVertical: 0,
-    marginLeft: 8,
   },
   errorContainer: {
     flexDirection: 'row',
@@ -530,10 +613,12 @@ const styles = StyleSheet.create({
     color: primaryColor,
     fontWeight: '500',
   },
-  // Country Picker Modal Styles
+  // Country Picker Modal Styles - Ensure it appears above everything
   modalContainer: {
     flex: 1,
     backgroundColor: '#fff',
+    zIndex: 1000,
+    elevation: 1000,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -542,6 +627,7 @@ const styles = StyleSheet.create({
     padding: isSmallDevice ? 20 : 24,
     borderBottomWidth: 1,
     borderBottomColor: borderColor,
+    paddingTop: Platform.OS === 'ios' ? 10 : 20,
   },
   modalTitle: {
     fontSize: isSmallDevice ? 20 : 22,

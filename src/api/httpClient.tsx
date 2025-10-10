@@ -7,8 +7,8 @@ let BASE_URL = '';
 
 if (Platform.OS === 'android') {
   // Android emulator uses 10.0.2.2 for localhost
-  // BASE_URL = 'https://www.eatoor.com/api';
-  BASE_URL = "http://10.0.2.2:8000/api";
+  BASE_URL = 'https://www.eatoor.com/api';
+  // BASE_URL = "http://10.0.2.2:8000/api";
 
 } else {
   // iOS simulator can use localhost directly

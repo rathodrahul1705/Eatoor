@@ -26,21 +26,21 @@ const { width, height } = Dimensions.get('window');
 const isAndroid = Platform.OS === 'android';
 const statusBarHeight = StatusBar.currentHeight || 0;
 
-// Enhanced Color Palette
+// Enhanced Color Palette - Swiggy Inspired
 const COLORS = {
-  primary: '#FF6B35',
+  primary: '#FC8019',
   primaryLight: '#FF9F5B',
   secondary: '#FFD166',
   background: '#F8F9FA',
   card: '#FFFFFF',
-  textDark: '#1E2329',
-  textMedium: '#5E6770',
-  textLight: '#8A939C',
+  textDark: '#1E1E29',
+  textMedium: '#686B78',
+  textLight: '#93959F',
   success: '#06C167',
   danger: '#FF3B30',
   info: '#5AC8FA',
-  lightGray: '#F1F3F5',
-  border: '#E1E4E8',
+  lightGray: '#F1F1F6',
+  border: '#E8E8E8',
   rating: '#FFC120',
   darkOverlay: 'rgba(0,0,0,0.6)',
   lightOverlay: 'rgba(255,255,255,0.4)',
@@ -49,11 +49,13 @@ const COLORS = {
   veg: '#06C167',
   nonVeg: '#FF3B30',
   searchHighlight: '#FFF9C4',
-  modalBackground: 'rgba(0, 0, 0, 0.6)',
+  modalBackground: 'rgba(0, 0, 0, 0.8)',
   searchModalBg: '#FFFFFF',
   trending: '#FF6B9D',
   headerGradientStart: '#E65C00',
   headerGradientEnd: '#DD2476',
+  swiggyOrange: '#FC8019',
+  swiggyDark: '#1E1E29',
 };
 
 const FONTS = {
@@ -67,14 +69,14 @@ const scale = (size: number) => (width / 375) * size;
 const moderateScale = (size: number, factor = 0.5) => size + (scale(size) - size) * factor;
 
 const getModalHeight = () => {
-  const screenHeight = height - statusBarHeight;
-  return screenHeight;
+  return height;
 };
 
 // Popular searches constant
 const POPULAR_SEARCHES = [
   "Biryani", "Pizza", "Burger", "Chinese", "North Indian",
-  "South Indian", "Ice Cream", "Beverages", "Thali", "Rolls"
+  "South Indian", "Ice Cream", "Beverages", "Thali", "Rolls",
+  "Momos", "Noodles", "Fried Rice", "Chicken", "Desserts"
 ];
 
 // Types
@@ -140,7 +142,6 @@ const SearchModal: React.FC<SearchModalProps> = ({
       'keyboardDidShow',
       () => {
         setKeyboardVisible(true);
-        // Scroll to top when keyboard appears
         setTimeout(() => {
           scrollViewRef.current?.scrollTo({ y: 0, animated: true });
         }, 100);
@@ -175,7 +176,6 @@ const SearchModal: React.FC<SearchModalProps> = ({
           useNativeDriver: true,
         })
       ]).start(() => {
-        // Focus input after animation completes
         setTimeout(() => {
           searchInputRef.current?.focus();
         }, 100);
@@ -201,7 +201,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
 
   const slideIn = slideAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [-modalHeight, 0],
+    outputRange: [-height, 0],
   });
 
   const handleClose = () => {
@@ -210,14 +210,12 @@ const SearchModal: React.FC<SearchModalProps> = ({
   };
 
   const handleContentTouch = () => {
-    // Only dismiss keyboard if it's visible and user touches outside input
     if (isKeyboardVisible) {
       Keyboard.dismiss();
     }
   };
 
   const handleScrollBegin = () => {
-    // Dismiss keyboard when scrolling starts
     if (isKeyboardVisible) {
       Keyboard.dismiss();
     }
@@ -230,7 +228,6 @@ const SearchModal: React.FC<SearchModalProps> = ({
 
   const handleRecentSearchPress = (query: string) => {
     onRecentSearchPress(query);
-    // Keep keyboard open after recent search selection
     setTimeout(() => {
       searchInputRef.current?.focus();
     }, 100);
@@ -238,7 +235,6 @@ const SearchModal: React.FC<SearchModalProps> = ({
 
   const handlePopularSearchPress = (query: string) => {
     onPopularSearchPress(query);
-    // Keep keyboard open after popular search selection
     setTimeout(() => {
       searchInputRef.current?.focus();
     }, 100);
@@ -292,7 +288,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
       activeOpacity={0.7}
     >
       <View style={styles.searchHistoryIconContainer}>
-        <Icon name="search-outline" size={18} color={COLORS.primary} />
+        <Icon name="search-outline" size={18} color={COLORS.swiggyOrange} />
       </View>
       <View style={styles.searchHistoryContent}>
         <Text style={styles.searchHistoryName} numberOfLines={1}>
@@ -433,7 +429,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
             <View style={styles.searchSection}>
               <View style={styles.sectionHeaderRow}>
                 <View style={styles.sectionTitleContainer}>
-                  <Icon name="time-outline" size={20} color={COLORS.primary} />
+                  <Icon name="time-outline" size={20} color={COLORS.swiggyOrange} />
                   <Text style={styles.sectionTitle}>Recent Searches</Text>
                 </View>
                 <TouchableOpacity 
@@ -456,7 +452,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
           {searchHistory.length > 0 && (
             <View style={styles.searchSection}>
               <View style={styles.sectionTitleContainer}>
-                <Icon name="search-outline" size={20} color={COLORS.primary} />
+                <Icon name="search-outline" size={20} color={COLORS.swiggyOrange} />
                 <Text style={styles.sectionTitle}>Search History</Text>
               </View>
               <FlatList
@@ -472,7 +468,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
           <View style={styles.searchSection}>
             <View style={styles.sectionHeaderRow}>
               <View style={styles.sectionTitleContainer}>
-                <Icon name="flame" size={20} color={COLORS.primary} />
+                <Icon name="flame" size={20} color={COLORS.swiggyOrange} />
                 <Text style={styles.sectionTitle}>Popular Searches</Text>
               </View>
             </View>
@@ -484,7 +480,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
                   onPress={() => handlePopularSearchPress(item)}
                   activeOpacity={0.7}
                 >
-                  <Icon name="search-outline" size={14} color={COLORS.primary} />
+                  <Icon name="search-outline" size={14} color={COLORS.swiggyOrange} />
                   <Text style={styles.popularSearchText} numberOfLines={1}>
                     {item}
                   </Text>
@@ -512,7 +508,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
     if (searchLoading) {
       return (
         <View style={styles.searchLoading}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator size="large" color={COLORS.swiggyOrange} />
           <Text style={styles.searchLoadingText}>Finding delicious options...</Text>
         </View>
       );
@@ -536,7 +532,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
           {trendingResults.length > 0 && (
             <View style={styles.searchResultSection}>
               <View style={styles.sectionTitleContainer}>
-                <Icon name="trending-up" size={20} color={COLORS.primary} />
+                <Icon name="trending-up" size={20} color={COLORS.swiggyOrange} />
                 <Text style={styles.sectionTitle}>Trending Now</Text>
               </View>
               <ScrollView 
@@ -553,7 +549,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
           {foodResults.length > 0 && (
             <View style={styles.searchResultSection}>
               <View style={styles.sectionTitleContainer}>
-                <Icon name="fast-food-outline" size={20} color={COLORS.primary} />
+                <Icon name="fast-food-outline" size={20} color={COLORS.swiggyOrange} />
                 <Text style={styles.sectionTitle}>
                   Food Items ({foodResults.length})
                 </Text>
@@ -571,7 +567,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
           {restaurantResults.length > 0 && (
             <View style={styles.searchResultSection}>
               <View style={styles.sectionTitleContainer}>
-                <Icon name="restaurant-outline" size={20} color={COLORS.primary} />
+                <Icon name="restaurant-outline" size={20} color={COLORS.swiggyOrange} />
                 <Text style={styles.sectionTitle}>
                   Kitchens ({restaurantResults.length})
                 </Text>
@@ -618,7 +614,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
       isVisible={isVisible}
       animationInTiming={1}
       animationOutTiming={1}
-      backdropOpacity={0.6}
+      backdropOpacity={0.8}
       backdropColor={COLORS.modalBackground}
       onBackdropPress={handleClose}
       onBackButtonPress={handleClose}
@@ -626,6 +622,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
       statusBarTranslucent={true}
       animationIn="slideInDown"
       animationOut="slideOutUp"
+      coverScreen={true}
     >
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView 
@@ -643,15 +640,24 @@ const SearchModal: React.FC<SearchModalProps> = ({
               }
             ]}
           >
-            {/* Search Header with improved design */}
+            {/* Search Header - Swiggy Style */}
             <View style={styles.searchModalHeader}>
+              {/* Back Button */}
+              <TouchableOpacity 
+                onPress={handleClose} 
+                style={styles.backButton}
+                activeOpacity={0.7}
+              >
+                <Icon name="arrow-back" size={24} color={COLORS.textDark} />
+              </TouchableOpacity>
+
               {/* Search Input Container */}
               <View style={styles.modalSearchInputContainer}>
-                <Icon name="search" size={20} color={COLORS.primary} style={styles.modalSearchIcon} />
+                <Icon name="search" size={20} color={COLORS.swiggyOrange} style={styles.modalSearchIcon} />
                 <TextInput
                   ref={searchInputRef}
                   style={styles.modalSearchInput}
-                  placeholder="Search for food, restaurants..."
+                  placeholder="Search for food, kitchens..."
                   placeholderTextColor={COLORS.textLight}
                   value={searchQuery}
                   onChangeText={onSearchChange}
@@ -661,20 +667,6 @@ const SearchModal: React.FC<SearchModalProps> = ({
                   clearButtonMode="while-editing"
                 />
               </View>
-
-              {/* Close Button */}
-              <TouchableOpacity 
-                onPress={handleClose} 
-                style={styles.closeButton}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.closeButtonText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Handle Bar for better UX */}
-            <View style={styles.handleBarContainer}>
-              <View style={styles.handleBar} />
             </View>
 
             {/* Search Content */}
@@ -697,14 +689,13 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
+    backgroundColor: COLORS.searchModalBg,
   },
   keyboardAvoidingView: {
     flex: 1,
   },
   modalContainer: {
     backgroundColor: COLORS.searchModalBg,
-    borderTopLeftRadius: scale(20),
-    borderTopRightRadius: scale(20),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -716,76 +707,60 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: scale(16),
-    paddingVertical: scale(16),
+    paddingVertical: scale(12),
+    backgroundColor: COLORS.card,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
-    backgroundColor: COLORS.card,
+    paddingTop: isAndroid ? statusBarHeight + scale(12) : scale(12),
+  },
+  backButton: {
+    padding: scale(8),
+    marginRight: scale(8),
   },
   modalSearchInputContainer: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.lightGray,
-    borderRadius: scale(12),
-    paddingHorizontal: scale(16),
-    height: scale(48),
-    marginRight: scale(12),
+    borderRadius: scale(8),
+    paddingHorizontal: scale(12),
+    height: scale(44),
   },
   modalSearchIcon: {
-    marginRight: scale(10),
+    marginRight: scale(8),
   },
   modalSearchInput: {
     flex: 1,
     fontSize: moderateScale(16),
     fontFamily: FONTS.medium,
     color: COLORS.textDark,
-    paddingVertical: scale(12),
+    paddingVertical: scale(8),
     paddingRight: scale(8),
     paddingLeft: 0,
   },
-  clearSearchButton: {
-    padding: scale(4),
-  },
-  closeButton: {
-    paddingVertical: scale(12),
-    paddingHorizontal: scale(8),
-  },
-  closeButtonText: {
-    fontSize: moderateScale(16),
-    fontFamily: FONTS.medium,
-    color: COLORS.primary,
-  },
-  handleBarContainer: {
-    alignItems: 'center',
-    paddingVertical: scale(8),
-  },
-  handleBar: {
-    width: scale(40),
-    height: scale(4),
-    backgroundColor: COLORS.border,
-    borderRadius: scale(2),
-  },
   searchModalContent: {
     flex: 1,
+    backgroundColor: COLORS.background,
   },
   scrollViewContent: {
     flexGrow: 1,
-    paddingHorizontal: scale(16),
     paddingBottom: scale(20),
   },
 
   // Search Initial State
   searchInitialState: {
     flex: 1,
+    backgroundColor: COLORS.background,
   },
   searchSection: {
     marginBottom: scale(24),
+    paddingHorizontal: scale(16),
   },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: scale(12),
+    marginBottom: scale(16),
   },
   sectionTitleContainer: {
     flexDirection: 'row',
@@ -803,7 +778,7 @@ const styles = StyleSheet.create({
   clearButton: {
     fontSize: moderateScale(14),
     fontFamily: FONTS.medium,
-    color: COLORS.primary,
+    color: COLORS.swiggyOrange,
   },
 
   // Recent Searches
@@ -812,11 +787,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: scale(12),
     paddingHorizontal: scale(12),
-    backgroundColor: COLORS.recentSearchBg,
-    borderRadius: scale(12),
+    backgroundColor: COLORS.card,
+    borderRadius: scale(8),
     marginBottom: scale(8),
     borderWidth: 1,
     borderColor: COLORS.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   recentSearchIconContainer: {
     width: scale(24),
@@ -826,7 +806,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: moderateScale(15),
     fontFamily: FONTS.medium,
-    color: COLORS.recentSearchText,
+    color: COLORS.textDark,
     marginLeft: scale(12),
   },
   recentSearchDelete: {
@@ -871,10 +851,10 @@ const styles = StyleSheet.create({
   popularSearchItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.lightGray,
+    backgroundColor: COLORS.card,
     borderRadius: scale(20),
-    paddingHorizontal: scale(12),
-    paddingVertical: scale(8),
+    paddingHorizontal: scale(16),
+    paddingVertical: scale(10),
     margin: scale(4),
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -885,7 +865,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   popularSearchText: {
-    fontSize: moderateScale(13),
+    fontSize: moderateScale(14),
     fontFamily: FONTS.medium,
     color: COLORS.textDark,
     marginLeft: scale(6),
@@ -895,8 +875,9 @@ const styles = StyleSheet.create({
   emptySearchContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: scale(60),
+    paddingVertical: scale(80),
     flex: 1,
+    paddingHorizontal: scale(16),
   },
   emptySearchIllustration: {
     marginBottom: scale(20),
@@ -921,7 +902,7 @@ const styles = StyleSheet.create({
   searchLoading: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: scale(40),
+    paddingVertical: scale(80),
     flex: 1,
   },
   searchLoadingText: {
@@ -934,9 +915,11 @@ const styles = StyleSheet.create({
   // Search Results
   searchResultsContainer: {
     flex: 1,
+    backgroundColor: COLORS.background,
   },
   searchResultSection: {
     marginBottom: scale(24),
+    paddingHorizontal: scale(16),
   },
   trendingList: {
     paddingRight: scale(16),
@@ -985,13 +968,14 @@ const styles = StyleSheet.create({
     marginLeft: scale(4),
   },
   trendingContent: {
-    padding: scale(8),
+    padding: scale(12),
   },
   trendingName: {
-    fontSize: moderateScale(13),
+    fontSize: moderateScale(14),
     fontFamily: FONTS.medium,
     color: COLORS.textDark,
-    marginBottom: scale(4),
+    marginBottom: scale(6),
+    lineHeight: scale(18),
   },
   trendingRating: {
     flexDirection: 'row',
@@ -1011,6 +995,15 @@ const styles = StyleSheet.create({
     paddingVertical: scale(12),
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
+    backgroundColor: COLORS.card,
+    borderRadius: scale(8),
+    marginBottom: scale(8),
+    paddingHorizontal: scale(12),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   searchResultImageContainer: {
     position: 'relative',
@@ -1047,6 +1040,7 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.medium,
     color: COLORS.textDark,
     flex: 1,
+    lineHeight: scale(20),
   },
   trendingIndicator: {
     marginLeft: scale(8),
@@ -1061,11 +1055,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
+    marginBottom: scale(4),
   },
   ratingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     marginRight: scale(12),
+    backgroundColor: COLORS.lightGray,
+    paddingHorizontal: scale(6),
+    paddingVertical: scale(2),
+    borderRadius: scale(4),
   },
   ratingText: {
     fontSize: moderateScale(12),
@@ -1077,6 +1076,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginRight: scale(12),
+    backgroundColor: COLORS.lightGray,
+    paddingHorizontal: scale(6),
+    paddingVertical: scale(2),
+    borderRadius: scale(4),
   },
   metaText: {
     fontSize: moderateScale(12),
@@ -1104,7 +1107,7 @@ const styles = StyleSheet.create({
   noResultsContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: scale(60),
+    paddingVertical: scale(80),
     flex: 1,
     paddingHorizontal: scale(16),
   },
@@ -1126,8 +1129,8 @@ const styles = StyleSheet.create({
     lineHeight: scale(20),
   },
   suggestSearchButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: scale(20),
+    backgroundColor: COLORS.swiggyOrange,
+    paddingHorizontal: scale(24),
     paddingVertical: scale(12),
     borderRadius: scale(8),
   },

@@ -22,7 +22,7 @@ const scale = (size: number) => (width / 375) * size;
 const verticalScale = (size: number) => (height / 812) * size;
 const moderateScale = (size: number, factor = 0.5) => size + (scale(size) - size) * factor;
 
-// Enhanced Color Palette
+// Enhanced Color Palette with consistent gradient colors
 const COLORS = {
   primary: '#FF6B35',
   primaryLight: '#FF9F5B',
@@ -44,8 +44,10 @@ const COLORS = {
   categoryBg: '#FFFFFF',
   searchBorder: '#E1E4E8',
   refreshControl: '#E65C00',
-  headerGradientStart: '#E65C00',
-  headerGradientEnd: '#DD2476',
+  // Consistent gradient colors matching HomeTabs
+  gradientStart: '#FF6B35',
+  gradientMiddle: '#FF512F',
+  gradientEnd: '#DD2476',
   textOnGradient: '#FFFFFF',
   categoryText: 'rgba(255,255,255,0.9)',
   activeCategoryText: '#FFFFFF',
@@ -84,7 +86,7 @@ const SEARCH_PLACEHOLDERS = [
   "Search for desserts or drinks..."
 ];
 
-// Types
+// Types (keeping the same types as before)
 interface User {
   id: string;
   name: string;
@@ -153,7 +155,7 @@ interface ActiveOrder {
   deliveryAddress?: string;
 }
 
-// Enhanced Search Types
+// Enhanced Search Types (keeping the same as before)
 interface SearchSuggestionResponse {
   query: string;
   menus: SearchMenu[];
@@ -218,7 +220,7 @@ interface SearchItem {
   searchedAt?: string;
 }
 
-// Navigation Types
+// Navigation Types (keeping the same as before)
 type RootStackParamList = {
   HomeKitchenNavigate: {
     screen: string;
@@ -875,7 +877,7 @@ const KitchenScreen: React.FC = () => {
     }
   }, [navigation, pastKitchenDetails]);
 
-  // Render functions for main content - UPDATED renderCategory
+  // Render functions for main content
   const renderCategory = useCallback(({ item, index }: { item: Category, index: number }) => (
     <TouchableOpacity 
       style={[
@@ -1136,7 +1138,7 @@ const KitchenScreen: React.FC = () => {
         </View>
       )}
 
-      {/* Header Section */}
+      {/* Header Section with Enhanced Gradient */}
       <Animated.View style={[
         styles.headerContainer,
         {
@@ -1147,10 +1149,11 @@ const KitchenScreen: React.FC = () => {
         }
       ]}>
         <LinearGradient
-          colors={[COLORS.headerGradientStart, COLORS.headerGradientEnd]}
+          colors={[COLORS.gradientStart, COLORS.gradientMiddle, COLORS.gradientEnd]}
           style={styles.headerGradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
+          locations={[0, 0.5, 1]}
         >
           <View style={styles.searchContainer}>
             <TouchableOpacity 
@@ -1355,7 +1358,7 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.semiBold,
   },
 
-  // Header Styles
+  // Header Styles with Enhanced Gradient
   headerContainer: {
     paddingBottom: scale(10),
     zIndex: 100,
