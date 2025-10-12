@@ -68,7 +68,7 @@ interface LiveTrackingData {
 const TrackOrder = () => {
   const navigation = useNavigation();
   const route = useRoute();
-  const { order_number } = route?.params?.order || {};
+  const { order_number, prev_location } = route?.params?.order || {};
   
   const mapRef = useRef(null);
   const scrollViewRef = useRef(null);
@@ -480,7 +480,13 @@ const TrackOrder = () => {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity 
-          onPress={() => navigation.goBack()} 
+          onPress={() => {
+            if (prev_location) {
+              navigation.navigate(prev_location);
+            } else {
+              navigation.goBack();
+            }
+          }} 
           style={styles.backButton}
         >
           <Icon name="arrow-back" size={24} color="#333" />

@@ -616,7 +616,11 @@ const AddressHeaderLeft = () => {
       hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
     >
       <View style={styles.addressLine}>
-        <Icon name="location-outline" size={16} color={COLORS.background} />
+         <Icon
+            name={"navigate"} 
+            size={14} 
+            color={location.error ? COLORS.error : COLORS.background} 
+          />
         <Text style={[styles.addressLabel, { color: COLORS.background }]}>
           {location.homeType}
         </Text>
@@ -636,11 +640,7 @@ const AddressHeaderLeft = () => {
         {location.loading ? (
           <ActivityIndicator size={14} color={COLORS.background} />
         ) : (
-          <Icon 
-            name={location.error ? "warning-outline" : "navigate-outline"} 
-            size={14} 
-            color={location.error ? COLORS.error : COLORS.background} 
-          />
+          <Icon name={location.error ? "warning-outline" : "location-outline"}  size={15} color={COLORS.background} />
         )}
         
         <Text 
@@ -882,13 +882,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   addressLabel: {
-    fontSize: isIOS ? (isSmallDevice ? 13 : 14) : (isSmallDevice ? 12 : 13),
-    fontWeight: '600',
+    fontSize: isIOS ? (isSmallDevice ? 13 : 14) : (isSmallDevice ? 12 : 15),
+    fontWeight: '900',
     marginLeft: 6,
     marginTop: isIOS ? 0 : 2,
   },
   addressText: {
-    fontSize: isIOS ? (isSmallDevice ? 13 : 14) : (isSmallDevice ? 12 : 13),
+    fontSize: isIOS ? (isSmallDevice ? 13 : 14) : (isSmallDevice ? 12 : 11),
     marginLeft: 6,
     maxWidth: isIOS ? (isSmallDevice ? 160 : 180) : (isSmallDevice ? 140 : 160),
     flexShrink: 1,

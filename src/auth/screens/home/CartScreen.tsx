@@ -434,7 +434,7 @@ const CartScreen = ({ route, navigation }) => {
         AsyncStorage.removeItem('pastKitchenDetails');
         setTimeout(() => {
           setShowPaymentModal(false);
-          navigation.navigate('TrackOrder', { order: { order_number: orderNumber } });
+          navigation.navigate('TrackOrder', { order: { order_number: orderNumber,prev_location: 'HomeTabs', } });
         }, 300);
       }
     });
@@ -1170,7 +1170,7 @@ const CartScreen = ({ route, navigation }) => {
               activeOpacity={0.8}
               disabled={showBlurOverlay}
             >
-              <Icon name="location" size={scale(20)} color="#fff" style={styles.addAddressIcon} />
+              <Icon name="location" size={scale(14)} color="#fff" style={styles.addAddressIcon} />
               <Text style={styles.addAddressButtonText}>Select Delivery Location</Text>
             </TouchableOpacity>
           )}
@@ -2133,7 +2133,7 @@ const styles = StyleSheet.create({
   },
   addAddressButtonText: {
     color: '#fff',
-    fontSize: FONT.LG,
+    fontSize: FONT.SM,
     fontWeight: '700',
     marginLeft: scale(8),
   },
