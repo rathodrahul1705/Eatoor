@@ -1,4 +1,11 @@
-import React, { useState, useRef, useEffect, useCallback, useLayoutEffect, useMemo } from 'react';
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+} from "react";
 import {
   View,
   Text,
@@ -18,31 +25,44 @@ import {
   ActivityIndicator,
   BackHandler,
   RefreshControl,
-  Alert
-} from 'react-native';
-import Icon from 'react-native-vector-icons/Ionicons';
-import { getKitcheDetails } from '../../../api/home';
-import { getCart, updateCart, clearCartDetails } from '../../../api/cart';
-import { useNavigation } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { showMessage } from 'react-native-flash-message';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+} from "react-native";
+import Icon from "react-native-vector-icons/Ionicons";
+import { getKitcheDetails } from "../../../api/home";
+import { getCart, updateCart, clearCartDetails } from "../../../api/cart";
+import { useNavigation } from "@react-navigation/native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { showMessage } from "react-native-flash-message";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Enable LayoutAnimation for Android
-if (Platform.OS === 'android') {
+if (Platform.OS === "android") {
   if (UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
   }
 }
 
-const { width, height } = Dimensions.get('window');
+const { width, height } = Dimensions.get("window");
+
+// Responsive font sizes based on screen width
+const scale = width / 375; // 375 is standard iPhone width
+const normalize = (size) => Math.round(scale * size);
+
+const FONT = {
+  XS: normalize(10),
+  SM: normalize(12),
+  BASE: normalize(14),
+  LG: normalize(16),
+  XL: normalize(18),
+  XXL: normalize(20),
+  XXXL: normalize(24),
+};
 
 // Placeholder images
 const PLACEHOLDER_FOOD = "https://via.placeholder.com/150";
 const PLACEHOLDER_RESTAURANT = "https://via.placeholder.com/300";
 
 const HomeKitchenDetails = ({ route }) => {
-  const [activeFilter, setActiveFilter] = useState('All');
+  const [activeFilter, setActiveFilter] = useState("All");
   const [selectedItem, setSelectedItem] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [offerModalVisible, setOfferModalVisible] = useState(false);
@@ -59,31 +79,36 @@ const HomeKitchenDetails = ({ route }) => {
   const [user, setUser] = useState(null);
   const [sessionId, setSessionId] = useState(null);
   const [pastKitchenDetails, setPastKitchenDetails] = useState(null);
-  const [showKitchenConflictModal, setShowKitchenConflictModal] = useState(false);
+  const [showKitchenConflictModal, setShowKitchenConflictModal] =
+    useState(false);
   const [pendingCartAction, setPendingCartAction] = useState(null);
-  const [modalMode, setModalMode] = useState('view'); // 'view' or 'conflict'
-  
+  const [modalMode, setModalMode] = useState("view"); // 'view' or 'conflict'
+
   const navigation = useNavigation();
   const scrollY = useRef(new Animated.Value(0)).current;
   const offerScrollRef = useRef(null);
   const scrollViewRef = useRef(null);
   const modalOpenRef = useRef(false);
-  
+
   // Check if kitchen is open
-  const isKitchenOpen = kitchenData?.restaurant_current_status?.is_open || false;
-  
+  const isKitchenOpen =
+    kitchenData?.restaurant_current_status?.is_open || false;
+
   // Handle Android back button
   useEffect(() => {
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      handleBackPress();
-      return true;
-    });
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      () => {
+        handleBackPress();
+        return true;
+      }
+    );
 
     return () => backHandler.remove();
   }, []);
 
   const handleBackPress = useCallback(() => {
-    navigation.navigate('HomeTabs');
+    navigation.navigate("HomeTabs");
   }, [navigation]);
 
   // Set navigation options
@@ -92,20 +117,20 @@ const HomeKitchenDetails = ({ route }) => {
       headerShown: false,
     });
   }, [navigation]);
-  
+
   // Fetch user data and session ID
   const fetchUserData = useCallback(async () => {
     try {
       const [userData, session] = await Promise.all([
-        AsyncStorage.getItem('user'),
-        AsyncStorage.getItem('session_id')
+        AsyncStorage.getItem("user"),
+        AsyncStorage.getItem("session_id"),
       ]);
-      
+
       if (userData) setUser(JSON.parse(userData));
       if (session) setSessionId(session);
       return { user: userData ? JSON.parse(userData) : null, session };
     } catch (error) {
-      console.error('Error fetching user data:', error);
+      console.error("Error fetching user data:", error);
       return { user: null, session: null };
     }
   }, []);
@@ -113,32 +138,32 @@ const HomeKitchenDetails = ({ route }) => {
   // Fetch past kitchen details from storage
   const fetchPastKitchenDetails = useCallback(async () => {
     try {
-      const storedDetails = await AsyncStorage.getItem('pastKitchenDetails');
+      const storedDetails = await AsyncStorage.getItem("pastKitchenDetails");
       if (storedDetails) {
         setPastKitchenDetails(JSON.parse(storedDetails));
       }
     } catch (error) {
-      console.error('Error fetching past kitchen details:', error);
+      console.error("Error fetching past kitchen details:", error);
     }
   }, []);
 
   // Save past kitchen details to storage
   const savePastKitchenDetails = useCallback(async (details) => {
     try {
-      await AsyncStorage.setItem('pastKitchenDetails', JSON.stringify(details));
+      await AsyncStorage.setItem("pastKitchenDetails", JSON.stringify(details));
       setPastKitchenDetails(details);
     } catch (error) {
-      console.error('Error saving past kitchen details:', error);
+      console.error("Error saving past kitchen details:", error);
     }
   }, []);
 
   // Clear past kitchen details from storage
   const clearPastKitchenDetails = useCallback(async () => {
     try {
-      await AsyncStorage.removeItem('pastKitchenDetails');
+      await AsyncStorage.removeItem("pastKitchenDetails");
       setPastKitchenDetails(null);
     } catch (error) {
-      console.error('Error clearing past kitchen details:', error);
+      console.error("Error clearing past kitchen details:", error);
     }
   }, []);
 
@@ -149,25 +174,29 @@ const HomeKitchenDetails = ({ route }) => {
 
   // Check if cart has items from different kitchen
   const hasDifferentKitchenItems = useMemo(() => {
-    return pastKitchenDetails && pastKitchenDetails.id !== route.params?.kitchenId && cartItems.length > 0;
+    return (
+      pastKitchenDetails &&
+      pastKitchenDetails.id !== route.params?.kitchenId &&
+      cartItems.length > 0
+    );
   }, [pastKitchenDetails, route.params?.kitchenId, cartItems]);
 
   // Check if item is currently available based on time
   const isItemAvailableByTime = (item) => {
     if (!item.start_time || !item.end_time) return item.availability;
-    
+
     const now = new Date();
     const currentTime = now.getHours() * 60 + now.getMinutes();
-    
-    const [startHours, startMinutes] = item.start_time.split(':').map(Number);
-    const [endHours, endMinutes] = item.end_time.split(':').map(Number);
-    
+
+    const [startHours, startMinutes] = item.start_time.split(":").map(Number);
+    const [endHours, endMinutes] = item.end_time.split(":").map(Number);
+
     const startTime = startHours * 60 + startMinutes;
     const endTime = endHours * 60 + endMinutes;
-    
+
     return currentTime >= startTime && currentTime <= endTime;
   };
-  
+
   // Check if item is completely available (kitchen open + item available + time valid)
   const isItemCompletelyAvailable = (item) => {
     return isKitchenOpen && item.availability && isItemAvailableByTime(item);
@@ -181,12 +210,14 @@ const HomeKitchenDetails = ({ route }) => {
       setKitchenData(response.data);
       // Expand first category by default
       if (response.data.itemlist && response.data.itemlist.length > 0) {
-        const categories = [...new Set(response.data.itemlist.map(item => item.category))];
+        const categories = [
+          ...new Set(response.data.itemlist.map((item) => item.category)),
+        ];
         if (categories.length > 0) {
           setExpandedSections({ [categories[0]]: true });
         }
       }
-      
+
       setLoading(false);
     } catch (err) {
       setError(err.message);
@@ -197,31 +228,34 @@ const HomeKitchenDetails = ({ route }) => {
   // Fetch cart data
   const fetchCartData = useCallback(async () => {
     try {
-      const { user: currentUser, session: currentSession } = await fetchUserData();
-      
+      const { user: currentUser, session: currentSession } =
+        await fetchUserData();
+
       if (!currentUser?.id) return;
-      
+
       const payload = {
         session_id: currentSession,
-        user_id: currentUser.id
+        user_id: currentUser.id,
       };
-      
+
       const response = await getCart(payload);
       if (response.status === 200) {
-        const cartItemsFromApi = response.data.cart_details.map(item => ({
+        const cartItemsFromApi = response.data.cart_details.map((item) => ({
           id: item.item_id.toString(),
           name: item.item_name,
           price: item.item_price,
           quantity: item.quantity,
           image: item.item_image || null,
-          type: (item.food_type === 'Non-Veg' ? 'NonVeg' : 'Veg'),
-          category: '',
-          description: '',
+          type: item.food_type === "Non-Veg" ? "NonVeg" : "Veg",
+          category: "",
+          description: "",
           availability: true,
           isBestseller: false,
-          discount_active: false
+          discount_active: false,
         }));
         setCartItems(cartItemsFromApi);
+        
+        // Update past kitchen details based on cart
         if (response?.data.existingCartDetails.length > 0) {
           const newPastKitchenDetails = {
             id: response?.data.existingCartDetails[0]?.restaurant_id,
@@ -235,11 +269,11 @@ const HomeKitchenDetails = ({ route }) => {
         }
       }
     } catch (error) {
-      console.error('Failed to fetch cart:', error);
+      console.error("Failed to fetch cart:", error);
       showMessage({
-        message: 'Failed to load cart items',
-        description: 'Please try again later',
-        type: 'danger',
+        message: "Failed to load cart items",
+        description: "Please try again later",
+        type: "danger",
       });
     }
   }, [fetchUserData, savePastKitchenDetails, clearPastKitchenDetails]);
@@ -251,10 +285,10 @@ const HomeKitchenDetails = ({ route }) => {
       await Promise.all([
         fetchKitchenDetails(),
         fetchCartData(),
-        fetchPastKitchenDetails()
+        fetchPastKitchenDetails(),
       ]);
     } catch (error) {
-      console.error('Refresh error:', error);
+      console.error("Refresh error:", error);
     } finally {
       setRefreshing(false);
     }
@@ -271,53 +305,55 @@ const HomeKitchenDetails = ({ route }) => {
   useEffect(() => {
     if (offers.length > 1) {
       const interval = setInterval(() => {
-        setCurrentOfferIndex(prev => (prev + 1) % offers.length);
+        setCurrentOfferIndex((prev) => (prev + 1) % offers.length);
       }, 5000);
       return () => clearInterval(interval);
     }
   }, []);
-  
+
   // Show cart summary when items are added
   useEffect(() => {
-    const totalItems = cartItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+    const totalItems = cartItems.reduce(
+      (sum, item) => sum + (item.quantity || 0),
+      0
+    );
     setShowCartSummary(totalItems > 0);
   }, [cartItems]);
 
   // Update modal quantity when selected item changes, but only if modal is not open
   useEffect(() => {
     if (selectedItem && !modalOpenRef.current) {
-      const cartItem = cartItems.find(item => item.id === selectedItem.id);
+      const cartItem = cartItems.find((item) => item.id === selectedItem.id);
       setModalQuantity(cartItem?.quantity || 0);
     }
   }, [selectedItem, cartItems]);
 
-  
   const insets = useSafeAreaInsets();
-  
+
   // Header height decreases as we scroll
   const MAX_HEADER_HEIGHT = 220;
-  const MIN_HEADER_HEIGHT = Platform.OS === 'ios' ? 30 + insets.top : 70;
+  const MIN_HEADER_HEIGHT = Platform.OS === "ios" ? 30 + insets.top : 70;
 
   const headerHeight = scrollY.interpolate({
     inputRange: [0, 150],
     outputRange: [MAX_HEADER_HEIGHT, MIN_HEADER_HEIGHT],
-    extrapolate: 'clamp',
+    extrapolate: "clamp",
   });
-  
+
   // Kitchen name becomes visible in header as we scroll
   const headerTitleOpacity = scrollY.interpolate({
     inputRange: [0, 100, 150],
     outputRange: [0, 0.5, 1],
-    extrapolate: 'clamp'
+    extrapolate: "clamp",
   });
 
-    // Image opacity decreases as we scroll
+  // Image opacity decreases as we scroll
   const imageOpacity = scrollY.interpolate({
     inputRange: [0, 150],
     outputRange: [1, 0],
-    extrapolate: 'clamp'
+    extrapolate: "clamp",
   });
-  
+
   // Default kitchen info if API data is not available
   const defaultKitchenInfo = {
     name: "Spice Garden",
@@ -330,57 +366,62 @@ const HomeKitchenDetails = ({ route }) => {
     isOpen: true,
     rating: 4.5,
     reviews: 1247,
-    image: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8cmVzdGF1cmFudCUyMGludGVyaW9yfGVufDB8fDB8fHww&auto=format&fit=crop&w=800&q=60"
+    image:
+      "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8cmVzdGF1cmFudCUyMGludGVyaW9yfGVufDB8fDB8fHww&auto=format&fit=crop&w=800&q=60",
   };
-  
+
   // Use API data or fallback to default
-  const kitchenInfo = kitchenData ? {
-    name: kitchenData.restaurant_name,
-    address: kitchenData.Address,
-    shortAddress: kitchenData.Address,
-    deliveryTime: `${kitchenData.time_required_to_reach_loc} mins`,
-    distance: "5 km", // Not in API response, keeping default
-    openingTime: formatTime(kitchenData.opening_time),
-    closingTime: formatTime(kitchenData.closing_time),
-    isOpen: kitchenData.restaurant_current_status?.is_open || false,
-    rating: kitchenData.rating,
-    reviews: 1247, // Not in API response, keeping default
-    image: kitchenData.restaurant_image
-  } : defaultKitchenInfo;
-  
+  const kitchenInfo = kitchenData
+    ? {
+        name: kitchenData.restaurant_name,
+        address: kitchenData.Address,
+        shortAddress: kitchenData.Address,
+        deliveryTime: `${kitchenData.time_required_to_reach_loc} mins`,
+        distance: "5 km", // Not in API response, keeping default
+        openingTime: formatTime(kitchenData.opening_time),
+        closingTime: formatTime(kitchenData.closing_time),
+        isOpen: kitchenData.restaurant_current_status?.is_open || false,
+        rating: kitchenData.rating,
+        reviews: 1247, // Not in API response, keeping default
+        image: kitchenData.restaurant_image,
+      }
+    : defaultKitchenInfo;
+
   // Helper function to format time (HH:MM to HH:MM AM/PM)
   function formatTime(timeString) {
-    if (!timeString) return '';
-    
-    const [hours, minutes] = timeString.split(':');
+    if (!timeString) return "";
+
+    const [hours, minutes] = timeString.split(":");
     const hourInt = parseInt(hours, 10);
-    const period = hourInt >= 12 ? 'PM' : 'AM';
+    const period = hourInt >= 12 ? "PM" : "AM";
     const formattedHour = hourInt % 12 || 12;
-    
+
     return `${formattedHour}:${minutes} ${period}`;
   }
-  
-  const filters = ['All', 'Veg', 'Non-Veg', 'Offers', 'Bestseller'];
-  
+
+  const filters = ["All", "Veg", "Non-Veg", "Offers", "Bestseller"];
+
   const offers = [];
-  
+
   // Transform API data to menu items format
   const transformMenuItems = (itemlist) => {
     if (!itemlist || !Array.isArray(itemlist)) return [];
-    
-    const categories = [...new Set(itemlist.map(item => item.category))];
-    
-    return categories.map(category => {
-      const categoryItems = itemlist.filter(item => item.category === category);
+
+    const categories = [...new Set(itemlist.map((item) => item.category))];
+
+    return categories.map((category) => {
+      const categoryItems = itemlist.filter(
+        (item) => item.category === category
+      );
       return {
         id: category,
         category: category,
-        items: categoryItems.map(item => ({
+        items: categoryItems.map((item) => ({
           id: item.id.toString(),
           name: item.item_name,
           description: item.description,
           price: parseFloat(item.item_price),
-          isVeg: item.food_type === 'Veg',
+          isVeg: item.food_type === "Veg",
           isBestseller: false,
           rating: 4.5,
           image: item.item_image,
@@ -394,171 +435,202 @@ const HomeKitchenDetails = ({ route }) => {
           // Add complete availability status
           isCompletelyAvailable: isItemCompletelyAvailable(item),
           // Add type for filtering
-          type: item.food_type === 'Non-Veg' ? 'NonVeg' : 'Veg',
+          type: item.food_type === "Non-Veg" ? "NonVeg" : "Veg",
           // Add discount and BOGO info
           discount_percent: item.discount_percent,
-          buy_one_get_one_free: item.buy_one_get_one_free
-        }))
+          buy_one_get_one_free: item.buy_one_get_one_free,
+        })),
       };
     });
   };
-  
+
   const menuItems = kitchenData ? transformMenuItems(kitchenData.itemlist) : [];
 
   // Filter menu items based on active filter
-  const filteredMenuItems = menuItems.map(section => {
-    if (activeFilter === 'All') return section;
-    
-    return {
-      ...section,
-      items: section.items.filter(item => {
-        if (activeFilter === 'Veg') return item.isVeg;
-        if (activeFilter === 'Non-Veg') return !item.isVeg;
-        if (activeFilter === 'Offers') return item.discountActive || item.buy_one_get_one_free;
-        if (activeFilter === 'Bestseller') return item.isBestseller;
-        return true;
-      })
-    };
-  }).filter(section => section.items.length > 0);
+  const filteredMenuItems = menuItems
+    .map((section) => {
+      if (activeFilter === "All") return section;
+
+      return {
+        ...section,
+        items: section.items.filter((item) => {
+          if (activeFilter === "Veg") return item.isVeg;
+          if (activeFilter === "Non-Veg") return !item.isVeg;
+          if (activeFilter === "Offers")
+            return item.discountActive || item.buy_one_get_one_free;
+          if (activeFilter === "Bestseller") return item.isBestseller;
+          return true;
+        }),
+      };
+    })
+    .filter((section) => section.items.length > 0);
 
   const toggleSection = (sectionId) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpandedSections(prev => ({
+    setExpandedSections((prev) => ({
       ...prev,
-      [sectionId]: !prev[sectionId]
+      [sectionId]: !prev[sectionId],
     }));
   };
 
   // Update cart item quantity with kitchen conflict handling
-  const updateCartItem = useCallback(async (
-    itemId, 
-    action,
-    force = false
-  ) => {
-    if (!kitchenData?.restaurant_current_status.is_open) return;
-    
-    try {
-      // Check if we're trying to add to a different kitchen's cart
-      if (!force && action === 'add' && hasDifferentKitchenItems) {
-        setPendingCartAction({ itemId, action });
-        setShowKitchenConflictModal(true);
-        return;
-      }
+  const updateCartItem = useCallback(
+    async (itemId, action, force = false) => {
+      if (!kitchenData?.restaurant_current_status.is_open) return;
 
-      setUpdatingItemId(itemId);
-      
-      const payload = {
-        session_id: sessionId,
-        restaurant_id: route.params?.kitchenId,
-        item_id: itemId,
-        source: 'ITEMLIST',
-        action,
-        quantity: 1,
-        user_id: user?.id
-      };
+      try {
+        // Check if we're trying to add to a different kitchen's cart
+        if (!force && action === "add" && hasDifferentKitchenItems) {
+          setPendingCartAction({ itemId, action });
+          setShowKitchenConflictModal(true);
+          return;
+        }
 
-      await updateCart(payload);
-      
-      // Update past kitchen details after cart update
-      if (kitchenData) {
-        const currentItemCount = cartItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
-        const newPastKitchenDetails = {
-          id: route.params?.kitchenId,
-          name: kitchenData.restaurant_name,
-          image: kitchenData.restaurant_image || PLACEHOLDER_RESTAURANT,
-          itemCount: action === 'add' ? currentItemCount + 1 : Math.max(0, currentItemCount - 1)
+        setUpdatingItemId(itemId);
+
+        const payload = {
+          session_id: sessionId,
+          restaurant_id: route.params?.kitchenId,
+          item_id: itemId,
+          source: "ITEMLIST",
+          action,
+          quantity: 1,
+          user_id: user?.id,
         };
-        await savePastKitchenDetails(newPastKitchenDetails);
+
+        await updateCart(payload);
+
+        // Update past kitchen details after cart update
+        if (kitchenData) {
+          const currentItemCount = cartItems.reduce(
+            (sum, item) => sum + (item.quantity || 0),
+            0
+          );
+          const newPastKitchenDetails = {
+            id: route.params?.kitchenId,
+            name: kitchenData.restaurant_name,
+            image: kitchenData.restaurant_image || PLACEHOLDER_RESTAURANT,
+            itemCount:
+              action === "add"
+                ? currentItemCount + 1
+                : Math.max(0, currentItemCount - 1),
+          };
+          await savePastKitchenDetails(newPastKitchenDetails);
+        }
+
+        await fetchCartData();
+      } catch (error) {
+        console.error("Cart update error:", error);
+        showMessage({
+          message: `Failed to ${action} item`,
+          description: error.response?.data?.message || "Please try again",
+          type: "danger",
+        });
+      } finally {
+        setUpdatingItemId(null);
       }
-      
-      await fetchCartData();
-    } catch (error) {
-      console.error('Cart update error:', error);
-      showMessage({
-        message: `Failed to ${action} item`,
-        description: error.response?.data?.message || 'Please try again',
-        type: 'danger',
-      });
-    } finally {
-      setUpdatingItemId(null);
-    }
-  }, [
-    sessionId, 
-    user?.id, 
-    route.params?.kitchenId, 
-    kitchenData, 
-    fetchCartData,
-    hasDifferentKitchenItems,
-    cartItems,
-    savePastKitchenDetails
-  ]);
+    },
+    [
+      sessionId,
+      user?.id,
+      route.params?.kitchenId,
+      kitchenData,
+      fetchCartData,
+      hasDifferentKitchenItems,
+      cartItems,
+      savePastKitchenDetails,
+    ]
+  );
 
   const handleClearCartAndProceed = useCallback(async () => {
     try {
       setShowKitchenConflictModal(false);
-      setModalMode('view');
-      setModalVisible(false)
-      const { user: currentUser, session: currentSession } = await fetchUserData();
-      
+      setModalMode("view");
+      setModalVisible(false);
+      const { user: currentUser, session: currentSession } =
+        await fetchUserData();
+
       if (!currentUser?.id) return;
-      
+
       const payload = {
         session_id: currentSession,
-        user_id: currentUser.id
+        user_id: currentUser.id,
       };
-      
+
       await clearCartDetails(payload);
       await clearPastKitchenDetails();
-      
+      await fetchCartData(); // Refresh cart data after clearing
+
       if (pendingCartAction) {
-        await updateCartItem(pendingCartAction.itemId, pendingCartAction.action, true);
+        await updateCartItem(
+          pendingCartAction.itemId,
+          pendingCartAction.action,
+          true
+        );
       }
-      
+
       showMessage({
-        message: 'Cart cleared',
-        description: 'You can now add items from this kitchen',
-        type: 'success',
+        message: "Cart cleared",
+        description: "You can now add items from this kitchen",
+        type: "success",
       });
     } catch (error) {
-      console.error('Failed to clear cart:', error);
+      console.error("Failed to clear cart:", error);
       showMessage({
-        message: 'Failed to clear cart',
-        description: 'Please try again later',
-        type: 'danger',
+        message: "Failed to clear cart",
+        description: "Please try again later",
+        type: "danger",
       });
     } finally {
       setPendingCartAction(null);
     }
-  }, [fetchUserData, pendingCartAction, clearPastKitchenDetails, updateCartItem]);
+  }, [
+    fetchUserData,
+    pendingCartAction,
+    clearPastKitchenDetails,
+    updateCartItem,
+    fetchCartData,
+  ]);
 
   // Handle adding item directly from list with conflict check
-  const handleAddItemFromList = useCallback((itemId) => {
-    if (hasDifferentKitchenItems) {
-      setPendingCartAction({ itemId, action: 'add' });
-      setShowKitchenConflictModal(true);
-    } else {
-      updateCartItem(itemId, 'add');
-    }
-  }, [hasDifferentKitchenItems, updateCartItem]);
+  const handleAddItemFromList = useCallback(
+    (itemId) => {
+      if (hasDifferentKitchenItems) {
+        setPendingCartAction({ itemId, action: "add" });
+        setShowKitchenConflictModal(true);
+      } else {
+        updateCartItem(itemId, "add");
+      }
+    },
+    [hasDifferentKitchenItems, updateCartItem]
+  );
 
   // Get current quantity of an item in cart
-  const getItemQuantity = useCallback((itemId) => {
-    const item = cartItems.find(item => item.id === itemId);
-    return item?.quantity || 0;
-  }, [cartItems]);
+  const getItemQuantity = useCallback(
+    (itemId) => {
+      const item = cartItems.find((item) => item.id === itemId);
+      return item?.quantity || 0;
+    },
+    [cartItems]
+  );
 
   const openItemModal = (item) => {
+    console.log('Opening modal for item:', item?.name);
     setSelectedItem(item);
     setModalQuantity(getItemQuantity(item.id) || 0);
     modalOpenRef.current = true;
     setModalVisible(true);
-    setModalMode('view'); // Reset to view mode when opening modal
+    setModalMode("view"); // Reset to view mode when opening modal
   };
 
   const closeItemModal = () => {
+    if (modalMode === "conflict") {
+      // Don't allow closing when in conflict mode
+      return;
+    }
     modalOpenRef.current = false;
     setModalVisible(false);
-    setModalMode('view'); // Reset to view mode when closing modal
+    setModalMode("view"); // Reset to view mode when closing modal
   };
 
   const openOffersModal = () => {
@@ -572,11 +644,11 @@ const HomeKitchenDetails = ({ route }) => {
   // Handle Add button click in modal - check for kitchen conflict
   const handleModalAddButton = useCallback(() => {
     if (!selectedItem) return;
-    
+
     // Check for kitchen conflict
     if (hasDifferentKitchenItems) {
-      setPendingCartAction({ itemId: selectedItem.id, action: 'add' });
-      setModalMode('conflict');
+      setPendingCartAction({ itemId: selectedItem.id, action: "add" });
+      setModalMode("conflict");
     } else {
       // No conflict, proceed with adding item
       updateModalQuantity(1);
@@ -584,21 +656,24 @@ const HomeKitchenDetails = ({ route }) => {
   }, [selectedItem, hasDifferentKitchenItems]);
 
   // Update modal quantity and make API calls
-  const updateModalQuantity = useCallback((change) => {
-    if (!isKitchenOpen || !selectedItem) return;
-    
-    const newQuantity = Math.max(0, modalQuantity + change);
-    setModalQuantity(newQuantity);
-    
-    // Make API call based on the change
-    if (change > 0) {
-      // Add item
-      updateCartItem(selectedItem.id, 'add');
-    } else if (change < 0 && newQuantity >= 0) {
-      // Remove item
-      updateCartItem(selectedItem.id, 'remove');
-    }
-  }, [isKitchenOpen, selectedItem, modalQuantity, updateCartItem]);
+  const updateModalQuantity = useCallback(
+    (change) => {
+      if (!isKitchenOpen || !selectedItem) return;
+
+      const newQuantity = Math.max(0, modalQuantity + change);
+      setModalQuantity(newQuantity);
+
+      // Make API call based on the change
+      if (change > 0) {
+        // Add item
+        updateCartItem(selectedItem.id, "add");
+      } else if (change < 0 && newQuantity >= 0) {
+        // Remove item
+        updateCartItem(selectedItem.id, "remove");
+      }
+    },
+    [isKitchenOpen, selectedItem, modalQuantity, updateCartItem]
+  );
 
   const getTotalItems = () => {
     return cartItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
@@ -609,9 +684,10 @@ const HomeKitchenDetails = ({ route }) => {
     for (const item of cartItems) {
       if (item.quantity > 0) {
         // Apply discount if available
-        const price = item.discountActive && item.discount_percent
-          ? item.price * (1 - parseFloat(item.discount_percent) / 100)
-          : item.price;
+        const price =
+          item.discountActive && item.discount_percent
+            ? item.price * (1 - parseFloat(item.discount_percent) / 100)
+            : item.price;
         total += price * item.quantity;
       }
     }
@@ -622,7 +698,7 @@ const HomeKitchenDetails = ({ route }) => {
   const handleViewCart = useCallback(() => {
     const pastkitcheId = pastKitchenDetails?.id;
     if (!kitchenData) return;
-    navigation.navigate('CartScreen', { 
+    navigation.navigate("CartScreen", {
       cartItems,
       totalPrice: getTotalPrice(),
       pastkitcheId,
@@ -631,168 +707,167 @@ const HomeKitchenDetails = ({ route }) => {
         address: kitchenData.Address,
         minOrder: kitchenData.min_order,
         coverImage: kitchenData.restaurant_image || PLACEHOLDER_RESTAURANT,
-        isOpen: kitchenData.restaurant_current_status.is_open
+        isOpen: kitchenData.restaurant_current_status.is_open,
       },
-      userId: user?.id
+      userId: user?.id,
     });
   }, [navigation, kitchenData, cartItems, pastKitchenDetails, user?.id]);
-
-  // Back to kitchen handler
-  const BackToKitchen = useCallback(() => {
-    // This function would navigate back to the kitchen screen
-    // For now, we'll just scroll to the top
-    if (scrollViewRef.current) {
-      scrollViewRef.current.scrollTo({ y: 0, animated: true });
-    }
-  }, []);
 
   const renderFilterChip = (filter) => (
     <TouchableOpacity
       key={filter}
       style={[
-        styles.filterChip,
-        activeFilter === filter && styles.activeFilterChip
+        styles.kitchenDetails__filterChip,
+        activeFilter === filter && styles.kitchenDetails__filterChipActive,
       ]}
       onPress={() => setActiveFilter(filter)}
     >
-      <Text style={[
-        styles.filterText,
-        activeFilter === filter && styles.activeFilterText
-      ]}>
+      <Text
+        style={[
+          styles.kitchenDetails__filterText,
+          activeFilter === filter && styles.kitchenDetails__filterTextActive,
+        ]}
+      >
         {filter}
       </Text>
     </TouchableOpacity>
   );
 
   const renderOfferItem = ({ item, index }) => (
-    <TouchableOpacity 
+    <TouchableOpacity
       style={[
-        styles.offerItem,
-        index === currentOfferIndex && styles.activeOfferItem
+        styles.kitchenDetails__offerItem,
+        index === currentOfferIndex && styles.kitchenDetails__offerItemActive,
       ]}
       onPress={openOffersModal}
       activeOpacity={0.8}
     >
-      <View style={styles.offerIcon}>
+      <View style={styles.kitchenDetails__offerIcon}>
         <Icon name="pricetag" size={20} color="#e65c00" />
       </View>
-      <View style={styles.offerContent}>
-        <Text style={styles.offerTitle}>{item.title}</Text>
-        <Text style={styles.offerDescription}>{item.description}</Text>
-        <View style={styles.offerCodeContainer}>
-          <Text style={styles.offerCodeText}>Use code: {item.code}</Text>
+      <View style={styles.kitchenDetails__offerContent}>
+        <Text style={styles.kitchenDetails__offerTitle}>{item.title}</Text>
+        <Text style={styles.kitchenDetails__offerDescription}>{item.description}</Text>
+        <View style={styles.kitchenDetails__offerCodeContainer}>
+          <Text style={styles.kitchenDetails__offerCodeText}>Use code: {item.code}</Text>
         </View>
       </View>
-      <View style={styles.offerCount}>
-        <Text style={styles.offerCountText}>{index + 1}/{offers.length}</Text>
+      <View style={styles.kitchenDetails__offerCount}>
+        <Text style={styles.kitchenDetails__offerCountText}>
+          {index + 1}/{offers.length}
+        </Text>
       </View>
     </TouchableOpacity>
   );
 
   const renderMenuItem = ({ item }) => {
     const quantity = getItemQuantity(item.id);
-    const discountedPrice = item.discountActive 
+    const discountedPrice = item.discountActive
       ? Math.round(item.price * (1 - item.discountPercent / 100))
       : null;
-    
+
     const isAvailable = item.isCompletelyAvailable;
     const isUpdating = updatingItemId === item.id;
-    
+
     return (
-      <TouchableOpacity 
-        style={styles.menuItem}
-        onPress={() => isAvailable && openItemModal(item)}
+      <TouchableOpacity
+        style={styles.kitchenDetails__menuItem}
+        onPress={() => {
+          console.log('Item pressed:', item.name);
+          if (isAvailable) {
+            openItemModal(item);
+          }
+        }}
         activeOpacity={isAvailable ? 0.7 : 1}
         disabled={!isAvailable}
       >
-        {!isAvailable && (
-          <View style={styles.unavailableOverlay}>
-            <Text style={styles.unavailableText}>
-              {!item.availability
-                ? 'Currently unavailable'
-                : 'Not available at this time'}
-            </Text>
-          </View>
-        )}
-
-        <View style={styles.menuItemContent}>
-          <View style={styles.menuItemHeader}>
-            <View style={styles.menuItemVegIndicator}>
+        <View style={styles.kitchenDetails__menuItemContent}>
+          <View style={styles.kitchenDetails__menuItemHeader}>
+            <View style={styles.kitchenDetails__vegIndicatorContainer}>
               {item.isVeg ? (
-                <View style={styles.vegIndicator}>
-                  <View style={[styles.vegInnerDot, { backgroundColor: 'green' }]} />
+                <View style={styles.kitchenDetails__vegIndicator}>
+                  <View
+                    style={[styles.kitchenDetails__vegInnerDot, { backgroundColor: "green" }]}
+                  />
                 </View>
               ) : (
-                <View style={styles.nonVegIndicator}>
-                  <View style={[styles.vegInnerDot, { backgroundColor: '#cc0000' }]} />
+                <View style={styles.kitchenDetails__nonVegIndicator}>
+                  <View
+                    style={[styles.kitchenDetails__vegInnerDot, { backgroundColor: "#cc0000" }]}
+                  />
                 </View>
               )}
             </View>
-            <View style={styles.menuItemTextContainer}>
-              <Text style={styles.menuItemName}>{item.name}</Text>
+            <View style={styles.kitchenDetails__menuItemTextContainer}>
+              <Text style={styles.kitchenDetails__menuItemName}>{item.name}</Text>
               {item.isBestseller && (
-                <View style={styles.bestsellerBadge}>
+                <View style={styles.kitchenDetails__bestsellerBadge}>
                   <Icon name="trophy" size={12} color="#FFD700" />
-                  <Text style={styles.bestsellerText}>Bestseller</Text>
+                  <Text style={styles.kitchenDetails__bestsellerText}>Bestseller</Text>
                 </View>
               )}
             </View>
           </View>
-          <Text 
-            style={styles.menuItemDescription}
+          <Text
+            style={styles.kitchenDetails__menuItemDescription}
             numberOfLines={2}
             ellipsizeMode="tail"
           >
             {item.description}
           </Text>
-          <View style={styles.menuItemFooter}>
-            <View style={styles.priceContainer}>
+          <View style={styles.kitchenDetails__menuItemFooter}>
+            <View style={styles.kitchenDetails__priceContainer}>
               {discountedPrice ? (
                 <>
-                  <Text style={styles.discountedPrice}>₹{discountedPrice}</Text>
-                  <Text style={styles.originalPrice}>₹{item.price}</Text>
+                  <Text style={styles.kitchenDetails__discountedPrice}>₹{discountedPrice}</Text>
+                  <Text style={styles.kitchenDetails__originalPrice}>₹{item.price}</Text>
                   {item.discountActive && (
-                    <View style={styles.discountBadge}>
-                      <Text style={styles.discountText}>{item.discountPercent}% OFF</Text>
+                    <View style={styles.kitchenDetails__discountBadge}>
+                      <Text style={styles.kitchenDetails__discountText}>
+                        {item.discountPercent}% OFF
+                      </Text>
                     </View>
                   )}
                 </>
               ) : (
-                <Text style={styles.menuItemPrice}>₹{item.price}</Text>
+                <Text style={styles.kitchenDetails__menuItemPrice}>₹{item.price}</Text>
               )}
             </View>
             {item.rating && (
-              <View style={styles.ratingContainer}>
+              <View style={styles.kitchenDetails__ratingContainer}>
                 <Icon name="star" size={14} color="#FFD700" />
-                <Text style={styles.ratingText}>{item.rating}</Text>
+                <Text style={styles.kitchenDetails__ratingText}>{item.rating}</Text>
               </View>
             )}
           </View>
         </View>
-        <View style={styles.menuItemImageContainer}>
-          <Image 
-            source={{ uri: item.image }} 
-            style={styles.menuItemImage}
+        
+        <View style={styles.kitchenDetails__menuItemImageContainer}>
+          <Image
+            source={{ uri: item.image || PLACEHOLDER_FOOD }}
+            style={styles.kitchenDetails__menuItemImage}
             resizeMode="cover"
+            defaultSource={{ uri: PLACEHOLDER_FOOD }}
           />
+
           {isAvailable ? (
             quantity === 0 ? (
-              <TouchableOpacity 
-                style={styles.addButton}
+              <TouchableOpacity
+                style={styles.kitchenDetails__addButton}
                 onPress={() => handleAddItemFromList(item.id)}
                 disabled={isUpdating}
               >
                 {isUpdating ? (
                   <ActivityIndicator size="small" color="#e65c00" />
                 ) : (
-                  <Text style={styles.addButtonText}>ADD</Text>
+                  <Text style={styles.kitchenDetails__addButtonText}>ADD</Text>
                 )}
               </TouchableOpacity>
             ) : (
-              <View style={styles.quantityControls}>
-                <TouchableOpacity 
-                  style={styles.quantityButton}
-                  onPress={() => updateCartItem(item.id, 'remove')}
+              <View style={styles.kitchenDetails__quantityControls}>
+                <TouchableOpacity
+                  style={styles.kitchenDetails__quantityButton}
+                  onPress={() => updateCartItem(item.id, "remove")}
                   disabled={isUpdating}
                 >
                   {isUpdating ? (
@@ -801,10 +876,10 @@ const HomeKitchenDetails = ({ route }) => {
                     <Icon name="remove" size={16} color="#e65c00" />
                   )}
                 </TouchableOpacity>
-                <Text style={styles.quantityText}>{quantity}</Text>
-                <TouchableOpacity 
-                  style={styles.quantityButton}
-                  onPress={() => updateCartItem(item.id, 'add')}
+                <Text style={styles.kitchenDetails__quantityText}>{quantity}</Text>
+                <TouchableOpacity
+                  style={styles.kitchenDetails__quantityButton}
+                  onPress={() => updateCartItem(item.id, "add")}
                   disabled={isUpdating}
                 >
                   {isUpdating ? (
@@ -815,7 +890,11 @@ const HomeKitchenDetails = ({ route }) => {
                 </TouchableOpacity>
               </View>
             )
-          ) : null}
+          ) : (
+            <View style={styles.kitchenDetails__addButtonDisabled}>
+              <Text style={styles.kitchenDetails__addButtonDisabledText}>UNAVAILABLE</Text>
+            </View>
+          )}
         </View>
       </TouchableOpacity>
     );
@@ -823,30 +902,30 @@ const HomeKitchenDetails = ({ route }) => {
 
   const renderMenuSection = ({ item: section }) => {
     const isExpanded = expandedSections[section.id] || false;
-    
+
     return (
-      <View style={styles.menuSection}>
-        <TouchableOpacity 
-          style={styles.sectionHeader}
+      <View style={styles.kitchenDetails__menuSection}>
+        <TouchableOpacity
+          style={styles.kitchenDetails__sectionHeader}
           onPress={() => toggleSection(section.id)}
           activeOpacity={0.8}
         >
-          <View style={styles.sectionHeaderContent}>
-            <Text style={styles.sectionTitle}>{section.category}</Text>
-            <Icon 
-              name={isExpanded ? "chevron-up" : "chevron-down"} 
-              size={24} 
-              color="#e65c00" 
+          <View style={styles.kitchenDetails__sectionHeaderContent}>
+            <Text style={styles.kitchenDetails__sectionTitle}>{section.category}</Text>
+            <Icon
+              name={isExpanded ? "chevron-up" : "chevron-down"}
+              size={24}
+              color="#e65c00"
             />
           </View>
         </TouchableOpacity>
-        
+
         {isExpanded && (
-          <View style={styles.sectionContent}>
+          <View style={styles.kitchenDetails__sectionContent}>
             <FlatList
               data={section.items}
               renderItem={renderMenuItem}
-              keyExtractor={item => item.id}
+              keyExtractor={(item) => item.id}
               scrollEnabled={false}
             />
           </View>
@@ -857,11 +936,11 @@ const HomeKitchenDetails = ({ route }) => {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
+      <SafeAreaView style={styles.kitchenDetails__loadingContainer}>
         <StatusBar barStyle="dark-content" />
-        <View style={styles.loadingContent}>
+        <View style={styles.kitchenDetails__loadingContent}>
           <ActivityIndicator size="large" color="#e65c00" />
-          <Text style={styles.loadingText}>Loading Kitchen Details...</Text>
+          <Text style={styles.kitchenDetails__loadingText}>Loading Kitchen Details...</Text>
         </View>
       </SafeAreaView>
     );
@@ -869,14 +948,14 @@ const HomeKitchenDetails = ({ route }) => {
 
   if (error) {
     return (
-      <SafeAreaView style={styles.errorContainer}>
+      <SafeAreaView style={styles.kitchenDetails__errorContainer}>
         <StatusBar barStyle="dark-content" />
-        <View style={styles.errorContent}>
+        <View style={styles.kitchenDetails__errorContent}>
           <Icon name="alert-circle-outline" size={60} color="#e65c00" />
-          <Text style={styles.errorText}>Failed to load kitchen details</Text>
-          <Text style={styles.errorSubText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={refreshData}>
-            <Text style={styles.retryButtonText}>Try Again</Text>
+          <Text style={styles.kitchenDetails__errorText}>Failed to load kitchen details</Text>
+          <Text style={styles.kitchenDetails__errorSubText}>{error}</Text>
+          <TouchableOpacity style={styles.kitchenDetails__retryButton} onPress={refreshData}>
+            <Text style={styles.kitchenDetails__retryButtonText}>Try Again</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -884,37 +963,37 @@ const HomeKitchenDetails = ({ route }) => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.kitchenDetails__container}>
       <StatusBar barStyle="light-content" />
-      
+
       {/* Sticky Header */}
-      <Animated.View style={[styles.header, { height: headerHeight }]}>
-        <Animated.View style={[StyleSheet.absoluteFill, { opacity: imageOpacity }]}>
-          <Image 
-            source={{ uri: kitchenInfo.image }} 
-            style={styles.headerImage}
-          />
-          <View style={styles.headerOverlay} />
-        </Animated.View>
-        
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={handleBackPress}
+      <Animated.View style={[styles.kitchenDetails__header, { height: headerHeight }]}>
+        <Animated.View
+          style={[StyleSheet.absoluteFill, { opacity: imageOpacity }]}
         >
+          <Image
+            source={{ uri: kitchenInfo.image || PLACEHOLDER_RESTAURANT }}
+            style={styles.kitchenDetails__headerImage}
+            defaultSource={{ uri: PLACEHOLDER_RESTAURANT }}
+          />
+          <View style={styles.kitchenDetails__headerOverlay} />
+        </Animated.View>
+
+        <TouchableOpacity style={styles.kitchenDetails__backButton} onPress={handleBackPress}>
           <Icon name="arrow-back" size={24} color="white" />
         </TouchableOpacity>
-        
-        <Animated.Text 
-          style={[styles.stickyTitle, { opacity: headerTitleOpacity }]}
+
+        <Animated.Text
+          style={[styles.kitchenDetails__stickyTitle, { opacity: headerTitleOpacity }]}
           numberOfLines={1}
         >
           {kitchenInfo.name}
         </Animated.Text>
       </Animated.View>
 
-      <Animated.ScrollView 
+      <Animated.ScrollView
         ref={scrollViewRef}
-        style={[styles.scrollView, { marginBottom: showCartSummary ? 120 : 0 }]}
+        style={[styles.kitchenDetails__scrollView, { marginBottom: showCartSummary ? 120 : 0 }]}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           { useNativeDriver: false }
@@ -924,47 +1003,74 @@ const HomeKitchenDetails = ({ route }) => {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={refreshData}
-            colors={['#e65c00']}
+            colors={["#e65c00"]}
             tintColor="#e65c00"
           />
         }
       >
         {/* Kitchen Info Section */}
-        <View style={styles.kitchenInfo}>
-          <View style={styles.kitchenHeader}>
-            <Text style={styles.kitchenName}>{kitchenInfo.name}</Text>
-            <View style={styles.ratingBadge}>
-              <Icon name="star" size={16} color="#fff" />
-              <Text style={styles.ratingText}>{kitchenInfo.rating}</Text>
-            </View>
-          </View>
-          
-          <Text style={styles.kitchenCuisine}>North Indian, Chinese, Mughlai</Text>
-          
-          <View style={styles.kitchenDetails}>
-            <View style={styles.detailRow}>
-              <Icon name="time-outline" size={16} color="#666" />
-              <Text style={styles.kitchenDeliveryTime}>{kitchenInfo.deliveryTime}</Text>
-              <View style={styles.dotSeparator} />
-              <Text style={styles.kitchenDistance}>{kitchenInfo.distance}</Text>
-              <View style={styles.dotSeparator} />
-              <Icon name="location-outline" size={16} color="#666" />
-              <Text style={styles.kitchenAddress}>{kitchenInfo.shortAddress}</Text>
-            </View>
-            <View style={styles.detailRow}>
-              <View style={styles.timingsContainer}>
-                <Text style={styles.kitchenTimings}>
-                  {kitchenInfo.openingTime} - {kitchenInfo.closingTime}
+        <View style={styles.kitchenDetails__kitchenCard}>
+          <View style={styles.kitchenDetails__kitchenInfo}>
+            <View style={styles.kitchenDetails__kitchenHeader}>
+              <View style={styles.kitchenDetails__nameRatingRow}>
+                <Text style={styles.kitchenDetails__kitchenName} numberOfLines={1}>
+                  {kitchenInfo.name}
                 </Text>
-                <View style={[
-                  styles.statusIndicator,
-                  kitchenInfo.isOpen ? styles.openIndicator : styles.closedIndicator
-                ]} />
-                <Text style={[
-                  styles.kitchenStatus,
-                  kitchenInfo.isOpen ? styles.openText : styles.closedText
-                ]}>
-                  {kitchenInfo.isOpen ? 'Open Now' : 'Closed Now'}
+                <View style={styles.kitchenDetails__ratingBadge}>
+                  <Icon name="star" size={12} color="#fff" />
+                  <Text style={styles.kitchenDetails__ratingText}>{kitchenInfo.rating}</Text>
+                </View>
+              </View>
+
+              <View style={styles.kitchenDetails__addressRow}>
+                <Icon name="location-outline" size={14} color="#ff6b6b" />
+                <Text style={styles.kitchenDetails__kitchenAddress} numberOfLines={1}>
+                  {kitchenInfo.shortAddress}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.kitchenDetails__detailsContainer}>
+              <View style={styles.kitchenDetails__detailRow}>
+                <View style={styles.kitchenDetails__detailItem}>
+                  <Icon name="time-outline" size={14} color="#666" />
+                  <Text style={styles.kitchenDetails__detailText}>
+                    {kitchenInfo.deliveryTime}
+                  </Text>
+                </View>
+
+                <View style={styles.kitchenDetails__dotSeparator} />
+
+                <View style={styles.kitchenDetails__detailItem}>
+                  <Icon name="navigate-outline" size={14} color="#666" />
+                  <Text style={styles.kitchenDetails__detailText}>{kitchenInfo.distance}</Text>
+                </View>
+
+                <View style={styles.kitchenDetails__dotSeparator} />
+
+                <View style={styles.kitchenDetails__statusContainer}>
+                  <View
+                    style={[
+                      styles.kitchenDetails__statusIndicator,
+                      kitchenInfo.isOpen
+                        ? styles.kitchenDetails__openIndicator
+                        : styles.kitchenDetails__closedIndicator,
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.kitchenDetails__kitchenStatus,
+                      kitchenInfo.isOpen ? styles.kitchenDetails__openText : styles.kitchenDetails__closedText,
+                    ]}
+                  >
+                    {kitchenInfo.isOpen ? "OPEN" : "CLOSED"}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.kitchenDetails__timingRow}>
+                <Text style={styles.kitchenDetails__kitchenTimings}>
+                  {kitchenInfo.openingTime} - {kitchenInfo.closingTime}
                 </Text>
               </View>
             </View>
@@ -973,12 +1079,15 @@ const HomeKitchenDetails = ({ route }) => {
 
         {/* Offers Banner - Conditionally Rendered */}
         {offers.length > 0 ? (
-          <View style={styles.offersContainer}>
-            <View style={styles.offersHeader}>
+          <View style={styles.kitchenDetails__offersContainer}>
+            <View style={styles.kitchenDetails__offersHeader}>
               <Icon name="pricetag" size={20} color="#e65c00" />
-              <Text style={styles.offersTitle}>Offers</Text>
-              <TouchableOpacity onPress={openOffersModal} style={styles.viewAllButton}>
-                <Text style={styles.viewAllText}>View All</Text>
+              <Text style={styles.kitchenDetails__offersTitle}>Offers</Text>
+              <TouchableOpacity
+                onPress={openOffersModal}
+                style={styles.kitchenDetails__viewAllButton}
+              >
+                <Text style={styles.kitchenDetails__viewAllText}>View All</Text>
                 <Icon name="chevron-forward" size={16} color="#e65c00" />
               </TouchableOpacity>
             </View>
@@ -986,98 +1095,111 @@ const HomeKitchenDetails = ({ route }) => {
               ref={offerScrollRef}
               data={offers}
               renderItem={renderOfferItem}
-              keyExtractor={item => item.id}
+              keyExtractor={(item) => item.id}
               horizontal
               pagingEnabled
               showsHorizontalScrollIndicator={false}
               onMomentumScrollEnd={(event) => {
-                const index = Math.round(event.nativeEvent.contentOffset.x / (width - 40));
+                const index = Math.round(
+                  event.nativeEvent.contentOffset.x / (width - 40)
+                );
                 setCurrentOfferIndex(index);
               }}
             />
-            <View style={styles.offerPagination}>
+            <View style={styles.kitchenDetails__offerPagination}>
               {offers.map((_, index) => (
-                <View 
-                  key={index} 
+                <View
+                  key={index}
                   style={[
-                    styles.paginationDot,
-                    index === currentOfferIndex && styles.paginationDotActive
-                  ]} 
+                    styles.kitchenDetails__paginationDot,
+                    index === currentOfferIndex && styles.kitchenDetails__paginationDotActive,
+                  ]}
                 />
               ))}
             </View>
           </View>
         ) : (
-          <View style={styles.noOffersContainer}>
+          <View style={styles.kitchenDetails__noOffersContainer}>
             <Icon name="pricetag-outline" size={24} color="#ccc" />
-            <Text style={styles.noOffersText}>No offers available at the moment</Text>
+            <Text style={styles.kitchenDetails__noOffersText}>
+              No offers available at the moment
+            </Text>
           </View>
         )}
 
-
         {/* Filters Section */}
-        <ScrollView 
-          horizontal 
+        <ScrollView
+          horizontal
           showsHorizontalScrollIndicator={false}
-          style={styles.filtersContainer}
-          contentContainerStyle={styles.filtersContent}
+          style={styles.kitchenDetails__filtersContainer}
+          contentContainerStyle={styles.kitchenDetails__filtersContent}
         >
           {filters.map(renderFilterChip)}
         </ScrollView>
 
         {/* Kitchen Closed Message */}
         {!isKitchenOpen && (
-          <View style={styles.closedMessageContainer}>
+          <View style={styles.kitchenDetails__closedMessageContainer}>
             <Icon name="time-outline" size={24} color="#e65c00" />
-            <Text style={styles.closedMessageText}>
-              This kitchen is currently closed. You can browse the menu but cannot place orders.
+            <Text style={styles.kitchenDetails__closedMessageText}>
+              This kitchen is currently closed. You can browse the menu but
+              cannot place orders.
             </Text>
           </View>
         )}
 
         {/* Menu Items */}
-        <View style={styles.menuContainer}>
+        <View style={styles.kitchenDetails__menuContainer}>
           {filteredMenuItems.length > 0 ? (
             <FlatList
               data={filteredMenuItems}
               renderItem={renderMenuSection}
-              keyExtractor={item => item.id}
+              keyExtractor={(item) => item.id}
               scrollEnabled={false}
             />
           ) : (
-            <View style={styles.noItemsContainer}>
+            <View style={styles.kitchenDetails__noItemsContainer}>
               <Icon name="fast-food-outline" size={60} color="#ccc" />
-              <Text style={styles.noItemsText}>No items found for this filter</Text>
+              <Text style={styles.kitchenDetails__noItemsText}>
+                No items found for this filter
+              </Text>
             </View>
           )}
         </View>
       </Animated.ScrollView>
 
-      {/* New Cart Summary Bar */}
+      {/* Cart Summary Bar */}
       {showCartSummary && pastKitchenDetails && (
-        <View style={styles.cartSummary__container}>
-          <View style={styles.cartSummary__header}>
-            <View style={styles.cartSummary__kitchenInfo}>
-              <Image 
-                source={{ uri: pastKitchenDetails.image || PLACEHOLDER_RESTAURANT }} 
-                style={styles.cartSummary__kitchenImage}
+        <View style={styles.kitchenDetails__cartSummaryContainer}>
+          <View style={styles.kitchenDetails__cartSummaryHeader}>
+            <View style={styles.kitchenDetails__cartSummaryKitchenInfo}>
+              <Image
+                source={{
+                  uri: pastKitchenDetails.image || PLACEHOLDER_RESTAURANT,
+                }}
+                style={styles.kitchenDetails__cartSummaryKitchenImage}
               />
-              <View>
-                <Text style={styles.cartSummary__kitchenName} numberOfLines={1}>
+              <View style={styles.kitchenDetails__cartSummaryKitchenText}>
+                <Text style={styles.kitchenDetails__cartSummaryKitchenName} numberOfLines={1}>
                   {pastKitchenDetails.name}
+                </Text>
+                <Text style={styles.kitchenDetails__cartSummaryItemCount}>
+                  {pastKitchenDetails.itemCount} item{pastKitchenDetails.itemCount !== 1 ? 's' : ''} in cart
                 </Text>
               </View>
             </View>
-            
-            <TouchableOpacity 
-              style={styles.cartSummary__miniCartBtn}
+
+            <TouchableOpacity
+              style={styles.kitchenDetails__cartSummaryMiniCartBtn}
               onPress={handleViewCart}
               activeOpacity={0.9}
             >
-              <View style={styles.cartSummary__miniCartContent}>
-                <Text style={styles.cartSummary__viewCartText}>View Cart</Text>
-                <View style={styles.cartSummary__cartCountBadge}>
-                  <Text style={styles.cartSummary__miniCartCount}>{pastKitchenDetails.itemCount}</Text>
+              <View style={styles.kitchenDetails__cartSummaryMiniCartContent}>
+                <Text style={styles.kitchenDetails__cartSummaryViewCartText}>View Cart</Text>
+                <View style={styles.kitchenDetails__cartSummaryCartCountBadge}>
+                  <Text style={styles.kitchenDetails__cartSummaryMiniCartCount}>
+                    {pastKitchenDetails.itemCount}
+                  </Text>
                 </View>
               </View>
             </TouchableOpacity>
@@ -1085,229 +1207,336 @@ const HomeKitchenDetails = ({ route }) => {
         </View>
       )}
 
-      {/* Item Detail Modal */}
+      {/* Item Detail Modal - IMPROVED DESIGN */}
       <Modal
         animationType="slide"
         transparent={true}
         visible={modalVisible}
         onRequestClose={closeItemModal}
-        onDismiss={() => modalOpenRef.current = false}
+        statusBarTranslucent={true}
       >
-        <View style={styles.modalContainer}>
-          <TouchableOpacity 
-            style={styles.modalBackdrop}
-            activeOpacity={1}
-            onPress={closeItemModal}
-          >
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <TouchableOpacity 
-                  style={styles.modalCloseButton}
-                  onPress={closeItemModal}
-                >
-                  <Icon name="close" size={28} color="#333" />
-                </TouchableOpacity>
-              </View>
-              
-              {selectedItem && (
-                <>
-                  <Image 
-                    source={{ uri: selectedItem.image }} 
-                    style={styles.modalImage}
+        <View style={styles.modal__container}>
+          <View style={styles.modal__content}>
+            {/* Close button - only show when not in conflict mode */}
+            {modalMode !== "conflict" && (
+              <TouchableOpacity
+                style={styles.modal__closeButton}
+                onPress={closeItemModal}
+              >
+                <Icon name="close" size={24} color="#fff" />
+              </TouchableOpacity>
+            )}
+
+            {selectedItem ? (
+              <View style={styles.modal__fixedContent}>
+                {/* Enhanced Image with rounded top corners and shadow */}
+                <View style={styles.modal__imageContainer}>
+                  <Image
+                    source={{ uri: selectedItem.image || PLACEHOLDER_FOOD }}
+                    style={styles.modal__image}
                     resizeMode="cover"
+                    defaultSource={{ uri: PLACEHOLDER_FOOD }}
                   />
-                  
-                  <View style={styles.modalItemHeader}>
-                    <View style={styles.modalVegIndicator}>
+                  <View style={styles.modal__imageOverlay} />
+                </View>
+
+                {/* Content area with improved spacing */}
+                <View style={styles.modal__body}>
+                  {/* Title and Veg Indicator */}
+                  <View style={styles.modal__titleRow}>
+                    <View style={styles.modal__vegIndicatorContainer}>
                       {selectedItem.isVeg ? (
-                        <View style={styles.modalVegIndicatorIcon}>
-                          <View style={[styles.modalVegInnerDot, { backgroundColor: 'green' }]} />
+                        <View style={[styles.modal__vegIndicator, styles.modal__veg]}>
+                          <View style={[styles.modal__vegInnerDot, { backgroundColor: "green" }]} />
                         </View>
                       ) : (
-                        <View style={styles.modalNonVegIndicator}>
-                          <View style={[styles.modalVegInnerDot, { backgroundColor: '#cc0000' }]} />
+                        <View style={[styles.modal__vegIndicator, styles.modal__nonVeg]}>
+                          <View style={[styles.modal__vegInnerDot, { backgroundColor: "#cc0000" }]} />
                         </View>
                       )}
                     </View>
-                    <Text style={styles.modalItemName}>{selectedItem.name}</Text>
+                    <Text style={styles.modal__itemName} numberOfLines={2}>
+                      {selectedItem.name}
+                    </Text>
                   </View>
-                  
-                  <Text style={styles.modalItemDescription}>{selectedItem.description}</Text>
-                  
-                  {selectedItem.rating && (
-                    <View style={styles.modalRating}>
-                      <Icon name="star" size={16} color="#FFD700" />
-                      <Text style={styles.modalRatingText}>{selectedItem.rating}</Text>
-                    </View>
-                  )}
-                  
-                  <View style={styles.modalPriceContainer}>
-                    {selectedItem.discountActive ? (
-                      <>
-                        <Text style={styles.modalItemPrice}>
-                          ₹{Math.round(selectedItem.price * (1 - selectedItem.discountPercent / 100))}
+
+                  {/* Description with better typography */}
+                  <Text style={styles.modal__itemDescription} numberOfLines={3}>
+                    {selectedItem.description}
+                  </Text>
+
+                  {/* Enhanced Price row - removed bottom border */}
+                  <View style={styles.modal__priceRow}>
+                    <View style={styles.modal__priceContainer}>
+                      {selectedItem.discountActive ? (
+                        <>
+                          <Text style={styles.modal__currentPrice}>
+                            ₹
+                            {Math.round(
+                              selectedItem.price *
+                                (1 - selectedItem.discountPercent / 100)
+                            )}
+                          </Text>
+                          <Text style={styles.modal__originalPrice}>
+                            ₹{selectedItem.price}
+                          </Text>
+                          <View style={styles.modal__discountBadge}>
+                            <Text style={styles.modal__discountText}>
+                              {selectedItem.discountPercent}% OFF
+                            </Text>
+                          </View>
+                        </>
+                      ) : (
+                        <Text style={styles.modal__currentPrice}>
+                          ₹{selectedItem.price}
                         </Text>
-                        <Text style={styles.modalOriginalPrice}>₹{selectedItem.price}</Text>
-                        <View style={styles.modalDiscountBadge}>
-                          <Text style={styles.modalDiscountText}>{selectedItem.discountPercent}% OFF</Text>
-                        </View>
-                      </>
-                    ) : (
-                      <Text style={styles.modalItemPrice}>₹{selectedItem.price}</Text>
+                      )}
+                    </View>
+                    
+                    {/* Rating moved to price row */}
+                    {selectedItem.rating && (
+                      <View style={styles.modal__ratingContainer}>
+                        <Icon name="star" size={16} color="#FFD700" />
+                        <Text style={styles.modal__ratingText}>
+                          {selectedItem.rating}
+                        </Text>
+                      </View>
                     )}
                   </View>
-                  
+
+                  {/* Unavailable Message with improved styling */}
                   {!selectedItem.isCompletelyAvailable && (
-                    <View style={styles.unavailableMessage}>
-                      <Text style={styles.unavailableMessageText}>
+                    <View style={styles.modal__unavailableMessage}>
+                      <Icon name="time-outline" size={16} color="#dc2626" />
+                      <Text style={styles.modal__unavailableMessageText}>
                         {!selectedItem.availability
-                          ? 'This item is currently unavailable'
-                          : 'Not available at this time'}
+                          ? "This item is currently unavailable"
+                          : "Not available at this time"}
                       </Text>
                     </View>
                   )}
 
-                  {/* Kitchen Conflict Message in Modal */}
-                  {modalMode === 'conflict' && (
-                    <View style={styles.conflictMessage}>
-                      <Text style={styles.conflictMessageTitle}>🚨 Kitchen Conflict</Text>
-                      <Text style={styles.conflictMessageText}>
-                        Your cart contains items from another restaurant. Would you like to reset your cart and add this item?
-                      </Text>
-                      <View style={styles.conflictButtons}>
-                        <TouchableOpacity 
-                          style={[styles.conflictButton, styles.conflictCancelButton]}
-                          onPress={() => {
-                            setModalMode('view');
-                            setPendingCartAction(null);
-                          }}
-                        >
-                          <Text style={styles.conflictButtonText}>No</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity 
-                          style={[styles.conflictButton, styles.conflictConfirmButton]}
-                          onPress={handleClearCartAndProceed}
-                        >
-                          <Text style={styles.conflictButtonText}>Yes, Fresh Start</Text>
-                        </TouchableOpacity>
+                  {/* Kitchen Conflict Message - Enhanced */}
+                  {modalMode === "conflict" && (
+                    <View style={styles.modal__conflictSection}>
+                      <View style={styles.modal__conflictHeader}>
+                        <Icon name="warning" size={24} color="#FF6B35" />
+                        <Text style={styles.modal__conflictTitle}>
+                          Kitchen Conflict Detected
+                        </Text>
+                      </View>
+                      
+                      <View style={styles.modal__conflictContent}>
+                        <Text style={styles.modal__conflictMessage}>
+                          Your cart contains items from another restaurant. Adding this item will reset your current cart.
+                        </Text>
+
+                        {pastKitchenDetails && (
+                          <View style={styles.modal__conflictKitchenInfo}>
+                            <Image
+                              source={{
+                                uri: pastKitchenDetails.image || PLACEHOLDER_RESTAURANT,
+                              }}
+                              style={styles.modal__conflictKitchenImage}
+                              defaultSource={{ uri: PLACEHOLDER_RESTAURANT }}
+                            />
+                            <View style={styles.modal__conflictKitchenDetails}>
+                              <Text style={styles.modal__conflictKitchenName} numberOfLines={1}>
+                                {pastKitchenDetails.name}
+                              </Text>
+                              <Text style={styles.modal__conflictKitchenItemCount}>
+                                {pastKitchenDetails.itemCount} item
+                                {pastKitchenDetails.itemCount !== 1 ? "s" : ""} in cart
+                              </Text>
+                            </View>
+                          </View>
+                        )}
+
+                        <View style={styles.modal__conflictActions}>
+                          <TouchableOpacity
+                            style={[
+                              styles.modal__conflictButton,
+                              styles.modal__conflictCancelButton,
+                            ]}
+                            onPress={() => {
+                              setModalMode("view");
+                              setPendingCartAction(null);
+                            }}
+                          >
+                            <Text style={styles.modal__conflictCancelText}>
+                              Keep Current Cart
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[
+                              styles.modal__conflictButton,
+                              styles.modal__conflictConfirmButton,
+                            ]}
+                            onPress={handleClearCartAndProceed}
+                          >
+                            <Text style={styles.modal__conflictConfirmText}>
+                              Start Fresh & Add
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
                       </View>
                     </View>
                   )}
-                  
-                  {/* Quantity Controls or Add Button */}
-                  {modalMode === 'view' && (
-                    <View style={styles.modalQuantityContainer}>
-                      <Text style={styles.quantityLabel}>Quantity:</Text>
+
+                  {/* Enhanced Add Button & Quantity Controls - Only show in view mode */}
+                  {modalMode === "view" && (
+                    <View style={styles.modal__actionContainer}>
                       {modalQuantity === 0 ? (
-                        <TouchableOpacity 
+                        <TouchableOpacity
                           style={[
-                            styles.addButtonModal,
-                            !selectedItem.isCompletelyAvailable && styles.addButtonModalDisabled
+                            styles.modal__addButton,
+                            !selectedItem.isCompletelyAvailable &&
+                              styles.modal__addButtonDisabled,
                           ]}
                           onPress={handleModalAddButton}
-                          disabled={!selectedItem.isCompletelyAvailable || updatingItemId === selectedItem.id}
+                          disabled={
+                            !selectedItem.isCompletelyAvailable ||
+                            updatingItemId === selectedItem.id
+                          }
                         >
                           {updatingItemId === selectedItem.id ? (
                             <ActivityIndicator size="small" color="#fff" />
                           ) : (
-                            <Text style={styles.addButtonModalText}>ADD</Text>
+                            <View style={styles.modal__addButtonContent}>
+                              <Icon name="cart-outline" size={20} color="#fff" />
+                              <Text style={styles.modal__addButtonText}>
+                                ADD TO CART
+                              </Text>
+                            </View>
                           )}
                         </TouchableOpacity>
                       ) : (
-                        <View style={styles.modalQuantityControls}>
-                          <TouchableOpacity 
-                            style={styles.modalQuantityButton}
-                            onPress={() => updateModalQuantity(-1)}
-                            disabled={modalQuantity === 0 || !selectedItem.isCompletelyAvailable || updatingItemId === selectedItem.id}
-                          >
-                            {updatingItemId === selectedItem.id ? (
-                              <ActivityIndicator size="small" color="#ccc" />
-                            ) : (
-                              <Icon 
-                                name="remove" 
-                                size={20} 
-                                color={modalQuantity === 0 || !selectedItem.isCompletelyAvailable ? "#ccc" : "#e65c00"} 
-                              />
-                            )}
-                          </TouchableOpacity>
-                          <Text style={styles.modalQuantityText}>{modalQuantity}</Text>
-                          <TouchableOpacity 
-                            style={styles.modalQuantityButton}
-                            onPress={() => updateModalQuantity(1)}
-                            disabled={!selectedItem.isCompletelyAvailable || updatingItemId === selectedItem.id}
-                          >
-                            {updatingItemId === selectedItem.id ? (
-                              <ActivityIndicator size="small" color="#ccc" />
-                            ) : (
-                              <Icon 
-                                name="add" 
-                                size={20} 
-                                color={!selectedItem.isCompletelyAvailable ? "#ccc" : "#e65c00"} 
-                              />
-                            )}
-                          </TouchableOpacity>
+                        <View style={styles.modal__quantitySection}>
+                          <Text style={styles.modal__quantityLabel}>
+                            {modalQuantity} item{modalQuantity !== 1 ? 's' : ''} in cart
+                          </Text>
+                          <View style={styles.modal__quantityControls}>
+                            <TouchableOpacity
+                              style={styles.modal__quantityButton}
+                              onPress={() => updateModalQuantity(-1)}
+                              disabled={
+                                modalQuantity === 0 ||
+                                !selectedItem.isCompletelyAvailable ||
+                                updatingItemId === selectedItem.id
+                              }
+                            >
+                              {updatingItemId === selectedItem.id ? (
+                                <ActivityIndicator size="small" color="#ccc" />
+                              ) : (
+                                <Icon
+                                  name="remove"
+                                  size={20}
+                                  color={
+                                    modalQuantity === 0 ||
+                                    !selectedItem.isCompletelyAvailable
+                                      ? "#ccc"
+                                      : "#e65c00"
+                                  }
+                                />
+                              )}
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.modal__quantityButton}
+                              onPress={() => updateModalQuantity(1)}
+                              disabled={
+                                !selectedItem.isCompletelyAvailable ||
+                                updatingItemId === selectedItem.id
+                              }
+                            >
+                              {updatingItemId === selectedItem.id ? (
+                                <ActivityIndicator size="small" color="#ccc" />
+                              ) : (
+                                <Icon
+                                  name="add"
+                                  size={20}
+                                  color={
+                                    !selectedItem.isCompletelyAvailable
+                                      ? "#ccc"
+                                      : "#e65c00"
+                                  }
+                                />
+                              )}
+                            </TouchableOpacity>
+                          </View>
                         </View>
                       )}
                     </View>
                   )}
-                </>
-              )}
-            </View>
-          </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.modal__loadingContainer}>
+                <ActivityIndicator size="large" color="#e65c00" />
+                <Text style={styles.modal__loadingText}>Loading item details...</Text>
+              </View>
+            )}
+          </View>
         </View>
       </Modal>
 
-      {/* Offers Modal - Updated to handle empty state */}
+      {/* Offers Modal */}
       <Modal
         animationType="slide"
         transparent={true}
         visible={offerModalVisible}
         onRequestClose={closeOffersModal}
+        statusBarTranslucent={true}
       >
-        <View style={styles.modalContainer}>
-          <TouchableOpacity 
-            style={styles.modalBackdrop}
+        <View style={styles.offersModal__container}>
+          <TouchableOpacity
+            style={styles.offersModal__backdrop}
             activeOpacity={1}
             onPress={closeOffersModal}
           >
-            <View style={styles.offersModalContent}>
-              <View style={styles.offersModalHeader}>
-                <Text style={styles.offersModalTitle}>Available Offers</Text>
-                <TouchableOpacity 
-                  style={styles.modalCloseButton}
+            <View style={styles.offersModal__content}>
+              <View style={styles.offersModal__header}>
+                <Text style={styles.offersModal__title}>Available Offers</Text>
+                <TouchableOpacity
+                  style={styles.offersModal__closeButton}
                   onPress={closeOffersModal}
                 >
                   <Icon name="close" size={28} color="#333" />
                 </TouchableOpacity>
               </View>
-              
+
               {offers.length > 0 ? (
                 <FlatList
                   data={offers}
                   renderItem={({ item }) => (
-                    <View style={styles.offerModalItem}>
-                      <View style={styles.offerModalIcon}>
+                    <View style={styles.offersModal__item}>
+                      <View style={styles.offersModal__icon}>
                         <Icon name="pricetag" size={20} color="#e65c00" />
                       </View>
-                      <View style={styles.offerModalContent}>
-                        <Text style={styles.offerModalTitle}>{item.title}</Text>
-                        <Text style={styles.offerModalDescription}>{item.description}</Text>
-                        <View style={styles.offerCodeContainer}>
-                          <Text style={styles.offerCodeText}>Use code: {item.code}</Text>
-                          <TouchableOpacity style={styles.copyButton}>
-                            <Text style={styles.copyButtonText}>COPY</Text>
+                      <View style={styles.offersModal__itemContent}>
+                        <Text style={styles.offersModal__itemTitle}>{item.title}</Text>
+                        <Text style={styles.offersModal__itemDescription}>
+                          {item.description}
+                        </Text>
+                        <View style={styles.offersModal__codeContainer}>
+                          <Text style={styles.offersModal__codeText}>
+                            Use code: {item.code}
+                          </Text>
+                          <TouchableOpacity style={styles.offersModal__copyButton}>
+                            <Text style={styles.offersModal__copyButtonText}>COPY</Text>
                           </TouchableOpacity>
                         </View>
                       </View>
                     </View>
                   )}
-                  keyExtractor={item => item.id}
+                  keyExtractor={(item) => item.id}
                 />
               ) : (
-                <View style={styles.noOffersModalContent}>
+                <View style={styles.offersModal__noOffersContent}>
                   <Icon name="pricetag-outline" size={48} color="#e0e0e0" />
-                  <Text style={styles.noOffersModalText}>No offers available</Text>
-                  <Text style={styles.noOffersModalSubText}>
+                  <Text style={styles.offersModal__noOffersText}>
+                    No offers available
+                  </Text>
+                  <Text style={styles.offersModal__noOffersSubText}>
                     Check back later for exciting offers and discounts!
                   </Text>
                 </View>
@@ -1323,45 +1552,59 @@ const HomeKitchenDetails = ({ route }) => {
         transparent
         animationType="fade"
         onRequestClose={() => setShowKitchenConflictModal(false)}
+        statusBarTranslucent={true}
       >
-        <View style={styles.clearModalOverlay}>
-          <View style={styles.clearModalCard}>
-            <Text style={styles.clearModalTitle}>🚨 Kitchen Conflict</Text>
-            <Text style={styles.clearModalText}>
-              Your cart contains items from another restaurant. Would you like to reset your cart and start fresh with items from this kitchen?
+        <View style={styles.conflictModal__overlay}>
+          <View style={styles.conflictModal__card}>
+            <View style={styles.conflictModal__header}>
+              <Icon name="warning" size={32} color="#FF6B35" />
+              <Text style={styles.conflictModal__title}>Kitchen Conflict</Text>
+            </View>
+            <Text style={styles.conflictModal__text}>
+              Your cart contains items from another restaurant. Would you like
+              to reset your cart and start fresh with items from this kitchen?
             </Text>
             {pastKitchenDetails && (
-              <View style={styles.conflictKitchenInfo}>
-                <Image 
-                  source={{ uri: pastKitchenDetails.image || PLACEHOLDER_RESTAURANT }} 
-                  style={styles.conflictKitchenImage}
+              <View style={styles.conflictModal__kitchenInfo}>
+                <Image
+                  source={{
+                    uri: pastKitchenDetails.image || PLACEHOLDER_RESTAURANT,
+                  }}
+                  style={styles.conflictModal__kitchenImage}
+                  defaultSource={{ uri: PLACEHOLDER_RESTAURANT }}
                 />
-                <View style={styles.conflictKitchenDetails}>
-                  <Text style={styles.conflictKitchenName} numberOfLines={1}>
+                <View style={styles.conflictModal__kitchenDetails}>
+                  <Text style={styles.conflictModal__kitchenName} numberOfLines={1}>
                     {pastKitchenDetails.name}
                   </Text>
-                  <Text style={styles.conflictKitchenItemCount}>
-                    {pastKitchenDetails.itemCount} item{pastKitchenDetails.itemCount !== 1 ? 's' : ''} in cart
+                  <Text style={styles.conflictModal__kitchenItemCount}>
+                    {pastKitchenDetails.itemCount} item
+                    {pastKitchenDetails.itemCount !== 1 ? "s" : ""} in cart
                   </Text>
                 </View>
               </View>
             )}
-            <View style={styles.clearModalButtonRow}>
-              <TouchableOpacity 
-                style={[styles.clearModalButton, styles.clearModalCancelButton]}
+            <View style={styles.conflictModal__buttonRow}>
+              <TouchableOpacity
+                style={[styles.conflictModal__button, styles.conflictModal__cancelButton]}
                 onPress={() => {
                   setShowKitchenConflictModal(false);
                   setPendingCartAction(null);
                 }}
               >
-                <Text style={styles.clearModalButtonText}>No, Keep Items</Text>
+                <Text style={styles.conflictModal__buttonText}>No, Keep Items</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.clearModalButton, styles.clearModalConfirmButton]}
+
+              <TouchableOpacity
+                style={[
+                  styles.conflictModal__button,
+                  styles.conflictModal__confirmButton,
+                ]}
                 onPress={handleClearCartAndProceed}
               >
-                <Text style={styles.clearModalButtonText}>Yes, Fresh Start</Text>
+                <Text style={styles.conflictModal__buttonText}>
+                  Yes, Fresh Start
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1372,1052 +1615,1234 @@ const HomeKitchenDetails = ({ route }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
+  // Main Container Styles
+  kitchenDetails__container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
   },
-  loadingContainer: {
+  kitchenDetails__loadingContainer: {
     flex: 1,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  errorContainer: {
+  kitchenDetails__errorContainer: {
     flex: 1,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
     padding: 20,
   },
-  errorContent: {
-    alignItems: 'center',
-    justifyContent: 'center',
+
+  // Loading Styles
+  kitchenDetails__loadingContent: {
+    alignItems: "center",
+    justifyContent: "center",
   },
-  errorText: {
+  kitchenDetails__loadingText: {
     marginTop: 16,
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    textAlign: 'center',
+    fontSize: FONT.LG,
+    color: "#666",
   },
-  errorSubText: {
+
+  // Error Styles
+  kitchenDetails__errorContent: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  kitchenDetails__errorText: {
+    marginTop: 16,
+    fontSize: FONT.XL,
+    fontWeight: "bold",
+    color: "#333",
+    textAlign: "center",
+  },
+  kitchenDetails__errorSubText: {
     marginTop: 8,
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
+    fontSize: FONT.SM,
+    color: "#666",
+    textAlign: "center",
     marginBottom: 20,
   },
-  retryButton: {
-    backgroundColor: '#e65c00',
+  kitchenDetails__retryButton: {
+    backgroundColor: "#e65c00",
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 8,
   },
-  retryButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
+  kitchenDetails__retryButtonText: {
+    color: "white",
+    fontSize: FONT.BASE,
+    fontWeight: "600",
   },
-  loadingContent: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#666',
-  },
-  header: {
-    position: 'absolute',
+
+  // Header Styles
+  kitchenDetails__header: {
+    position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     zIndex: 999,
-    elevation: 5, 
-    backgroundColor: '#fff',
+    elevation: 5,
+    backgroundColor: "#fff",
+    overflow: "hidden",
   },
-  headerImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
+  kitchenDetails__headerImage: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
   },
-  headerOverlay: {
+  kitchenDetails__headerOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: "rgba(0,0,0,0.3)",
   },
-  backButton: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 44 : 20,
+  kitchenDetails__backButton: {
+    position: "absolute",
+    top: Platform.OS === "ios" ? 44 : 20,
     left: 16,
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
     zIndex: 11,
   },
-  stickyTitle: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 52 : 28,
+  kitchenDetails__stickyTitle: {
+    position: "absolute",
+    top: Platform.OS === "ios" ? 52 : 28,
     left: 64,
     right: 16,
-    color: '#333',
-    fontSize: 18,
-    fontWeight: 'bold',
+    color: "#333",
+    fontSize: FONT.LG,
+    fontWeight: "bold",
     zIndex: 11,
   },
-  kitchenInfo: {
-    padding: 20,
-    paddingTop: 24,
-    backgroundColor: '#fff',
-    marginTop: 200,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderBottomWidth: 6,
-    borderBottomColor: '#f5f5f5',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  kitchenHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  kitchenName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
+
+  // Scroll View
+  kitchenDetails__scrollView: {
     flex: 1,
+    marginBottom: 0,
   },
-  ratingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#3a9c39',
+
+  // Kitchen Card Styles
+  kitchenDetails__kitchenCard: {
+    backgroundColor: "#fff",
+    marginTop: 230,
+    marginBottom: 10,
+    marginHorizontal: 12,
+    borderRadius: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: "#f5f5f5",
+    overflow: "hidden",
+  },
+  kitchenDetails__kitchenInfo: {
+    padding: 16,
+    paddingVertical: 14,
+  },
+  kitchenDetails__kitchenHeader: {
+    marginBottom: 12,
+  },
+  kitchenDetails__nameRatingRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  kitchenDetails__kitchenName: {
+    fontSize: FONT.XL,
+    fontWeight: "700",
+    color: "#1a1a1a",
+    flex: 1,
+    marginRight: 8,
+  },
+  kitchenDetails__ratingBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#3a9c39",
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 4,
+    borderRadius: 6,
+    minWidth: 40,
+    justifyContent: "center",
   },
-  ratingText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    marginLeft: 4,
-    fontSize: 14,
+  kitchenDetails__ratingText: {
+    color: "#fff",
+    fontWeight: "700",
+    marginLeft: 2,
+    fontSize: FONT.XS,
   },
-  kitchenCuisine: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 16,
+  kitchenDetails__addressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
-  kitchenDetails: {
-    gap: 10,
+  kitchenDetails__kitchenAddress: {
+    fontSize: FONT.SM,
+    color: "#666",
+    fontWeight: "500",
+    flex: 1,
   },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  kitchenDetails__detailsContainer: {
     gap: 8,
   },
-  dotSeparator: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#666',
+  kitchenDetails__detailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
-  kitchenAddress: {
-    fontSize: 14,
-    color: '#666',
+  kitchenDetails__detailItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
-  kitchenDeliveryTime: {
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
+  kitchenDetails__detailText: {
+    fontSize: FONT.XS,
+    color: "#666",
+    fontWeight: "500",
   },
-  kitchenDistance: {
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
+  kitchenDetails__dotSeparator: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: "#ccc",
   },
-  timingsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+  kitchenDetails__statusContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
-  noOffersContainer: {
-  padding: 20,
-  backgroundColor: '#fff',
-  borderBottomWidth: 6,
-  borderBottomColor: '#f5f5f5',
-  alignItems: 'center',
-  justifyContent: 'center',
-  flexDirection: 'row',
-  gap: 12,
-},
-noOffersText: {
-  fontSize: 16,
-  color: '#999',
-  textAlign: 'center',
-},
-noOffersModalContent: {
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: 40,
-},
-noOffersModalText: {
-  fontSize: 18,
-  color: '#666',
-  fontWeight: '600',
-  marginTop: 16,
-  textAlign: 'center',
-},
-noOffersModalSubText: {
-  fontSize: 14,
-  color: '#999',
-  textAlign: 'center',
-  marginTop: 8,
-  lineHeight: 20,
-},
-  kitchenTimings: {
-    fontSize: 14,
-    color: '#666',
-  },
-  statusIndicator: {
+  kitchenDetails__statusIndicator: {
     width: 8,
     height: 8,
     borderRadius: 4,
   },
-  openIndicator: {
-    backgroundColor: '#00cc00',
+  kitchenDetails__openIndicator: {
+    backgroundColor: "#00c853",
   },
-  closedIndicator: {
-    backgroundColor: '#cc0000',
+  kitchenDetails__closedIndicator: {
+    backgroundColor: "#ff4444",
   },
-  kitchenStatus: {
-    fontSize: 14,
-    fontWeight: '500',
+  kitchenDetails__kitchenStatus: {
+    fontSize: FONT.XS,
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
-  openText: {
-    color: '#00cc00',
+  kitchenDetails__openText: {
+    color: "#00c853",
   },
-  closedText: {
-    color: '#cc0000',
+  kitchenDetails__closedText: {
+    color: "#ff4444",
   },
-  reviewText: {
-    fontSize: 14,
-    color: '#666',
+  kitchenDetails__timingRow: {
+    marginTop: 2,
   },
-  offersContainer: {
+  kitchenDetails__kitchenTimings: {
+    fontSize: FONT.XS,
+    color: "#888",
+    fontWeight: "500",
+  },
+
+  // Offers Styles
+  kitchenDetails__offersContainer: {
     padding: 20,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderBottomWidth: 6,
-    borderBottomColor: '#f5f5f5',
+    borderBottomColor: "#f5f5f5",
   },
-  offersHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  kitchenDetails__noOffersContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 10,
+    backgroundColor: "#f9f9f9",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#f0f0f0",
+    borderStyle: "dashed",
+  },
+  kitchenDetails__noOffersText: {
+    fontSize: FONT.LG,
+    fontWeight: "600",
+    color: "#6c757d",
+    textAlign: "center",
+    marginBottom: 8,
+    lineHeight: 24,
+  },
+  kitchenDetails__offersHeader: {
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 16,
     gap: 8,
   },
-  offersTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+  kitchenDetails__offersTitle: {
+    fontSize: FONT.LG,
+    fontWeight: "bold",
+    color: "#333",
     flex: 1,
   },
-  viewAllButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  kitchenDetails__viewAllButton: {
+    flexDirection: "row",
+    alignItems: "center",
   },
-  viewAllText: {
-    color: '#e65c00',
-    fontSize: 14,
-    fontWeight: '500',
+  kitchenDetails__viewAllText: {
+    color: "#e65c00",
+    fontSize: FONT.SM,
+    fontWeight: "500",
     marginRight: 4,
   },
-  offerItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  kitchenDetails__offerItem: {
+    flexDirection: "row",
+    alignItems: "center",
     padding: 16,
     borderRadius: 16,
-    backgroundColor: '#f9f9f9',
+    backgroundColor: "#f9f9f9",
     marginRight: 16,
     width: width - 40,
     borderWidth: 1.5,
-    borderColor: '#f0f0f0',
-    shadowColor: '#000',
+    borderColor: "#f0f0f0",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
-  activeOfferItem: {
-    backgroundColor: '#fff8e6',
-    borderColor: '#ffd166',
-    shadowColor: '#e65c00',
+  kitchenDetails__offerItemActive: {
+    backgroundColor: "#fff8e6",
+    borderColor: "#ffd166",
+    shadowColor: "#e65c00",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
     shadowRadius: 6,
     elevation: 5,
   },
-  offerIcon: {
+  kitchenDetails__offerIcon: {
     marginRight: 12,
-    backgroundColor: '#fff0e0',
+    backgroundColor: "#fff0e0",
     width: 40,
     height: 40,
     borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
-  offerContent: {
+  kitchenDetails__offerContent: {
     flex: 1,
   },
-  offerTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
+  kitchenDetails__offerTitle: {
+    fontSize: FONT.LG,
+    fontWeight: "bold",
+    color: "#333",
     marginBottom: 4,
   },
-  offerDescription: {
-    fontSize: 13,
-    color: '#666',
+  kitchenDetails__offerDescription: {
+    fontSize: FONT.SM,
+    color: "#666",
     marginBottom: 6,
   },
-  offerCodeContainer: {
-    backgroundColor: '#fff0e0',
+  kitchenDetails__offerCodeContainer: {
+    backgroundColor: "#fff0e0",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
   },
-  offerCodeText: {
-    fontSize: 12,
-    color: '#e65c00',
-    fontWeight: '500',
+  kitchenDetails__offerCodeText: {
+    fontSize: FONT.XS,
+    color: "#e65c00",
+    fontWeight: "500",
   },
-  offerCount: {
-    backgroundColor: '#e65c00',
+  kitchenDetails__offerCount: {
+    backgroundColor: "#e65c00",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
   },
-  offerCountText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
+  kitchenDetails__offerCountText: {
+    color: "white",
+    fontSize: FONT.XS,
+    fontWeight: "bold",
   },
-  offerPagination: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+  kitchenDetails__offerPagination: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
     marginTop: 12,
     gap: 6,
   },
-  paginationDot: {
+  kitchenDetails__paginationDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#ccc',
+    backgroundColor: "#ccc",
   },
-  paginationDotActive: {
-    backgroundColor: '#e65c00',
+  kitchenDetails__paginationDotActive: {
+    backgroundColor: "#e65c00",
     width: 12,
   },
-  filtersContainer: {
-    backgroundColor: '#fff',
+
+  // Filters Styles
+  kitchenDetails__filtersContainer: {
+    backgroundColor: "#fff",
     borderBottomWidth: 6,
-    borderBottomColor: '#f5f5f5',
+    borderBottomColor: "#f5f5f5",
   },
-  filtersContent: {
+  kitchenDetails__filtersContent: {
     paddingHorizontal: 16,
     paddingVertical: 16,
     gap: 12,
   },
-  filterChip: {
+  kitchenDetails__filterChip: {
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 20,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: "#f5f5f5",
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: "#e0e0e0",
   },
-  activeFilterChip: {
-    backgroundColor: '#e65c00',
-    borderColor: '#e65c00',
+  kitchenDetails__filterChipActive: {
+    backgroundColor: "#e65c00",
+    borderColor: "#e65c00",
   },
-  filterText: {
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
+  kitchenDetails__filterText: {
+    fontSize: FONT.SM,
+    color: "#666",
+    fontWeight: "500",
   },
-  activeFilterText: {
-    color: 'white',
+  kitchenDetails__filterTextActive: {
+    color: "white",
   },
-  closedMessageContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff8e6',
+
+  // Closed Message Styles
+  kitchenDetails__closedMessageContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff8e6",
     padding: 16,
     marginHorizontal: 16,
     marginTop: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#ffd166',
+    borderColor: "#ffd166",
   },
-  closedMessageText: {
+  kitchenDetails__closedMessageText: {
     marginLeft: 12,
-    fontSize: 14,
-    color: '#e65c00',
+    fontSize: FONT.SM,
+    color: "#e65c00",
     flex: 1,
   },
-  menuContainer: {
+
+  // Menu Container Styles
+  kitchenDetails__menuContainer: {
     padding: 16,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     minHeight: 300,
   },
-  noItemsContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  kitchenDetails__noItemsContainer: {
+    alignItems: "center",
+    justifyContent: "center",
     padding: 40,
   },
-  noItemsText: {
+  kitchenDetails__noItemsText: {
     marginTop: 16,
-    fontSize: 16,
-    color: '#999',
-    textAlign: 'center',
+    fontSize: FONT.LG,
+    color: "#999",
+    textAlign: "center",
   },
-  menuSection: {
+
+  // Menu Section Styles
+  kitchenDetails__menuSection: {
     marginBottom: 16,
     borderRadius: 16,
-    backgroundColor: '#fff',
-    overflow: 'hidden',
+    backgroundColor: "#fff",
+    overflow: "hidden",
     borderWidth: 1,
-    borderColor: '#f0f0f0',
-    shadowColor: '#000',
+    borderColor: "#f0f0f0",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
-  sectionHeader: {
+  kitchenDetails__sectionHeader: {
     padding: 16,
-    backgroundColor: '#fafafa',
+    backgroundColor: "#fafafa",
   },
-  sectionHeaderContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  kitchenDetails__sectionHeaderContent: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+  kitchenDetails__sectionTitle: {
+    fontSize: FONT.LG,
+    fontWeight: "bold",
+    color: "#333",
   },
-  sectionContent: {
+  kitchenDetails__sectionContent: {
     padding: 16,
     paddingTop: 0,
   },
-  menuItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+
+  // Menu Item Styles
+  kitchenDetails__menuItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    position: 'relative',
+    borderBottomColor: "#f0f0f0",
+    position: "relative",
   },
-  unavailableOverlay: {
-    position: 'absolute',
+  kitchenDetails__unavailableOverlay: {
+    position: "absolute",
     bottom: 6,
     right: 0,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
     zIndex: 1,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
   },
-  unavailableText: {
-    color: '#cc0000',
-    fontWeight: '500',
-    fontSize: 11,
-    textAlign: 'center',
+  kitchenDetails__unavailableText: {
+    color: "#cc0000",
+    fontWeight: "500",
+    fontSize: FONT.XS,
+    textAlign: "center",
   },
-  menuItemContent: {
+  kitchenDetails__menuItemContent: {
     flex: 1,
     gap: 8,
   },
-  menuItemHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  kitchenDetails__menuItemHeader: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
-  menuItemVegIndicator: {
+  kitchenDetails__vegIndicatorContainer: {
     width: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
-  vegIndicator: {
+  kitchenDetails__vegIndicator: {
     width: 16,
     height: 16,
     borderWidth: 1,
-    borderColor: 'green',
+    borderColor: "green",
     borderRadius: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
-  nonVegIndicator: {
+  kitchenDetails__nonVegIndicator: {
     width: 16,
     height: 16,
     borderWidth: 1,
-    borderColor: '#cc0000',
+    borderColor: "#cc0000",
     borderRadius: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
-  vegInnerDot: {
+  kitchenDetails__vegInnerDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
   },
-  menuItemTextContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  kitchenDetails__menuItemTextContainer: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
-  menuItemName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+  kitchenDetails__menuItemName: {
+    fontSize: FONT.LG,
+    fontWeight: "600",
+    color: "#333",
   },
-  bestsellerBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff8e1',
+  kitchenDetails__bestsellerBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff8e1",
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
     gap: 4,
   },
-  bestsellerText: {
-    fontSize: 12,
-    color: '#e65c00',
-    fontWeight: '500',
+  kitchenDetails__bestsellerText: {
+    fontSize: FONT.XS,
+    color: "#e65c00",
+    fontWeight: "500",
   },
-  menuItemDescription: {
-    fontSize: 14,
-    color: '#666',
+  kitchenDetails__menuItemDescription: {
+    fontSize: FONT.SM,
+    color: "#666",
     lineHeight: 20,
   },
-  menuItemFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  kitchenDetails__menuItemFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
-  priceContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  kitchenDetails__priceContainer: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
-  menuItemPrice: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+  kitchenDetails__menuItemPrice: {
+    fontSize: FONT.LG,
+    fontWeight: "600",
+    color: "#333",
   },
-  discountedPrice: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+  kitchenDetails__discountedPrice: {
+    fontSize: FONT.LG,
+    fontWeight: "600",
+    color: "#333",
   },
-  originalPrice: {
-    fontSize: 14,
-    color: '#999',
-    textDecorationLine: 'line-through',
+  kitchenDetails__originalPrice: {
+    fontSize: FONT.SM,
+    color: "#999",
+    textDecorationLine: "line-through",
   },
-  discountBadge: {
-    backgroundColor: '#e65c00',
+  kitchenDetails__discountBadge: {
+    backgroundColor: "#e65c00",
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
   },
-  discountText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
+  kitchenDetails__discountText: {
+    color: "white",
+    fontSize: FONT.XS,
+    fontWeight: "bold",
   },
-  ratingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  kitchenDetails__ratingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
   },
-  menuItemImageContainer: {
+  kitchenDetails__menuItemImageContainer: {
     width: 100,
     height: 100,
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: "hidden",
     marginLeft: 12,
-    position: 'relative',
+    position: "relative",
   },
-  menuItemImage: {
-    width: '100%',
-    height: '100%',
+  kitchenDetails__menuItemImage: {
+    width: "100%",
+    height: "100%",
   },
-  addButton: {
-    position: 'absolute',
+  kitchenDetails__addButton: {
+    position: "absolute",
     bottom: 8,
-    left: '50%',
-    transform: [{ translateX: -30 }],
-    width: 60,
-    backgroundColor: '#fff',
+    left: 20,
+    right: 20,
+    height: 24,
+    backgroundColor: "#fff",
     paddingVertical: 4,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#e65c00',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
+    borderColor: "#e65c00",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
   },
-  addButtonText: {
-    color: '#e65c00',
-    fontSize: 12,
-    fontWeight: 'bold',
+  kitchenDetails__addButtonText: {
+    color: "#e65c00",
+    fontSize: FONT.XS,
+    fontWeight: "bold",
   },
-  quantityControls: {
-    position: 'absolute',
+  kitchenDetails__addButtonDisabled: {
+    position: "absolute",
     bottom: 8,
-    left: '50%',
+    left: "50%",
     transform: [{ translateX: -40 }],
     width: 80,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#e65c00',
+    height: 24,
+    backgroundColor: "#fff",
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  kitchenDetails__addButtonDisabledText: {
+    color: "#e65c00",
+    fontSize: FONT.XS,
+    fontWeight: "bold",
+  },
+  kitchenDetails__quantityControls: {
+    position: "absolute",
+    bottom: 8,
+    left: "50%",
+    transform: [{ translateX: -40 }],
+    width: 80,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#e65c00",
     borderRadius: 20,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 3,
   },
-  quantityButton: {
+  kitchenDetails__quantityButton: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  quantityText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 14,
+  kitchenDetails__quantityText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: FONT.SM,
   },
-  // New Cart Summary Styles
-  cartSummary__container: {
-    position: 'absolute',
-    bottom: Platform.OS === 'android' ? 0 : 0,
+
+  // Cart Summary Styles
+  kitchenDetails__cartSummaryContainer: {
+    position: "absolute",
+    bottom: Platform.OS === "android" ? 0 : 0,
     left: 0,
     right: 0,
-    backgroundColor: '#ffffff',
+    backgroundColor: "#ffffff",
     padding: 16,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 8,
   },
-  cartSummary__header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  kitchenDetails__cartSummaryHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
-  cartSummary__kitchenInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  kitchenDetails__cartSummaryKitchenInfo: {
+    flexDirection: "row",
+    alignItems: "center",
     flex: 1,
     marginRight: 16,
   },
-  cartSummary__kitchenImage: {
+  kitchenDetails__cartSummaryKitchenImage: {
     width: 40,
     height: 40,
     borderRadius: 8,
     marginRight: 12,
   },
-  cartSummary__kitchenName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+  kitchenDetails__cartSummaryKitchenText: {
+    flex: 1,
+  },
+  kitchenDetails__cartSummaryKitchenName: {
+    fontSize: FONT.LG,
+    fontWeight: "600",
+    color: "#333",
     marginBottom: 4,
-    maxWidth: 150,
   },
-  cartSummary__viewMenuBtn: {
-    alignSelf: 'flex-start',
+  kitchenDetails__cartSummaryItemCount: {
+    fontSize: FONT.XS,
+    color: "#666",
   },
-  cartSummary__viewMenuText: {
-    color: '#e65c00',
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  cartSummary__miniCartBtn: {
-    backgroundColor: '#e65c00',
+  kitchenDetails__cartSummaryMiniCartBtn: {
+    backgroundColor: "#e65c00",
     borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#e65c00',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#e65c00",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 4,
   },
-  cartSummary__miniCartContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  kitchenDetails__cartSummaryMiniCartContent: {
+    flexDirection: "row",
+    alignItems: "center",
   },
-  cartSummary__viewCartText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
+  kitchenDetails__cartSummaryViewCartText: {
+    color: "#fff",
+    fontSize: FONT.SM,
+    fontWeight: "600",
     marginRight: 8,
   },
-  cartSummary__cartCountBadge: {
-    backgroundColor: '#fff',
+  kitchenDetails__cartSummaryCartCountBadge: {
+    backgroundColor: "#fff",
     borderRadius: 10,
     width: 20,
     height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
-  cartSummary__miniCartCount: {
-    color: '#e65c00',
-    fontSize: 12,
-    fontWeight: 'bold',
+  kitchenDetails__cartSummaryMiniCartCount: {
+    color: "#e65c00",
+    fontSize: FONT.XS,
+    fontWeight: "bold",
   },
-  scrollView: {
+
+  // IMPROVED Item Detail Modal Styles
+  modal__container: {
     flex: 1,
-    marginBottom: 0,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "flex-end",
   },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalBackdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: 'white',
+  modal__content: {
+    backgroundColor: "white",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: 24,
-    maxHeight: height * 0.9,
+    maxHeight: "90%",
+    minHeight: "70%",
   },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginBottom: 16,
+  modal__contentConflict: {
+    maxHeight: "95%",
   },
-  modalCloseButton: {
+  modal__fixedContent: {
+    flex: 1,
+  },
+  modal__imageContainer: {
+    position: 'relative',
+    height: 250,
+  },
+  modal__image: {
+    width: "100%",
+    height: "100%",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  modal__imageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.1)",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  modal__closeButton: {
+    position: "absolute",
+    top: 16,
+    right: 16,
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#f0f0f0',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(0,0,0,0.6)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
-  modalImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 16,
-    marginBottom: 16,
+  modal__body: {
+    flex: 1,
+    padding: 20,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 20,
   },
-  modalItemHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+  modal__titleRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
     marginBottom: 12,
+    gap: 12,
   },
-  modalVegIndicator: {
-    width: 24,
-    alignItems: 'center',
+  modal__vegIndicatorContainer: {
+    marginTop: 2,
   },
-  modalVegIndicatorIcon: {
+  modal__vegIndicator: {
     width: 20,
     height: 20,
-    borderWidth: 1,
-    borderColor: 'green',
+    borderWidth: 2,
     borderRadius: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
-  modalNonVegIndicator: {
-    width: 20,
-    height: 20,
-    borderWidth: 1,
-    borderColor: '#cc0000',
-    borderRadius: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
+  modal__veg: {
+    borderColor: "#22c55e",
   },
-  modalVegInnerDot: {
+  modal__nonVeg: {
+    borderColor: "#dc2626",
+  },
+  modal__vegInnerDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
   },
-  modalItemName: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#333',
+  modal__itemName: {
+    fontSize: FONT.XXL,
+    fontWeight: "700",
+    color: "#1f2937",
+    flex: 1,
+    lineHeight: 28,
   },
-  modalItemDescription: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 16,
+  modal__itemDescription: {
+    fontSize: FONT.BASE,
+    color: "#6b7280",
     lineHeight: 22,
+    marginBottom: 20,
   },
-  modalRating: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 16,
-  },
-  modalRatingText: {
-    fontSize: 16,
-    color: '#666',
-    fontWeight: '500',
-  },
-  modalPriceContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+  modal__priceRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 24,
   },
-  modalItemPrice: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
+  modal__priceContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
-  modalOriginalPrice: {
-    fontSize: 18,
-    color: '#999',
-    textDecorationLine: 'line-through',
+  modal__currentPrice: {
+    fontSize: FONT.XXL,
+    fontWeight: "700",
+    color: "#1f2937",
   },
-  modalDiscountBadge: {
-    backgroundColor: '#e65c00',
+  modal__originalPrice: {
+    fontSize: FONT.LG,
+    color: "#9ca3af",
+    textDecorationLine: "line-through",
+  },
+  modal__discountBadge: {
+    backgroundColor: "#dc2626",
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 4,
+    borderRadius: 6,
   },
-  modalDiscountText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
+  modal__discountText: {
+    color: "white",
+    fontSize: FONT.XS,
+    fontWeight: "700",
   },
-  unavailableMessage: {
-    backgroundColor: '#fff0f0',
+  modal__ratingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#fefce8",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  modal__ratingText: {
+    fontSize: FONT.SM,
+    color: "#854d0e",
+    fontWeight: "600",
+  },
+  modal__unavailableMessage: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fef2f2",
     padding: 12,
     borderRadius: 8,
-    marginBottom: 16,
+    marginBottom: 20,
+    borderLeftWidth: 4,
+    borderLeftColor: "#dc2626",
+    gap: 8,
   },
-  unavailableMessageText: {
-    color: '#cc0000',
-    fontWeight: '500',
-    textAlign: 'center',
+  modal__unavailableMessageText: {
+    color: "#dc2626",
+    fontWeight: "500",
+    fontSize: FONT.SM,
+    flex: 1,
   },
-  conflictMessage: {
-    backgroundColor: '#fff8e6',
+
+  // Enhanced Conflict Mode Styles
+  modal__conflictSection: {
+    marginTop: 16,
     borderWidth: 1,
-    borderColor: '#ffd166',
+    borderColor: '#fed7aa',
     borderRadius: 12,
-    padding: 16,
-    marginVertical: 16,
+    backgroundColor: '#fff7ed',
+    overflow: 'hidden',
   },
-  conflictMessageTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#e65c00',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  conflictMessageText: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 16,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  conflictButtons: {
+  modal__conflictHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+    padding: 16,
+    backgroundColor: '#ffedd5',
+  },
+  modal__conflictTitle: {
+    fontSize: FONT.LG,
+    fontWeight: '700',
+    color: '#ea580c',
+  },
+  modal__conflictContent: {
+    padding: 16,
+  },
+  modal__conflictMessage: {
+    fontSize: FONT.SM,
+    color: '#92400e',
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  modal__conflictKitchenInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    backgroundColor: 'white',
+    borderRadius: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+  },
+  modal__conflictKitchenImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+  },
+  modal__conflictKitchenDetails: {
+    flex: 1,
+  },
+  modal__conflictKitchenName: {
+    fontSize: FONT.SM,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginBottom: 4,
+  },
+  modal__conflictKitchenItemCount: {
+    fontSize: FONT.XS,
+    color: '#6b7280',
+  },
+  modal__conflictActions: {
+    flexDirection: 'row',
     gap: 12,
   },
-  conflictButton: {
+  modal__conflictButton: {
     flex: 1,
-    paddingVertical: 10,
-    borderRadius: 8,
+    paddingVertical: 14,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  conflictCancelButton: {
-    backgroundColor: '#e0e0e0',
+  modal__conflictCancelButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: '#d1d5db',
   },
-  conflictConfirmButton: {
-    backgroundColor: '#e65c00',
+  modal__conflictConfirmButton: {
+    backgroundColor: '#dc2626',
   },
-  conflictButtonText: {
-    color: '#fff',
+  modal__conflictCancelText: {
+    color: '#374151',
     fontWeight: '600',
-    fontSize: 14,
+    fontSize: FONT.SM,
   },
-  modalQuantityContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginVertical: 20,
-  },
-  quantityLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-  },
-  addButtonModal: {
-    backgroundColor: '#e65c00',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 100,
-  },
-  addButtonModalDisabled: {
-    backgroundColor: '#ccc',
-  },
-  addButtonModalText: {
+  modal__conflictConfirmText: {
     color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    fontSize: FONT.SM,
   },
-  modalQuantityControls: {
+
+  // Enhanced Action Section
+  modal__actionContainer: {
+    marginTop: 'auto',
+  },
+  modal__addButton: {
+    backgroundColor: '#e65c00',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#e65c00',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  modal__addButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-    borderRadius: 20,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    gap: 8,
   },
-  modalQuantityButton: {
+  modal__addButtonDisabled: {
+    backgroundColor: '#9ca3af',
+    shadowColor: 'transparent',
+    elevation: 0,
+  },
+  modal__addButtonText: {
+    color: 'white',
+    fontSize: FONT.LG,
+    fontWeight: '700',
+  },
+
+  // Enhanced Quantity Section
+  modal__quantitySection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  modal__quantityLabel: {
+    fontSize: FONT.LG,
+    fontWeight: '600',
+    color: '#1f2937',
+  },
+  modal__quantityControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  modal__quantityButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#e65c00',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+
+  modal__loadingContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modal__loadingText: {
+    marginTop: 12,
+    fontSize: FONT.SM,
+    color: '#666',
+  },
+
+  // Offers Modal Styles
+  offersModal__container: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "flex-end",
+  },
+  offersModal__backdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  offersModal__content: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: "60%",
+  },
+  offersModal__header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  offersModal__title: {
+    fontSize: FONT.LG,
+    fontWeight: "bold",
+    color: "#333",
+  },
+  offersModal__closeButton: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
+    backgroundColor: "#f5f5f5",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  modalQuantityText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginHorizontal: 12,
-    minWidth: 20,
-    textAlign: 'center',
-  },
-  addToCartButton: {
-    backgroundColor: '#e65c00',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  addToCartButtonDisabled: {
-    backgroundColor: '#ccc',
-  },
-  addToCartText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  offersModalContent: {
-    backgroundColor: 'white',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    maxHeight: height * 0.7,
-  },
-  offersModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  offersModalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  offerModalItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: 16,
+  offersModal__item: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: "#f0f0f0",
   },
-  offerModalIcon: {
-    marginRight: 16,
-    marginTop: 4,
+  offersModal__icon: {
+    marginRight: 12,
+    marginTop: 2,
   },
-  offerModalContent: {
+  offersModal__itemContent: {
     flex: 1,
   },
-  offerModalTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
+  offersModal__itemTitle: {
+    fontSize: FONT.BASE,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 2,
   },
-  offerModalDescription: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
+  offersModal__itemDescription: {
+    fontSize: FONT.SM,
+    color: "#666",
+    marginBottom: 6,
   },
-  copyButton: {
-    backgroundColor: '#e65c00',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+  offersModal__codeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  offersModal__codeText: {
+    fontSize: FONT.XS,
+    color: "#e65c00",
+    fontWeight: "500",
+  },
+  offersModal__copyButton: {
+    backgroundColor: "#e65c00",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 4,
   },
-  copyButtonText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
+  offersModal__copyButtonText: {
+    color: "white",
+    fontSize: FONT.XS,
+    fontWeight: "bold",
   },
-  clearModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
+  offersModal__noOffersContent: {
     alignItems: 'center',
-    paddingHorizontal: 20,
+    justifyContent: 'center',
+    padding: 30,
   },
-  clearModalCard: {
-    backgroundColor: '#fff',
+  offersModal__noOffersText: {
+    fontSize: FONT.BASE,
+    fontWeight: '600',
+    color: '#999',
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  offersModal__noOffersSubText: {
+    fontSize: FONT.SM,
+    color: '#ccc',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+
+  // Conflict Modal Styles
+  conflictModal__overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 16,
+  },
+  conflictModal__card: {
+    backgroundColor: "#fff",
     borderRadius: 12,
-    padding: 24,
-    width: '100%',
-    maxWidth: 350,
-    shadowColor: '#000',
+    padding: 20,
+    width: "100%",
+    maxWidth: 320,
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 2,
@@ -2426,72 +2851,77 @@ noOffersModalSubText: {
     shadowRadius: 4,
     elevation: 5,
   },
-  clearModalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 16,
-    textAlign: 'center',
-    color: '#333',
+  conflictModal__header: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    gap: 10,
   },
-  clearModalText: {
-    fontSize: 16,
-    marginBottom: 16,
-    textAlign: 'center',
-    color: '#666',
-    lineHeight: 22,
-  },
-  conflictKitchenInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 20,
-  },
-  conflictKitchenImage: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    marginRight: 12,
-  },
-  conflictKitchenDetails: {
+  conflictModal__title: {
+    fontSize: FONT.LG,
+    fontWeight: "bold",
+    color: "#333",
     flex: 1,
   },
-  conflictKitchenName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
+  conflictModal__text: {
+    fontSize: FONT.SM,
+    marginBottom: 12,
+    textAlign: "center",
+    color: "#666",
+    lineHeight: 20,
   },
-  conflictKitchenItemCount: {
-    fontSize: 12,
-    color: '#666',
-  },
-  clearModalButtonRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  clearModalButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 15,
+  conflictModal__kitchenInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f5f5f5",
     borderRadius: 8,
-    minWidth: 120,
-    alignItems: 'center',
-    justifyContent: 'center',
+    padding: 10,
+    marginBottom: 16,
   },
-  clearModalCancelButton: {
-    backgroundColor: '#e0e0e0',
+  conflictModal__kitchenImage: {
+    width: 35,
+    height: 35,
+    borderRadius: 6,
     marginRight: 10,
   },
-  clearModalConfirmButton: {
-    backgroundColor: '#E65C00',
-    marginLeft: 10,
+  conflictModal__kitchenDetails: {
+    flex: 1,
   },
-  clearModalButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 16,
+  conflictModal__kitchenName: {
+    fontSize: FONT.SM,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 2,
+  },
+  conflictModal__kitchenItemCount: {
+    fontSize: FONT.XS,
+    color: "#666",
+  },
+  conflictModal__buttonRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+  conflictModal__button: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    minWidth: 110,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  conflictModal__cancelButton: {
+    backgroundColor: "#e0e0e0",
+    marginRight: 8,
+  },
+  conflictModal__confirmButton: {
+    backgroundColor: "#E65C00",
+    marginLeft: 8,
+  },
+  conflictModal__buttonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: FONT.SM,
   },
 });
 

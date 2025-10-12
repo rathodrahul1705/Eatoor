@@ -11,7 +11,8 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
-  Alert
+  Alert,
+  Dimensions
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
@@ -26,6 +27,9 @@ const DUMMY_IMAGES = {
   DEFAULT_KITCHEN: 'https://cdn-icons-png.flaticon.com/512/1261/1261161.png',
   DEFAULT_DELIVERY: 'https://randomuser.me/api/portraits/men/1.jpg'
 };
+
+const { width, height } = Dimensions.get('window');
+const scale = (size: number) => (width / 375) * size;
 
 interface PastKitchenDetails {
   id: string;
@@ -119,17 +123,23 @@ const ReorderScreen: React.FC<ReorderScreenProps> = () => {
   // Format date to a more readable form
   const formatDate = (dateString: string) => {
     try {
-      const date = new Date(dateString);
-      return date.toLocaleString('en-IN', {
-        day: 'numeric',
+      if (!dateString) return '';
+      const isoString = dateString.replace(' ', 'T') + 'Z'; // add Z to mark UTC
+      const date = new Date(isoString);
+      const formatted = date.toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata', // ✅ Force IST
+        day: '2-digit',
         month: 'long',
         year: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
-        hour12: true
+        second: '2-digit',
+        hour12: true,
       });
+      return formatted;
     } catch (e) {
-      return dateString; // fallback to original string if parsing fails
+      console.error('Date formatting error:', e);
+      return dateString;
     }
   };
 
@@ -312,10 +322,11 @@ const ReorderScreen: React.FC<ReorderScreenProps> = () => {
   return (
     <SafeAreaView style={styles.container}>
       <LinearGradient
-        colors={['#E65C00', '#DD2476']}
+        colors={['#FF6B35', '#FF512F', '#DD2476']}
+        style={styles.headerGradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
-        style={styles.headerGradient}
+        locations={[0, 0.5, 1]}
       >
       
       <View style={styles.searchContainer}>
@@ -491,7 +502,7 @@ const styles = StyleSheet.create({
     maxWidth: '70%',
   },
   orderDate: {
-    fontSize: 12,
+    fontSize: 9,
     color: '#888',
     marginTop: 4,
   },
@@ -605,6 +616,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 14,
     marginLeft: 6,
+  },
+  headerGradient: {
+    paddingBottom: scale(10),
   },
   viewButton: {
     flex: 1,

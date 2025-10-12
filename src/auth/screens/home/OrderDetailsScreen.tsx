@@ -98,19 +98,25 @@ const OrderDetailsScreen = () => {
     </View>
   );
 
-  const formatDate = (dateString) => {
-    if (!dateString) return '';
+  const formatDate = (dateString: string) => {
     try {
-      const date = new Date(dateString);
-      return date.toLocaleString('en-IN', {
-        day: 'numeric',
+      if (!dateString) return '';
+      const isoString = dateString.replace(' ', 'T') + 'Z'; // add Z to mark UTC
+      const date = new Date(isoString);
+      const formatted = date.toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata', // ✅ Force IST
+        day: '2-digit',
         month: 'long',
         year: 'numeric',
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
       });
+      return formatted;
     } catch (e) {
-      return dateString; // Return original string if date parsing fails
+      console.error('Date formatting error:', e);
+      return dateString;
     }
   };
 
@@ -423,7 +429,7 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   orderDate: {
-    fontSize: 13,
+    fontSize: 9,
     color: '#888',
     marginBottom: 12,
   },

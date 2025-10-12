@@ -110,19 +110,26 @@ const PastOrdersScreen = () => {
   // Format date to a more readable form
   const formatDate = (dateString: string) => {
     try {
-      const date = new Date(dateString);
-      return date.toLocaleString('en-IN', {
-        day: 'numeric',
+      if (!dateString) return '';
+      const isoString = dateString.replace(' ', 'T') + 'Z'; // add Z to mark UTC
+      const date = new Date(isoString);
+      const formatted = date.toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata', // ✅ Force IST
+        day: '2-digit',
         month: 'long',
         year: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
-        hour12: true
+        second: '2-digit',
+        hour12: true,
       });
+      return formatted;
     } catch (e) {
-      return dateString; // fallback to original string if parsing fails
+      console.error('Date formatting error:', e);
+      return dateString;
     }
   };
+
 
   // Filter orders based on search and status
   const filteredOrders = orders.filter(order => {
@@ -553,7 +560,7 @@ const styles = StyleSheet.create({
     maxWidth: '70%',
   },
   orderDate: {
-    fontSize: 12,
+    fontSize: 9,
     color: '#888',
     marginTop: 4,
   },

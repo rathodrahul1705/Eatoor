@@ -29,6 +29,25 @@ import { RAZORPAY_API_KEY } from '@env';
 
 const { width, height } = Dimensions.get('window');
 
+// Responsive scaling functions
+const scale = (size: number) => (width / 375) * size;
+const verticalScale = (size: number) => (height / 812) * size;
+const moderateScale = (size: number, factor = 0.5) => size + (scale(size) - size) * factor;
+
+// Responsive font sizes based on screen width
+const normalize = (size: number) => Math.round(scale(size));
+
+const FONT = {
+  S: normalize(10),
+  XS: normalize(10),
+  SM: normalize(12),
+  BASE: normalize(14),
+  LG: normalize(16),
+  XL: normalize(18),
+  XXL: normalize(20),
+  XXXL: normalize(24),
+};
+
 // Minimum order value constant
 const MINIMUM_ORDER_VALUE = 50;
 
@@ -716,7 +735,9 @@ const CartScreen = ({ route, navigation }) => {
           </View>
           
           <View style={styles.itemDetails}>
-            <Text style={styles.itemName}>{safeText(item.item_name, 'Unnamed Item')}</Text>            
+            <Text style={styles.itemName} numberOfLines={1}>
+              {safeText(item.item_name, 'Unnamed Item')}
+            </Text>            
             {item.discount_active ? (
               <View style={styles.priceRow}>
                 <Text style={styles.originalPrice}>₹{originalPrice.toFixed(2)}</Text>
@@ -744,7 +765,7 @@ const CartScreen = ({ route, navigation }) => {
               {isUpdating && currentAction === 'decrement' ? (
                 <ActivityIndicator size="small" color="#E65C00" />
               ) : (
-                <Icon name="remove" size={16} color={"#E65C00"} />
+                <Icon name="remove" size={scale(14)} color={"#E65C00"} />
               )}
             </TouchableOpacity>
             
@@ -758,7 +779,7 @@ const CartScreen = ({ route, navigation }) => {
               {isUpdating && currentAction === 'increment' ? (
                 <ActivityIndicator size="small" color="#E65C00" />
               ) : (
-                <Icon name="add" size={16} color="#E65C00" />
+                <Icon name="add" size={scale(14)} color="#E65C00" />
               )}
             </TouchableOpacity>
           </View>
@@ -801,7 +822,7 @@ const CartScreen = ({ route, navigation }) => {
             </Text>
           </View>
           
-          <View style={styles.itemDetails}>
+          <View style={styles.suggestedItemDetails}>
             {item.discount_active ? (
               <View style={styles.priceRow}>
                 <Text style={styles.originalPrice}>₹{originalPrice.toFixed(2)}</Text>
@@ -826,7 +847,7 @@ const CartScreen = ({ route, navigation }) => {
                   {isUpdating && currentAction === 'decrement' ? (
                     <ActivityIndicator size="small" color="#E65C00" />
                   ) : (
-                    <Icon name="remove" size={16} color={quantity <= 1 ? "#ccc" : "#E65C00"} />
+                    <Icon name="remove" size={scale(14)} color={quantity <= 1 ? "#ccc" : "#E65C00"} />
                   )}
                 </TouchableOpacity>
                 
@@ -840,7 +861,7 @@ const CartScreen = ({ route, navigation }) => {
                   {isUpdating && currentAction === 'increment' ? (
                     <ActivityIndicator size="small" color="#E65C00" />
                   ) : (
-                    <Icon name="add" size={16} color="#E65C00" />
+                    <Icon name="add" size={scale(14)} color="#E65C00" />
                   )}
                 </TouchableOpacity>
               </View>
@@ -873,17 +894,20 @@ const CartScreen = ({ route, navigation }) => {
           onPress={BackToKitchen}
           style={styles.backButton}
         >
-          <Icon name="arrow-back" size={24} color="#333" />
+          <Icon name="arrow-back" size={scale(24)} color="#333" />
         </TouchableOpacity>
         <Text style={styles.emptyHeaderTitle}>
           {safeText(cartData?.restaurant_name, 'Your Cart')}
         </Text>
-        <View style={{ width: 24 }} />
+        <View style={{ width: scale(24) }} />
       </View>
       
       <View style={styles.emptyContent}>
         <View style={styles.emptyIllustration}>
-          <Icon name="cart-outline" size={60} color="#E65C00" />
+          <Icon name="cart-outline" size={scale(80)} color="#E8ECF4" />
+          <View style={styles.emptyIconOverlay}>
+            <Icon name="close" size={scale(40)} color="#E65C00" />
+          </View>
         </View>
         <Text style={styles.emptyTitle}>Your cart is empty</Text>
         <Text style={styles.emptyDescription}>
@@ -895,7 +919,7 @@ const CartScreen = ({ route, navigation }) => {
           onPress={BackToKitchen}
         >
           <Text style={styles.exploreButtonText}>Browse Menu</Text>
-          <Icon name="arrow-forward" size={20} color="#fff" />
+          <Icon name="arrow-forward" size={scale(20)} color="#fff" />
         </TouchableOpacity>
       </View>
 
@@ -933,12 +957,15 @@ const CartScreen = ({ route, navigation }) => {
           />
         }
       >
+        {/* Your Order Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Your Order</Text>
-            <Text style={styles.itemCount}>
-              {safeText(cartData?.cart_details.length, '0')} {cartData?.cart_details.length === 1 ? 'item' : 'items'}
-            </Text>
+            <View style={styles.itemCountBadge}>
+              <Text style={styles.itemCountText}>
+                {safeText(cartData?.cart_details.length, '0')} {cartData?.cart_details.length === 1 ? 'item' : 'items'}
+              </Text>
+            </View>
           </View>
           
           <View style={styles.cartItemsList}>
@@ -951,30 +978,36 @@ const CartScreen = ({ route, navigation }) => {
           </View>
         </View>
         
+        {/* Add More Items Section - Single Row */}
         {cartData?.suggestion_cart_items && cartData.suggestion_cart_items.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>
-                Add More From {safeText(cartData.restaurant_name, 'Menu')}
+                Add More Items
               </Text>
             </View>
-            <FlatList
-              data={cartData.suggestion_cart_items}
-              renderItem={renderSuggestedItem}
-              keyExtractor={item => safeText(item.item_id, '0')}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.suggestedItemsContainer}
-            />
+            <View style={styles.suggestedItemsRowContainer}>
+              <FlatList
+                data={cartData.suggestion_cart_items}
+                renderItem={renderSuggestedItem}
+                keyExtractor={item => safeText(item.item_id, '0')}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.suggestedItemsHorizontalContainer}
+              />
+            </View>
           </View>
         )}
         
+        {/* Delivery Details Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Delivery Details</Text>
           
           <View style={styles.detailCard}>
             <View style={styles.detailRow}>
-              <Icon name="location-outline" size={20} color="#E65C00" style={styles.detailIcon} />
+              <View style={styles.detailIconContainer}>
+                <Icon name="location-outline" size={scale(20)} color="#E65C00" />
+              </View>
               <View style={styles.addressContainer}>
                 <Text style={styles.detailText}>
                   {fullAddress !== "Select Address" ? fullAddress : "Please select a delivery address"}
@@ -992,7 +1025,9 @@ const CartScreen = ({ route, navigation }) => {
 
             {cartData?.delivery_time?.estimated_time && (
               <View style={styles.detailRow}>
-                <Icon name="time-outline" size={20} color="#E65C00" style={styles.detailIcon} />
+                <View style={styles.detailIconContainer}>
+                  <Icon name="time-outline" size={scale(20)} color="#E65C00" />
+                </View>
                 <Text style={styles.detailText}>Deliver by {safeText(cartData.delivery_time.estimated_time)}</Text>
               </View>
             )}
@@ -1000,7 +1035,9 @@ const CartScreen = ({ route, navigation }) => {
             {/* Display Distance Information */}
             {cartData?.billing_details.distance_km && (
               <View style={styles.detailRow}>
-                <Icon name="navigate-outline" size={20} color="#E65C00" style={styles.detailIcon} />
+                <View style={styles.detailIconContainer}>
+                  <Icon name="navigate-outline" size={scale(20)} color="#E65C00" />
+                </View>
                 <Text style={styles.detailText}>
                   Distance: {safePrice(cartData.billing_details.distance_km).toFixed(1)} km
                 </Text>
@@ -1010,7 +1047,9 @@ const CartScreen = ({ route, navigation }) => {
             {/* Display Estimated Delivery Cost */}
             {cartData?.billing_details.estimated_delivery_cost && (
               <View style={styles.detailRow}>
-                <Icon name="pricetag-outline" size={20} color="#E65C00" style={styles.detailIcon} />
+                <View style={styles.detailIconContainer}>
+                  <Icon name="pricetag-outline" size={scale(20)} color="#E65C00" />
+                </View>
                 <Text style={styles.detailText}>
                   Estimated Delivery: ₹{safePrice(cartData.billing_details.estimated_delivery_cost).toFixed(2)}
                 </Text>
@@ -1019,13 +1058,16 @@ const CartScreen = ({ route, navigation }) => {
             
             {user?.contact_number && (
               <View style={styles.detailRow}>
-                <Icon name="call-outline" size={20} color="#E65C00" style={styles.detailIcon} />
+                <View style={styles.detailIconContainer}>
+                  <Icon name="call-outline" size={scale(20)} color="#E65C00" />
+                </View>
                 <Text style={styles.detailText}>Contact: {safeText(user.contact_number)}</Text>
               </View>
             )}
           </View>
         </View>
         
+        {/* Bill Details Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Bill Details</Text>
           
@@ -1067,8 +1109,11 @@ const CartScreen = ({ route, navigation }) => {
           </View>
         </View>
         
+        {/* Note Section */}
         <View style={styles.noteCard}>
-          <Icon name="information-circle-outline" size={20} color="#E65C00" />
+          <View style={styles.noteIconContainer}>
+            <Icon name="information-circle-outline" size={scale(20)} color="#E65C00" />
+          </View>
           <Text style={styles.noteText}>Order cannot be cancelled once packed for delivery</Text>
         </View>
       </ScrollView>
@@ -1097,33 +1142,39 @@ const CartScreen = ({ route, navigation }) => {
 
     return (
       <View style={styles.paymentFooter}>
-        {addressId ? (
-          <TouchableOpacity 
-            style={styles.payButton}
-            onPress={initiatePayment}
-            disabled={paymentStatus === 'processing' || paymentVerification.verifying || showBlurOverlay}
-            activeOpacity={0.8}
-          >
-            {paymentStatus === 'processing' ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <Text style={styles.payButtonText}>Pay ₹{totalAmount.toFixed(2)}</Text>
-                <Icon name="arrow-forward" size={20} color="#fff" style={styles.payButtonIcon} />
-              </>
-            )}
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity 
-            style={styles.addAddressButton}
-            onPress={handleAddressChange}
-            activeOpacity={0.8}
-            disabled={showBlurOverlay}
-          >
-            <Icon name="location" size={20} color="#fff" style={styles.addAddressIcon} />
-            <Text style={styles.addAddressButtonText}>Select Delivery Location</Text>
-          </TouchableOpacity>
-        )}
+        <View style={styles.paymentFooterContent}>
+          <View style={styles.totalAmountContainer}>
+            <Text style={styles.totalAmountLabel}>Total Amount</Text>
+            <Text style={styles.totalAmountValue}>₹{totalAmount.toFixed(2)}</Text>
+          </View>
+          {addressId ? (
+            <TouchableOpacity 
+              style={styles.payButton}
+              onPress={initiatePayment}
+              disabled={paymentStatus === 'processing' || paymentVerification.verifying || showBlurOverlay}
+              activeOpacity={0.8}
+            >
+              {paymentStatus === 'processing' ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Text style={styles.payButtonText}>Proceed to Pay</Text>
+                  <Icon name="arrow-forward" size={scale(20)} color="#fff" style={styles.payButtonIcon} />
+                </>
+              )}
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity 
+              style={styles.addAddressButton}
+              onPress={handleAddressChange}
+              activeOpacity={0.8}
+              disabled={showBlurOverlay}
+            >
+              <Icon name="location" size={scale(20)} color="#fff" style={styles.addAddressIcon} />
+              <Text style={styles.addAddressButtonText}>Select Delivery Location</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     );
   };
@@ -1139,7 +1190,7 @@ const CartScreen = ({ route, navigation }) => {
     if (paymentVerification.verifying) {
       modalColor = '#2196F3';
       iconName = 'refresh';
-      iconSize = 40;
+      iconSize = scale(40);
       additionalContent = (
         <Animated.View style={[styles.loadingIcon, { transform: [{ rotate: rotateInterpolation }] }]}>
           <Icon name={iconName} size={iconSize} color="#fff" />
@@ -1151,7 +1202,7 @@ const CartScreen = ({ route, navigation }) => {
         case 'success':
           modalColor = '#4CAF50';
           iconName = 'checkmark-circle';
-          iconSize = 60;
+          iconSize = scale(60);
           additionalContent = (
             <Animated.View style={[styles.successAnimation, { transform: [{ scale: scaleAnim }] }]}>
               <Icon name={iconName} size={iconSize} color="#fff" />
@@ -1162,7 +1213,7 @@ const CartScreen = ({ route, navigation }) => {
         case 'failed':
           modalColor = '#E65C00';
           iconName = 'close-circle';
-          iconSize = 60;
+          iconSize = scale(60);
           additionalContent = (
             <Animated.View style={[styles.successAnimation, { transform: [{ scale: scaleAnim }] }]}>
               <Icon name={iconName} size={iconSize} color="#fff" />
@@ -1173,7 +1224,7 @@ const CartScreen = ({ route, navigation }) => {
         case 'cancelled':
           modalColor = '#FF9800';
           iconName = 'alert-circle';
-          iconSize = 60;
+          iconSize = scale(60);
           additionalContent = (
             <Animated.View style={[styles.successAnimation, { transform: [{ scale: scaleAnim }] }]}>
               <Icon name={iconName} size={iconSize} color="#fff" />
@@ -1184,7 +1235,7 @@ const CartScreen = ({ route, navigation }) => {
         case 'processing':
           modalColor = '#2196F3';
           iconName = 'refresh';
-          iconSize = 40;
+          iconSize = scale(40);
           additionalContent = (
             <Animated.View style={[styles.loadingIcon, { transform: [{ rotate: rotateInterpolation }] }]}>
               <Icon name={iconName} size={iconSize} color="#fff" />
@@ -1298,7 +1349,7 @@ const CartScreen = ({ route, navigation }) => {
         <View style={styles.errorContainer}>
           <View style={styles.errorContent}>
             <View style={styles.errorIcon}>
-              <Icon name="warning-outline" size={48} color="#E65C00" />
+              <Icon name="warning-outline" size={scale(48)} color="#E65C00" />
             </View>
             <Text style={styles.errorText}>{safeText(error)}</Text>
             <TouchableOpacity 
@@ -1339,13 +1390,14 @@ const CartScreen = ({ route, navigation }) => {
         renderEmptyCart()
       ) : (
         <>
+          {/* Simple Header */}
           <View style={styles.header}>
             <TouchableOpacity 
               onPress={BackToKitchen}
               style={styles.backButton}
               disabled={showBlurOverlay}
             >
-              <Icon name="arrow-back" size={24} color="#333" />
+              <Icon name="arrow-back" size={scale(24)} color="#333" />
             </TouchableOpacity>
             <View style={styles.headerContent}>
               <Text style={styles.restaurantName}>
@@ -1356,11 +1408,11 @@ const CartScreen = ({ route, navigation }) => {
                 style={styles.headerAddressContainer}
                 disabled={showBlurOverlay}
               >
-                <Icon name="location-outline" size={16} color="#E65C00" />
+                <Icon name="location-outline" size={scale(16)} color="#E65C00" />
                 <Text style={styles.headerAddressText} numberOfLines={1}>
                   {safeText(shortAddress, 'Select Address')}
                 </Text>
-                <Icon name="chevron-down" size={16} color="#E65C00" style={styles.downArrowIcon} />
+                <Icon name="chevron-down" size={scale(16)} color="#E65C00" style={styles.downArrowIcon} />
               </TouchableOpacity>
             </View>
           </View>
@@ -1384,100 +1436,101 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#fff',
   },
   loadingText: {
-    marginTop: 16,
-    fontSize: 16,
+    marginTop: verticalScale(16),
+    fontSize: FONT.LG,
     color: '#666',
+    fontWeight: '500',
   },
   scrollContainer: {
     flex: 1,
   },
   scrollContentContainer: {
-    paddingBottom: 100,
+    paddingBottom: verticalScale(120),
   },
   downArrowIcon: {
-    marginLeft: 4,
+    marginLeft: scale(4),
   },
+  // Updated Header Styles - Simple and Clean
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: Platform.OS === 'android' ? 30 : 20,
+    paddingTop: Platform.OS === 'android' ? verticalScale(30) : verticalScale(20),
     backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomColor: '#eee',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-    zIndex: 1,
+    paddingHorizontal: scale(20),
+    paddingBottom: verticalScale(16),
+    // Removed border and shadow for simple look
   },
   backButton: {
-    padding: 4,
-    marginRight: 8,
+    padding: scale(8),
+    marginRight: scale(12),
+    borderRadius: scale(20),
+    backgroundColor: '#f8f8f8',
   },
   headerContent: {
     flex: 1,
   },
   restaurantName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
+    fontSize: FONT.XL,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: verticalScale(6),
   },
   headerAddressContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   headerAddressText: {
-    fontSize: 14,
-    color: '#666',
-    marginLeft: 6,
-    flex: 1,
+    fontSize: FONT.SM,
+    marginLeft: scale(6),
+    fontWeight: '500',
   },
+  // Updated Section Styles with more spacing
   section: {
-    marginTop: 16,
-    paddingHorizontal: 16,
+    marginTop: verticalScale(24), // Increased spacing between sections
+    paddingHorizontal: scale(20),
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: verticalScale(16),
   },
   sectionTitle: {
-    marginBottom:10,
-    fontSize: 18,
+    fontSize: FONT.XXL,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  itemCountBadge: {
+    backgroundColor: '#E65C00',
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(6),
+    borderRadius: scale(16),
+  },
+  itemCountText: {
+    fontSize: FONT.SM,
+    color: '#fff',
     fontWeight: '600',
-    color: '#333',
   },
-  itemCount: {
-    fontSize: 14,
-    color: '#666',
-  },
+  // Updated Cart Item Styles
   cartItemContainer: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: scale(16),
+    padding: scale(16),
+    marginBottom: verticalScale(12),
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
+        shadowOpacity: 0.06,
+        shadowRadius: 6,
       },
       android: {
-        elevation: 2,
+        elevation: 3,
       },
     }),
   },
@@ -1486,13 +1539,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   itemTypeContainer: {
-    marginRight: 12,
+    marginRight: scale(16),
   },
   itemTypeBadge: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 1,
+    width: scale(24),
+    height: scale(24),
+    borderRadius: scale(6),
+    borderWidth: 1.5,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1502,12 +1555,12 @@ const styles = StyleSheet.create({
   },
   nonVegBadge: {
     borderColor: '#E65C00',
-    backgroundColor: 'rgba(244, 67, 54, 0.1)',
+    backgroundColor: 'rgba(230, 92, 0, 0.1)',
   },
   itemTypeIndicator: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: scale(12),
+    height: scale(12),
+    borderRadius: scale(6),
   },
   vegIndicator: {
     backgroundColor: '#4CAF50',
@@ -1517,257 +1570,320 @@ const styles = StyleSheet.create({
   },
   itemDetails: {
     flex: 1,
-    marginRight: 12,
+    marginRight: scale(12), // Reduced margin to make space for quantity controls
   },
   itemName: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#333',
-    marginBottom: 4,
+    fontSize: FONT.BASE,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginBottom: verticalScale(6),
   },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: verticalScale(4),
   },
   originalPrice: {
-    fontSize: 14,
+    fontSize: FONT.SM,
     color: '#999',
     textDecorationLine: 'line-through',
-    marginRight: 8,
-  },
-  discountText: {
-    fontSize: 13,
-    color: '#E65C00',
+    marginRight: scale(8),
     fontWeight: '500',
   },
-  itemPrice: {
-    fontSize: 16,
+  discountText: {
+    fontSize: FONT.XS,
+    color: '#E65C00',
     fontWeight: '600',
-    color: '#333',
+    backgroundColor: '#fff0e6',
+    paddingHorizontal: scale(6),
+    paddingVertical: verticalScale(2),
+    borderRadius: scale(4),
+  },
+  itemPrice: {
+    fontSize: FONT.BASE,
+    fontWeight: '700',
+    color: '#1a1a1a',
   },
   bogoBadge: {
     backgroundColor: '#FFEB3B',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(4),
+    borderRadius: scale(6),
     alignSelf: 'flex-start',
-    marginTop: 4,
+    marginTop: verticalScale(6),
+    borderWidth: 1,
+    borderColor: '#FFC107',
   },
   bogoText: {
-    fontSize: 12,
+    fontSize: FONT.SM,
     fontWeight: 'bold',
     color: '#FF9800',
   },
+  // Updated Quantity Container - More Compact
   quantityContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff5f5',
-    borderRadius: 20,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderWidth: 1,
+    borderRadius: scale(20),
+    paddingHorizontal: scale(6), // Reduced padding
+    paddingVertical: verticalScale(4),   // Reduced padding
+    borderWidth: 1.5,
     borderColor: '#ffd6d6',
   },
   quantityButton: {
-    padding: 4,
+    padding: scale(4), // Reduced padding
+    borderRadius: scale(12),
+    backgroundColor: '#fff',
+    width: scale(28), // Fixed width
+    height: scale(28), // Fixed height
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   disabledButton: {
     opacity: 0.5,
   },
   quantityText: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: FONT.BASE, // Slightly smaller
+    fontWeight: '700',
     color: '#E65C00',
-    marginHorizontal: 8,
-    minWidth: 20,
+    marginHorizontal: scale(8), // Reduced margin
+    minWidth: scale(20),
     textAlign: 'center',
   },
-  suggestedItemsContainer: {
-    paddingBottom: 8,
-    paddingLeft: 16,
+  // Updated Suggested Items Styles - Single Row Layout
+  suggestedItemsRowContainer: {
+    marginTop: verticalScale(8),
+  },
+  suggestedItemsHorizontalContainer: {
+    paddingHorizontal: scale(4),
+    paddingBottom: verticalScale(8),
   },
   suggestedItemCard: {
-    width: width * 0.45,
+    width: scale(160),
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: scale(16),
     overflow: 'hidden',
-    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+    marginHorizontal: scale(6),
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.08,
+        shadowRadius: 6,
       },
       android: {
-        elevation: 2,
+        elevation: 4,
       },
     }),
   },
   suggestedItemImage: {
     width: '100%',
-    height: 120,
-    backgroundColor: '#f5f5f5',
+    height: verticalScale(120), // Reduced height for compact design
+    backgroundColor: '#f8f8f8',
   },
   suggestedItemContent: {
-    padding: 12,
+    padding: scale(12), // Reduced padding
   },
   suggestedItemHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: verticalScale(8),
   },
   suggestedItemTypeBadge: {
-    width: 18,
-    height: 18,
-    borderRadius: 4,
+    width: scale(16), // Smaller badge
+    height: scale(16), // Smaller badge
+    borderRadius: scale(4),
     borderWidth: 1.5,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 6,
+    marginRight: scale(6),
   },
   suggestedItemTypeIndicator: {
-    width: 10,
-    height: 10,
-    borderRadius: 2,
+    width: scale(8),
+    height: scale(8),
+    borderRadius: scale(4),
   },
   suggestedItemName: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#333',
+    fontSize: FONT.BASE, // Smaller font
+    fontWeight: '600',
+    color: '#1a1a1a',
     flex: 1,
+  },
+  suggestedItemDetails: {
+    marginBottom: verticalScale(8),
   },
   suggestedItemFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 8,
   },
   addItemButton: {
     backgroundColor: '#E65C00',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 6,
-    minWidth: 60,
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(6),
+    borderRadius: scale(8),
+    minWidth: scale(60),
     alignItems: 'center',
     justifyContent: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#E65C00',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   addItemButtonDisabled: {
     opacity: 0.7,
   },
   addItemButtonText: {
     color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: FONT.SM,
+    fontWeight: '700',
   },
   detailCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: scale(16),
+    padding: scale(20),
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+    marginTop: verticalScale(8),
     ...Platform.select({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
+        shadowOpacity: 0.06,
+        shadowRadius: 6,
       },
       android: {
-        elevation: 2,
+        elevation: 3,
       },
     }),
   },
   detailRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
+    alignItems: 'flex-start',
+    marginBottom: verticalScale(16),
   },
-  detailIcon: {
-    marginRight: 12,
+  detailIconContainer: {
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(18),
+    backgroundColor: '#fff8f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: scale(14),
+    borderWidth: 1,
+    borderColor: '#ffe0cc',
   },
   addressContainer: {
     flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
   },
   detailText: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: FONT.BASE,
+    color: '#4a4a4a',
     flex: 1,
-    marginRight: 8,
+    marginRight: scale(12),
+    lineHeight: verticalScale(20),
+    fontWeight: '500',
   },
   changeAddressButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(6),
+    backgroundColor: '#fff0e6',
+    borderRadius: scale(8),
+    borderWidth: 1,
+    borderColor: '#ffd1b3',
   },
   changeAddressText: {
     color: '#E65C00',
-    fontWeight: '500',
-    fontSize: 14,
+    fontWeight: '600',
+    fontSize: FONT.SM,
   },
   billCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: scale(16),
+    padding: scale(20),
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+    marginTop: verticalScale(8),
     ...Platform.select({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
+        shadowOpacity: 0.06,
+        shadowRadius: 6,
       },
       android: {
-        elevation: 2,
+        elevation: 3,
       },
     }),
   },
   billRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: verticalScale(14),
+    paddingBottom: verticalScale(14),
+    borderBottomWidth: 1,
+    borderBottomColor: '#f5f5f5',
   },
   billLabel: {
-    fontSize: 14,
+    fontSize: FONT.BASE,
     color: '#666',
+    fontWeight: '500',
   },
   billValue: {
-    fontSize: 14,
+    fontSize: FONT.BASE,
     color: '#333',
-    fontWeight: '500',
+    fontWeight: '600',
   },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 8,
-    paddingTop: 12,
-    borderTopWidth: 1,
+    marginTop: verticalScale(8),
+    paddingTop: verticalScale(16),
+    borderTopWidth: 1.5,
     borderTopColor: '#eee',
   },
   totalLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: FONT.XL,
+    fontWeight: '700',
+    color: '#1a1a1a',
   },
   totalValue: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: FONT.XL,
+    fontWeight: '800',
     color: '#E65C00',
   },
   noteCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff8e1',
-    borderRadius: 12,
-    padding: 16,
-    marginHorizontal: 16,
-    marginTop: 16,
+    borderRadius: scale(12),
+    padding: scale(16),
+    marginHorizontal: scale(20),
+    marginTop: verticalScale(20),
+    borderWidth: 1,
+    borderColor: '#ffeaa7',
+  },
+  noteIconContainer: {
+    marginRight: scale(12),
   },
   noteText: {
-    fontSize: 13,
+    fontSize: FONT.SM,
     color: '#666',
-    marginLeft: 8,
     flex: 1,
+    fontWeight: '500',
+    lineHeight: verticalScale(18),
   },
   emptyContainer: {
     flex: 1,
@@ -1777,60 +1893,119 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    padding: scale(20),
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#f0f0f0',
   },
   emptyHeaderTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: FONT.XXL,
+    fontWeight: '700',
+    color: '#1a1a1a',
   },
   emptyContent: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: scale(24),
   },
   emptyIllustration: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#fff5f5',
+    width: scale(140),
+    height: scale(140),
+    borderRadius: scale(70),
+    backgroundColor: '#f8f8f8',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: verticalScale(32),
+    position: 'relative',
+  },
+  emptyIconOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   emptyTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
+    fontSize: FONT.XXXL,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: verticalScale(12),
     textAlign: 'center',
   },
   emptyDescription: {
-    fontSize: 15,
+    fontSize: FONT.LG,
     color: '#666',
     textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 22,
-    paddingHorizontal: 20,
+    marginBottom: verticalScale(32),
+    lineHeight: verticalScale(24),
+    paddingHorizontal: scale(20),
+    fontWeight: '500',
   },
   suggestionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginTop: 24,
-    marginBottom: 12,
-    paddingHorizontal: 16,
+    fontSize: FONT.XL,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginTop: verticalScale(24),
+    marginBottom: verticalScale(16),
+    paddingHorizontal: scale(20),
   },
   exploreButton: {
     backgroundColor: '#E65C00',
-    paddingHorizontal: 32,
-    paddingVertical: 14,
-    borderRadius: 30,
+    paddingHorizontal: scale(36),
+    paddingVertical: verticalScale(16),
+    borderRadius: scale(30),
     flexDirection: 'row',
     alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#E65C00',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
+    marginTop: verticalScale(24),
+  },
+  exploreButtonText: {
+    color: '#fff',
+    fontSize: FONT.LG,
+    fontWeight: '700',
+    marginRight: scale(8),
+  },
+  errorContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  errorContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: scale(24),
+  },
+  errorIcon: {
+    marginBottom: verticalScale(24),
+  },
+  errorText: {
+    fontSize: FONT.LG,
+    color: '#E65C00',
+    marginBottom: verticalScale(32),
+    textAlign: 'center',
+    fontWeight: '600',
+    lineHeight: verticalScale(24),
+  },
+  primaryButton: {
+    backgroundColor: '#E65C00',
+    paddingHorizontal: scale(32),
+    paddingVertical: verticalScale(16),
+    borderRadius: scale(30),
+    width: '80%',
+    alignItems: 'center',
+    marginBottom: verticalScale(16),
     ...Platform.select({
       ios: {
         shadowColor: '#E65C00',
@@ -1842,60 +2017,26 @@ const styles = StyleSheet.create({
         elevation: 4,
       },
     }),
-    marginTop: 24,
-  },
-  exploreButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginRight: 6,
-  },
-  errorContainer: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  errorContent: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  errorIcon: {
-    marginBottom: 20,
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#E65C00',
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  primaryButton: {
-    backgroundColor: '#E65C00',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 30,
-    width: '80%',
-    alignItems: 'center',
-    marginBottom: 12,
   },
   primaryButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: FONT.LG,
+    fontWeight: '700',
   },
   secondaryButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 30,
+    paddingHorizontal: scale(32),
+    paddingVertical: verticalScale(16),
+    borderRadius: scale(30),
     width: '80%',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#ddd',
+    borderWidth: 2,
+    borderColor: '#E65C00',
+    backgroundColor: '#fff',
   },
   secondaryButtonText: {
-    color: '#333',
-    fontSize: 16,
-    fontWeight: '500',
+    color: '#E65C00',
+    fontSize: FONT.LG,
+    fontWeight: '600',
   },
   paymentFooter: {
     position: 'absolute',
@@ -1903,105 +2044,129 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: '#fff',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 16,
+    borderTopLeftRadius: scale(20),
+    borderTopRightRadius: scale(20),
+    padding: scale(20),
+    borderTopWidth: 1,
+    borderColor: '#f0f0f0',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.7,
-        shadowRadius: 8,
+        shadowOpacity: 0.1,
+        shadowRadius: 12,
       },
       android: {
-        elevation: 10,
-        borderTopWidth: 1,
-        borderColor: '#f0f0f0',
+        elevation: 8,
       },
     }),
   },
+  paymentFooterContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  totalAmountContainer: {
+    flex: 1,
+  },
+  totalAmountLabel: {
+    fontSize: FONT.SM,
+    color: '#666',
+    fontWeight: '500',
+    marginBottom: verticalScale(4),
+  },
+  totalAmountValue: {
+    fontSize: FONT.XXL,
+    fontWeight: '800',
+    color: '#E65C00',
+  },
   payButton: {
     backgroundColor: '#E65C00',
-    borderRadius: 30,
-    paddingVertical: 15,
-    paddingHorizontal: 25,
+    borderRadius: scale(30),
+    paddingVertical: verticalScale(16),
+    paddingHorizontal: scale(28),
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    minWidth: scale(160),
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 2,
+        shadowColor: '#E65C00',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 8,
       },
       android: {
-        elevation: 3,
+        elevation: 6,
       },
     }),
   },
   payButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginRight: 10,
+    fontSize: FONT.LG,
+    fontWeight: '700',
+    marginRight: scale(8),
   },
   payButtonIcon: {
-    marginLeft: 5,
+    marginLeft: scale(4),
   },
   addAddressButton: {
     backgroundColor: '#E65C00',
-    borderRadius: 30,
-    paddingVertical: 15,
-    paddingHorizontal: 25,
+    borderRadius: scale(30),
+    paddingVertical: verticalScale(16),
+    paddingHorizontal: scale(24),
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    flex: 1,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#E65C00',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
+  },
+  addAddressButtonText: {
+    color: '#fff',
+    fontSize: FONT.LG,
+    fontWeight: '700',
+    marginLeft: scale(8),
+  },
+  addAddressIcon: {
+    marginRight: scale(4),
+  },
+  cartItemsList: {
+    backgroundColor: '#fff',
+    borderRadius: scale(16),
+    padding: scale(16),
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+    marginTop: verticalScale(8),
     ...Platform.select({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 2,
+        shadowOpacity: 0.06,
+        shadowRadius: 6,
       },
       android: {
         elevation: 3,
       },
     }),
   },
-  addAddressButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 10,
-  },
-  addAddressIcon: {
-    marginRight: 5,
-  },
-  cartItemsList: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
   emptySuggestionsContainer: {
-    marginBottom: 20,
+    marginBottom: verticalScale(20),
   },
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
   },
   absoluteBlurContainer: {
     position: 'absolute',
@@ -2025,10 +2190,10 @@ const styles = StyleSheet.create({
     zIndex: 1001,
   },
   blurLoadingText: {
-    marginTop: 16,
-    fontSize: 16,
+    marginTop: verticalScale(16),
+    fontSize: FONT.LG,
     color: '#333',
-    fontWeight: '500',
+    fontWeight: '600',
   },
   touchableOverlay: {
     position: 'absolute',
@@ -2039,20 +2204,20 @@ const styles = StyleSheet.create({
     zIndex: 999,
   },
   modalContainer: {
-    width: width * 0.85,
-    borderRadius: 20,
-    padding: 24,
+    width: width * 0.8,
+    borderRadius: scale(24),
+    padding: scale(32),
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.4,
+        shadowRadius: 12,
       },
       android: {
-        elevation: 10,
+        elevation: 12,
       },
     }),
     overflow: 'hidden',
@@ -2075,57 +2240,60 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   modalIcon: {
-    marginBottom: 20,
+    marginBottom: verticalScale(20),
   },
   modalText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: FONT.LG,
     fontWeight: '600',
     textAlign: 'center',
-    marginTop: 20,
-    marginBottom: 20,
-    lineHeight: 24,
+    marginTop: verticalScale(20),
+    marginBottom: verticalScale(20),
+    lineHeight: verticalScale(24),
   },
   loadingIcon: {
-    marginBottom: 20,
+    marginBottom: verticalScale(20),
   },
   successAnimation: {
-    width: 80,
-    height: 80,
+    width: scale(90),
+    height: scale(90),
     backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 40,
+    borderRadius: scale(45),
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: verticalScale(20),
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.3)',
   },
   verificationContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
+    padding: scale(24),
   },
   verificationText: {
-    fontSize: 16,
+    fontSize: FONT.LG,
     color: '#333',
-    marginTop: 10,
+    marginTop: verticalScale(12),
     textAlign: 'center',
+    fontWeight: '600',
   },
   verificationLoader: {
-    marginTop: 10,
-    marginBottom: 10,
+    marginTop: verticalScale(12),
+    marginBottom: verticalScale(12),
   },
   modalCloseButton: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 25,
-    marginTop: 15,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    paddingHorizontal: scale(28),
+    paddingVertical: verticalScale(14),
+    borderRadius: scale(25),
+    marginTop: verticalScale(16),
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.4)',
   },
   modalCloseButtonText: {
     color: '#fff',
-    fontWeight: '600',
-    fontSize: 16,
+    fontWeight: '700',
+    fontSize: FONT.LG,
   },
 });
 

@@ -18,9 +18,24 @@ import SearchModal from './searchmodal';
 const { width, height } = Dimensions.get('window');
 const isAndroid = Platform.OS === 'android';
 
+// Responsive scaling functions
 const scale = (size: number) => (width / 375) * size;
 const verticalScale = (size: number) => (height / 812) * size;
 const moderateScale = (size: number, factor = 0.5) => size + (scale(size) - size) * factor;
+
+// Responsive font sizes based on screen width
+const normalize = (size: number) => Math.round(scale * size);
+
+const FONT = {
+  S: 10,
+  XS: normalize(10),
+  SM: normalize(12),
+  BASE: normalize(14),
+  LG: normalize(16),
+  XL: normalize(18),
+  XXL: normalize(20),
+  XXXL: normalize(24),
+};
 
 // Enhanced Color Palette
 const COLORS = {
@@ -354,7 +369,7 @@ const SearchInput: React.FC<SearchInputProps> = React.memo(({ onPress, placehold
         <View style={styles.searchInputContent}>
           <Icon 
             name="search" 
-            size={22} 
+            size={moderateScale(22)} 
             color={COLORS.searchPlaceholder} 
             style={styles.searchIcon} 
           />
@@ -366,7 +381,7 @@ const SearchInput: React.FC<SearchInputProps> = React.memo(({ onPress, placehold
           <View style={styles.searchRightIcon}>
             <Icon 
               name="mic-outline" 
-              size={20} 
+              size={moderateScale(20)} 
               color={COLORS.searchPlaceholder} 
             />
           </View>
@@ -446,7 +461,7 @@ const KitchenCard: React.FC<KitchenCardProps> = React.memo(({
     if (isFeatured) {
       badges.push(
         <View key="featured" style={[styles.badge, styles.featuredBadge]}>
-          <Icon name="flash" size={10} color="#FFF" />
+          <Icon name="flash" size={moderateScale(10)} color="#FFF" />
           <Text style={styles.badgeText}>Featured</Text>
         </View>
       );
@@ -463,7 +478,7 @@ const KitchenCard: React.FC<KitchenCardProps> = React.memo(({
     if (isTrending) {
       badges.push(
         <View key="trending" style={[styles.badge, styles.trendingBadge]}>
-          <Icon name="trending-up" size={10} color="#FFF" />
+          <Icon name="trending-up" size={moderateScale(10)} color="#FFF" />
           <Text style={styles.badgeText}>Trending</Text>
         </View>
       );
@@ -506,7 +521,7 @@ const KitchenCard: React.FC<KitchenCardProps> = React.memo(({
             
             {imageError || !kitchen.restaurant_image ? (
               <View style={[styles.kitchenImageSideBySide, styles.imagePlaceholder]}>
-                <Icon name="restaurant-outline" size={30} color={COLORS.textLight} />
+                <Icon name="restaurant-outline" size={moderateScale(30)} color={COLORS.textLight} />
               </View>
             ) : (
               <Animated.Image 
@@ -538,7 +553,7 @@ const KitchenCard: React.FC<KitchenCardProps> = React.memo(({
               ) : (
                 <Icon 
                   name={kitchen.is_favourite ? "heart" : "heart-outline"} 
-                  size={16} 
+                  size={moderateScale(16)} 
                   color={kitchen.is_favourite ? COLORS.danger : "#fff"} 
                 />
               )}
@@ -551,7 +566,7 @@ const KitchenCard: React.FC<KitchenCardProps> = React.memo(({
             </Text>
             
             <View style={styles.ratingContainerSideBySide}>
-              <Icon name="star" size={12} color={COLORS.rating} />
+              <Icon name="star" size={moderateScale(12)} color={COLORS.rating} />
               <Text style={styles.ratingTextSideBySide}>{rating}</Text>
               <Text style={styles.deliveryTimeSideBySide}>• {deliveryTime}</Text>
             </View>
@@ -593,7 +608,7 @@ const KitchenCard: React.FC<KitchenCardProps> = React.memo(({
           
           {imageError || !kitchen.restaurant_image ? (
             <View style={[styles.kitchenImageDetailed, styles.imagePlaceholder]}>
-              <Icon name="restaurant-outline" size={40} color={COLORS.textLight} />
+              <Icon name="restaurant-outline" size={moderateScale(40)} color={COLORS.textLight} />
             </View>
           ) : (
             <Animated.Image 
@@ -630,7 +645,7 @@ const KitchenCard: React.FC<KitchenCardProps> = React.memo(({
             ) : (
               <Icon 
                 name={kitchen.is_favourite ? "heart" : "heart-outline"} 
-                size={20} 
+                size={moderateScale(20)} 
                 color={kitchen.is_favourite ? COLORS.danger : "#fff"} 
               />
             )}
@@ -643,7 +658,7 @@ const KitchenCard: React.FC<KitchenCardProps> = React.memo(({
               {kitchen.restaurant_name}
             </Text>
             <View style={styles.ratingContainer}>
-              <Icon name="star" size={14} color={COLORS.rating} />
+              <Icon name="star" size={moderateScale(14)} color={COLORS.rating} />
               <Text style={styles.ratingTextDetailed}>{rating}</Text>
             </View>
           </View>
@@ -654,7 +669,7 @@ const KitchenCard: React.FC<KitchenCardProps> = React.memo(({
           
           <View style={styles.kitchenFooter}>
             <View style={styles.deliveryInfo}>
-              <Icon name="time-outline" size={14} color={COLORS.textMedium} />
+              <Icon name="time-outline" size={moderateScale(14)} color={COLORS.textMedium} />
               <Text style={styles.deliveryText}>{deliveryTime}</Text>
             </View>
             
@@ -1386,7 +1401,7 @@ const KitchenScreen: React.FC = () => {
     >
       <Icon 
         name={item.icon} 
-        size={16} 
+        size={moderateScale(16)} 
         color={item.active ? '#fff' : COLORS.textMedium} 
       />
       <Text style={[
@@ -1456,7 +1471,7 @@ const KitchenScreen: React.FC = () => {
             <View style={styles.activeOrderFooterStatus}>
               <Icon 
                 name={statusColor.icon} 
-                size={14} 
+                size={moderateScale(14)} 
                 color={statusColor.text} 
               />
               <Text style={[styles.activeOrderFooterStatusText, { color: statusColor.text }]}>
@@ -1498,7 +1513,7 @@ const KitchenScreen: React.FC = () => {
   if (!apiData) {
     return (
       <SafeAreaView style={[styles.container, styles.emptyContainer]}>
-        <Icon name="alert-circle-outline" size={60} color={COLORS.textLight} />
+        <Icon name="alert-circle-outline" size={moderateScale(60)} color={COLORS.textLight} />
         <Text style={styles.emptyText}>No data available</Text>
         <TouchableOpacity 
           style={styles.retryButton}
@@ -1579,7 +1594,7 @@ const KitchenScreen: React.FC = () => {
               </Text>
               <Icon 
                 name={showAllActiveOrders ? "chevron-up" : "chevron-down"} 
-                size={16} 
+                size={moderateScale(16)} 
                 color={COLORS.primary} 
               />
             </TouchableOpacity>
@@ -1679,7 +1694,7 @@ const KitchenScreen: React.FC = () => {
         <View style={styles.sectionContainer}>
           {filteredKitchens.length === 0 ? (
             <View style={styles.emptyResultContainer}>
-              <Icon name="restaurant-outline" size={60} color={COLORS.textLight} />
+              <Icon name="restaurant-outline" size={moderateScale(60)} color={COLORS.textLight} />
               <Text style={styles.emptyText}>No restaurants found</Text>
               <Text style={styles.emptySubText}>Try adjusting your filters or search</Text>
             </View>
@@ -1734,7 +1749,7 @@ const KitchenScreen: React.FC = () => {
   );
 };
 
-// Reorganized Styles following kitchen-home-screen pattern
+// Reorganized Styles following kitchen-home-screen pattern with responsive text
 const styles = StyleSheet.create({
   // Base container styles
   container: {
@@ -1759,13 +1774,13 @@ const styles = StyleSheet.create({
     marginTop: scale(16),
   },
   emptyText: {
-    fontSize: moderateScale(18),
+    fontSize: FONT.XL,
     fontFamily: FONTS.semiBold,
     color: COLORS.textDark,
     marginTop: scale(16),
   },
   emptySubText: {
-    fontSize: moderateScale(14),
+    fontSize: FONT.SM,
     fontFamily: FONTS.regular,
     color: COLORS.textLight,
     marginTop: scale(8),
@@ -1779,7 +1794,7 @@ const styles = StyleSheet.create({
   },
   retryButtonText: {
     color: '#fff',
-    fontSize: moderateScale(16),
+    fontSize: FONT.LG,
     fontFamily: FONTS.semiBold,
   },
 
@@ -1846,7 +1861,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   searchPlaceholderText: {
-    fontSize: moderateScale(16),
+    fontSize: FONT.LG,
     fontFamily: FONTS.medium,
     color: COLORS.searchPlaceholder,
     letterSpacing: 0.3,
@@ -1907,7 +1922,7 @@ const styles = StyleSheet.create({
     borderRadius: scale(32),
   },
   categoryName: {
-    fontSize: moderateScale(12),
+    fontSize: FONT.XS,
     fontFamily: FONTS.medium,
     color: COLORS.categoryText,
     textAlign: 'center',
@@ -1933,7 +1948,7 @@ const styles = StyleSheet.create({
     marginBottom: scale(10),
   },
   sectionTitle: {
-    fontSize: moderateScale(20),
+    fontSize: FONT.XXL,
     fontFamily: FONTS.bold,
     color: COLORS.textDark,
     paddingHorizontal: scale(16),
@@ -1971,7 +1986,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primary,
   },
   filterText: {
-    fontSize: moderateScale(13),
+    fontSize: FONT.SM,
     fontFamily: FONTS.medium,
     color: COLORS.textDark,
     marginLeft: scale(6),
@@ -2077,7 +2092,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.discount,
   },
   badgeText: {
-    fontSize: scale(10),
+    fontSize: FONT.S,
     fontFamily: FONTS.bold,
     color: '#FFFFFF',
     marginLeft: scale(2),
@@ -2117,13 +2132,13 @@ const styles = StyleSheet.create({
     marginBottom: scale(6),
   },
   kitchenNameSideBySide: {
-    fontSize: moderateScale(14),
+    fontSize: FONT.SM,
     fontFamily: FONTS.semiBold,
     color: COLORS.textDark,
     marginBottom: scale(4),
   },
   kitchenNameDetailed: {
-    fontSize: moderateScale(18),
+    fontSize: FONT.XL,
     fontFamily: FONTS.bold,
     color: COLORS.textDark,
     flex: 1,
@@ -2143,37 +2158,37 @@ const styles = StyleSheet.create({
     borderRadius: scale(4),
   },
   ratingTextSideBySide: {
-    fontSize: moderateScale(12),
+    fontSize: FONT.XS,
     fontFamily: FONTS.semiBold,
     color: COLORS.rating,
     marginLeft: scale(2),
     marginRight: scale(4),
   },
   ratingTextDetailed: {
-    fontSize: moderateScale(12),
+    fontSize: FONT.XS,
     fontFamily: FONTS.semiBold,
     color: COLORS.rating,
     marginLeft: scale(2),
   },
   deliveryTimeSideBySide: {
-    fontSize: moderateScale(12),
+    fontSize: FONT.XS,
     fontFamily: FONTS.regular,
     color: COLORS.textMedium,
   },
   kitchenCuisineSideBySide: {
-    fontSize: moderateScale(12),
+    fontSize: FONT.XS,
     fontFamily: FONTS.regular,
     color: COLORS.textMedium,
     marginBottom: scale(4),
   },
   kitchenCuisineDetailed: {
-    fontSize: moderateScale(14),
+    fontSize: FONT.SM,
     fontFamily: FONTS.regular,
     color: COLORS.textMedium,
     marginBottom: scale(8),
   },
   priceTextSideBySide: {
-    fontSize: moderateScale(12),
+    fontSize: FONT.XS,
     fontFamily: FONTS.medium,
     color: COLORS.textDark,
   },
@@ -2187,7 +2202,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   deliveryText: {
-    fontSize: moderateScale(12),
+    fontSize: FONT.XS,
     fontFamily: FONTS.regular,
     color: COLORS.textMedium,
     marginLeft: scale(4),
@@ -2197,7 +2212,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   priceText: {
-    fontSize: moderateScale(12),
+    fontSize: FONT.XS,
     fontFamily: FONTS.medium,
     color: COLORS.textDark,
   },
@@ -2242,7 +2257,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   activeOrderFooterKitchen: {
-    fontSize: moderateScale(14),
+    fontSize: FONT.SM,
     fontFamily: FONTS.medium,
     color: COLORS.textDark,
     marginBottom: scale(4),
@@ -2252,7 +2267,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   activeOrderFooterStatusText: {
-    fontSize: moderateScale(12),
+    fontSize: FONT.XS,
     fontFamily: FONTS.medium,
     marginLeft: scale(4),
   },
@@ -2265,12 +2280,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   activeOrderFooterTimeLabel: {
-    fontSize: moderateScale(11),
+    fontSize: FONT.XS,
     fontFamily: FONTS.regular,
     marginBottom: scale(2),
   },
   activeOrderFooterTimeText: {
-    fontSize: moderateScale(12),
+    fontSize: FONT.XS,
     fontFamily: FONTS.semiBold,
   },
   activeOrdersFooterSeeAll: {
@@ -2283,7 +2298,7 @@ const styles = StyleSheet.create({
     borderTopColor: COLORS.border,
   },
   activeOrdersFooterSeeAllText: {
-    fontSize: moderateScale(14),
+    fontSize: FONT.SM,
     fontFamily: FONTS.medium,
     color: COLORS.primary,
     marginRight: scale(4),
@@ -2322,7 +2337,7 @@ const styles = StyleSheet.create({
     marginRight: scale(12),
   },
   cartSummaryKitchenName: {
-    fontSize: moderateScale(16),
+    fontSize: FONT.LG,
     fontFamily: FONTS.semiBold,
     color: COLORS.textDark,
     marginBottom: scale(4),
@@ -2333,7 +2348,7 @@ const styles = StyleSheet.create({
   },
   cartSummaryViewMenuText: {
     color: COLORS.primary,
-    fontSize: moderateScale(13),
+    fontSize: FONT.XS,
     fontFamily: FONTS.medium,
   },
   cartSummaryMiniCartBtn: {
@@ -2351,7 +2366,7 @@ const styles = StyleSheet.create({
   },
   cartSummaryViewCartText: {
     color: '#fff',
-    fontSize: moderateScale(14),
+    fontSize: FONT.SM,
     fontFamily: FONTS.semiBold,
     marginRight: scale(8),
   },
@@ -2365,7 +2380,7 @@ const styles = StyleSheet.create({
   },
   cartSummaryMiniCartCount: {
     color: COLORS.primary,
-    fontSize: moderateScale(12),
+    fontSize: FONT.XS,
     fontFamily: FONTS.bold,
   },
 });
