@@ -879,7 +879,7 @@ const styles = StyleSheet.create({
   addressLine: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 0,
   },
   addressLabel: {
     fontSize: isIOS ? (isSmallDevice ? 13 : 14) : (isSmallDevice ? 12 : 15),

@@ -82,7 +82,6 @@ const HomeKitchenDetails = ({ route }) => {
   const [showKitchenConflictModal, setShowKitchenConflictModal] =
     useState(false);
   const [pendingCartAction, setPendingCartAction] = useState(null);
-  const [modalMode, setModalMode] = useState("view"); // 'view' or 'conflict'
 
   const navigation = useNavigation();
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -239,6 +238,7 @@ const HomeKitchenDetails = ({ route }) => {
       };
 
       const response = await getCart(payload);
+
       if (response.status === 200) {
         const cartItemsFromApi = response.data.cart_details.map((item) => ({
           id: item.item_id.toString(),
@@ -254,14 +254,15 @@ const HomeKitchenDetails = ({ route }) => {
           discount_active: false,
         }));
         setCartItems(cartItemsFromApi);
-        
+
         // Update past kitchen details based on cart
         if (response?.data.existingCartDetails.length > 0) {
           const newPastKitchenDetails = {
             id: response?.data.existingCartDetails[0]?.restaurant_id,
             name: response?.data.existingCartDetails[0]?.restaurant_name,
-            image: response?.data.existingCartDetails[0]?.restaurant_profile_image,
-            itemCount: response?.data.total_item_count
+            image:
+              response?.data.existingCartDetails[0]?.restaurant_profile_image,
+            itemCount: response?.data.total_item_count,
           };
           await savePastKitchenDetails(newPastKitchenDetails);
         } else if (cartItemsFromApi.length === 0) {
@@ -473,6 +474,19 @@ const HomeKitchenDetails = ({ route }) => {
     }));
   };
 
+  // Handle kitchen conflict and show conflict modal
+  const handleKitchenConflict = useCallback(
+    (itemId, action) => {
+      setPendingCartAction({ itemId, action });
+      setShowKitchenConflictModal(true);
+      // Close item modal if open
+      if (modalVisible) {
+        setModalVisible(false);
+      }
+    },
+    [modalVisible]
+  );
+
   // Update cart item quantity with kitchen conflict handling
   const updateCartItem = useCallback(
     async (itemId, action, force = false) => {
@@ -481,8 +495,7 @@ const HomeKitchenDetails = ({ route }) => {
       try {
         // Check if we're trying to add to a different kitchen's cart
         if (!force && action === "add" && hasDifferentKitchenItems) {
-          setPendingCartAction({ itemId, action });
-          setShowKitchenConflictModal(true);
+          handleKitchenConflict(itemId, action);
           return;
         }
 
@@ -539,13 +552,13 @@ const HomeKitchenDetails = ({ route }) => {
       hasDifferentKitchenItems,
       cartItems,
       savePastKitchenDetails,
+      handleKitchenConflict,
     ]
   );
 
   const handleClearCartAndProceed = useCallback(async () => {
     try {
       setShowKitchenConflictModal(false);
-      setModalMode("view");
       setModalVisible(false);
       const { user: currentUser, session: currentSession } =
         await fetchUserData();
@@ -595,14 +608,9 @@ const HomeKitchenDetails = ({ route }) => {
   // Handle adding item directly from list with conflict check
   const handleAddItemFromList = useCallback(
     (itemId) => {
-      if (hasDifferentKitchenItems) {
-        setPendingCartAction({ itemId, action: "add" });
-        setShowKitchenConflictModal(true);
-      } else {
-        updateCartItem(itemId, "add");
-      }
+      updateCartItem(itemId, "add");
     },
-    [hasDifferentKitchenItems, updateCartItem]
+    [updateCartItem]
   );
 
   // Get current quantity of an item in cart
@@ -615,22 +623,16 @@ const HomeKitchenDetails = ({ route }) => {
   );
 
   const openItemModal = (item) => {
-    console.log('Opening modal for item:', item?.name);
+    console.log("Opening modal for item:", item?.name);
     setSelectedItem(item);
     setModalQuantity(getItemQuantity(item.id) || 0);
     modalOpenRef.current = true;
     setModalVisible(true);
-    setModalMode("view"); // Reset to view mode when opening modal
   };
 
   const closeItemModal = () => {
-    if (modalMode === "conflict") {
-      // Don't allow closing when in conflict mode
-      return;
-    }
     modalOpenRef.current = false;
     setModalVisible(false);
-    setModalMode("view"); // Reset to view mode when closing modal
   };
 
   const openOffersModal = () => {
@@ -641,19 +643,11 @@ const HomeKitchenDetails = ({ route }) => {
     setOfferModalVisible(false);
   };
 
-  // Handle Add button click in modal - check for kitchen conflict
+  // Handle Add button click in modal
   const handleModalAddButton = useCallback(() => {
     if (!selectedItem) return;
-
-    // Check for kitchen conflict
-    if (hasDifferentKitchenItems) {
-      setPendingCartAction({ itemId: selectedItem.id, action: "add" });
-      setModalMode("conflict");
-    } else {
-      // No conflict, proceed with adding item
-      updateModalQuantity(1);
-    }
-  }, [selectedItem, hasDifferentKitchenItems]);
+    updateModalQuantity(1);
+  }, [selectedItem]);
 
   // Update modal quantity and make API calls
   const updateModalQuantity = useCallback(
@@ -747,9 +741,13 @@ const HomeKitchenDetails = ({ route }) => {
       </View>
       <View style={styles.kitchenDetails__offerContent}>
         <Text style={styles.kitchenDetails__offerTitle}>{item.title}</Text>
-        <Text style={styles.kitchenDetails__offerDescription}>{item.description}</Text>
+        <Text style={styles.kitchenDetails__offerDescription}>
+          {item.description}
+        </Text>
         <View style={styles.kitchenDetails__offerCodeContainer}>
-          <Text style={styles.kitchenDetails__offerCodeText}>Use code: {item.code}</Text>
+          <Text style={styles.kitchenDetails__offerCodeText}>
+            Use code: {item.code}
+          </Text>
         </View>
       </View>
       <View style={styles.kitchenDetails__offerCount}>
@@ -773,7 +771,7 @@ const HomeKitchenDetails = ({ route }) => {
       <TouchableOpacity
         style={styles.kitchenDetails__menuItem}
         onPress={() => {
-          console.log('Item pressed:', item.name);
+          console.log("Item pressed:", item.name);
           if (isAvailable) {
             openItemModal(item);
           }
@@ -787,23 +785,33 @@ const HomeKitchenDetails = ({ route }) => {
               {item.isVeg ? (
                 <View style={styles.kitchenDetails__vegIndicator}>
                   <View
-                    style={[styles.kitchenDetails__vegInnerDot, { backgroundColor: "green" }]}
+                    style={[
+                      styles.kitchenDetails__vegInnerDot,
+                      { backgroundColor: "green" },
+                    ]}
                   />
                 </View>
               ) : (
                 <View style={styles.kitchenDetails__nonVegIndicator}>
                   <View
-                    style={[styles.kitchenDetails__vegInnerDot, { backgroundColor: "#cc0000" }]}
+                    style={[
+                      styles.kitchenDetails__vegInnerDot,
+                      { backgroundColor: "#cc0000" },
+                    ]}
                   />
                 </View>
               )}
             </View>
             <View style={styles.kitchenDetails__menuItemTextContainer}>
-              <Text style={styles.kitchenDetails__menuItemName}>{item.name}</Text>
+              <Text style={styles.kitchenDetails__menuItemName}>
+                {item.name}
+              </Text>
               {item.isBestseller && (
                 <View style={styles.kitchenDetails__bestsellerBadge}>
                   <Icon name="trophy" size={12} color="#FFD700" />
-                  <Text style={styles.kitchenDetails__bestsellerText}>Bestseller</Text>
+                  <Text style={styles.kitchenDetails__bestsellerText}>
+                    Bestseller
+                  </Text>
                 </View>
               )}
             </View>
@@ -819,8 +827,12 @@ const HomeKitchenDetails = ({ route }) => {
             <View style={styles.kitchenDetails__priceContainer}>
               {discountedPrice ? (
                 <>
-                  <Text style={styles.kitchenDetails__discountedPrice}>₹{discountedPrice}</Text>
-                  <Text style={styles.kitchenDetails__originalPrice}>₹{item.price}</Text>
+                  <Text style={styles.kitchenDetails__discountedPrice}>
+                    ₹{discountedPrice}
+                  </Text>
+                  <Text style={styles.kitchenDetails__originalPrice}>
+                    ₹{item.price}
+                  </Text>
                   {item.discountActive && (
                     <View style={styles.kitchenDetails__discountBadge}>
                       <Text style={styles.kitchenDetails__discountText}>
@@ -830,18 +842,22 @@ const HomeKitchenDetails = ({ route }) => {
                   )}
                 </>
               ) : (
-                <Text style={styles.kitchenDetails__menuItemPrice}>₹{item.price}</Text>
+                <Text style={styles.kitchenDetails__menuItemPrice}>
+                  ₹{item.price}
+                </Text>
               )}
             </View>
             {item.rating && (
               <View style={styles.kitchenDetails__ratingContainer}>
                 <Icon name="star" size={14} color="#FFD700" />
-                <Text style={styles.kitchenDetails__ratingText}>{item.rating}</Text>
+                <Text style={styles.kitchenDetails__ratingText}>
+                  {item.rating}
+                </Text>
               </View>
             )}
           </View>
         </View>
-        
+
         <View style={styles.kitchenDetails__menuItemImageContainer}>
           <Image
             source={{ uri: item.image || PLACEHOLDER_FOOD }}
@@ -876,7 +892,9 @@ const HomeKitchenDetails = ({ route }) => {
                     <Icon name="remove" size={16} color="#e65c00" />
                   )}
                 </TouchableOpacity>
-                <Text style={styles.kitchenDetails__quantityText}>{quantity}</Text>
+                <Text style={styles.kitchenDetails__quantityText}>
+                  {quantity}
+                </Text>
                 <TouchableOpacity
                   style={styles.kitchenDetails__quantityButton}
                   onPress={() => updateCartItem(item.id, "add")}
@@ -892,7 +910,9 @@ const HomeKitchenDetails = ({ route }) => {
             )
           ) : (
             <View style={styles.kitchenDetails__addButtonDisabled}>
-              <Text style={styles.kitchenDetails__addButtonDisabledText}>UNAVAILABLE</Text>
+              <Text style={styles.kitchenDetails__addButtonDisabledText}>
+                UNAVAILABLE
+              </Text>
             </View>
           )}
         </View>
@@ -911,7 +931,9 @@ const HomeKitchenDetails = ({ route }) => {
           activeOpacity={0.8}
         >
           <View style={styles.kitchenDetails__sectionHeaderContent}>
-            <Text style={styles.kitchenDetails__sectionTitle}>{section.category}</Text>
+            <Text style={styles.kitchenDetails__sectionTitle}>
+              {section.category}
+            </Text>
             <Icon
               name={isExpanded ? "chevron-up" : "chevron-down"}
               size={24}
@@ -940,7 +962,9 @@ const HomeKitchenDetails = ({ route }) => {
         <StatusBar barStyle="dark-content" />
         <View style={styles.kitchenDetails__loadingContent}>
           <ActivityIndicator size="large" color="#e65c00" />
-          <Text style={styles.kitchenDetails__loadingText}>Loading Kitchen Details...</Text>
+          <Text style={styles.kitchenDetails__loadingText}>
+            Loading Kitchen Details...
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -952,10 +976,17 @@ const HomeKitchenDetails = ({ route }) => {
         <StatusBar barStyle="dark-content" />
         <View style={styles.kitchenDetails__errorContent}>
           <Icon name="alert-circle-outline" size={60} color="#e65c00" />
-          <Text style={styles.kitchenDetails__errorText}>Failed to load kitchen details</Text>
+          <Text style={styles.kitchenDetails__errorText}>
+            Failed to load kitchen details
+          </Text>
           <Text style={styles.kitchenDetails__errorSubText}>{error}</Text>
-          <TouchableOpacity style={styles.kitchenDetails__retryButton} onPress={refreshData}>
-            <Text style={styles.kitchenDetails__retryButtonText}>Try Again</Text>
+          <TouchableOpacity
+            style={styles.kitchenDetails__retryButton}
+            onPress={refreshData}
+          >
+            <Text style={styles.kitchenDetails__retryButtonText}>
+              Try Again
+            </Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -967,7 +998,9 @@ const HomeKitchenDetails = ({ route }) => {
       <StatusBar barStyle="light-content" />
 
       {/* Sticky Header */}
-      <Animated.View style={[styles.kitchenDetails__header, { height: headerHeight }]}>
+      <Animated.View
+        style={[styles.kitchenDetails__header, { height: headerHeight }]}
+      >
         <Animated.View
           style={[StyleSheet.absoluteFill, { opacity: imageOpacity }]}
         >
@@ -979,12 +1012,18 @@ const HomeKitchenDetails = ({ route }) => {
           <View style={styles.kitchenDetails__headerOverlay} />
         </Animated.View>
 
-        <TouchableOpacity style={styles.kitchenDetails__backButton} onPress={handleBackPress}>
+        <TouchableOpacity
+          style={styles.kitchenDetails__backButton}
+          onPress={handleBackPress}
+        >
           <Icon name="arrow-back" size={24} color="white" />
         </TouchableOpacity>
 
         <Animated.Text
-          style={[styles.kitchenDetails__stickyTitle, { opacity: headerTitleOpacity }]}
+          style={[
+            styles.kitchenDetails__stickyTitle,
+            { opacity: headerTitleOpacity },
+          ]}
           numberOfLines={1}
         >
           {kitchenInfo.name}
@@ -993,7 +1032,10 @@ const HomeKitchenDetails = ({ route }) => {
 
       <Animated.ScrollView
         ref={scrollViewRef}
-        style={[styles.kitchenDetails__scrollView, { marginBottom: showCartSummary ? 120 : 0 }]}
+        style={[
+          styles.kitchenDetails__scrollView,
+          { marginBottom: showCartSummary ? 120 : 0 },
+        ]}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           { useNativeDriver: false }
@@ -1013,18 +1055,26 @@ const HomeKitchenDetails = ({ route }) => {
           <View style={styles.kitchenDetails__kitchenInfo}>
             <View style={styles.kitchenDetails__kitchenHeader}>
               <View style={styles.kitchenDetails__nameRatingRow}>
-                <Text style={styles.kitchenDetails__kitchenName} numberOfLines={1}>
+                <Text
+                  style={styles.kitchenDetails__kitchenName}
+                  numberOfLines={1}
+                >
                   {kitchenInfo.name}
                 </Text>
                 <View style={styles.kitchenDetails__ratingBadge}>
                   <Icon name="star" size={12} color="#fff" />
-                  <Text style={styles.kitchenDetails__ratingText}>{kitchenInfo.rating}</Text>
+                  <Text style={styles.kitchenDetails__ratingText}>
+                    {kitchenInfo.rating}
+                  </Text>
                 </View>
               </View>
 
               <View style={styles.kitchenDetails__addressRow}>
                 <Icon name="location-outline" size={14} color="#ff6b6b" />
-                <Text style={styles.kitchenDetails__kitchenAddress} numberOfLines={1}>
+                <Text
+                  style={styles.kitchenDetails__kitchenAddress}
+                  numberOfLines={1}
+                >
                   {kitchenInfo.shortAddress}
                 </Text>
               </View>
@@ -1043,7 +1093,9 @@ const HomeKitchenDetails = ({ route }) => {
 
                 <View style={styles.kitchenDetails__detailItem}>
                   <Icon name="navigate-outline" size={14} color="#666" />
-                  <Text style={styles.kitchenDetails__detailText}>{kitchenInfo.distance}</Text>
+                  <Text style={styles.kitchenDetails__detailText}>
+                    {kitchenInfo.distance}
+                  </Text>
                 </View>
 
                 <View style={styles.kitchenDetails__dotSeparator} />
@@ -1060,7 +1112,9 @@ const HomeKitchenDetails = ({ route }) => {
                   <Text
                     style={[
                       styles.kitchenDetails__kitchenStatus,
-                      kitchenInfo.isOpen ? styles.kitchenDetails__openText : styles.kitchenDetails__closedText,
+                      kitchenInfo.isOpen
+                        ? styles.kitchenDetails__openText
+                        : styles.kitchenDetails__closedText,
                     ]}
                   >
                     {kitchenInfo.isOpen ? "OPEN" : "CLOSED"}
@@ -1112,7 +1166,8 @@ const HomeKitchenDetails = ({ route }) => {
                   key={index}
                   style={[
                     styles.kitchenDetails__paginationDot,
-                    index === currentOfferIndex && styles.kitchenDetails__paginationDotActive,
+                    index === currentOfferIndex &&
+                      styles.kitchenDetails__paginationDotActive,
                   ]}
                 />
               ))}
@@ -1180,11 +1235,15 @@ const HomeKitchenDetails = ({ route }) => {
                 style={styles.kitchenDetails__cartSummaryKitchenImage}
               />
               <View style={styles.kitchenDetails__cartSummaryKitchenText}>
-                <Text style={styles.kitchenDetails__cartSummaryKitchenName} numberOfLines={1}>
+                <Text
+                  style={styles.kitchenDetails__cartSummaryKitchenName}
+                  numberOfLines={1}
+                >
                   {pastKitchenDetails.name}
                 </Text>
                 <Text style={styles.kitchenDetails__cartSummaryItemCount}>
-                  {pastKitchenDetails.itemCount} item{pastKitchenDetails.itemCount !== 1 ? 's' : ''} in cart
+                  {pastKitchenDetails.itemCount} item
+                  {pastKitchenDetails.itemCount !== 1 ? "s" : ""} in cart
                 </Text>
               </View>
             </View>
@@ -1195,7 +1254,9 @@ const HomeKitchenDetails = ({ route }) => {
               activeOpacity={0.9}
             >
               <View style={styles.kitchenDetails__cartSummaryMiniCartContent}>
-                <Text style={styles.kitchenDetails__cartSummaryViewCartText}>View Cart</Text>
+                <Text style={styles.kitchenDetails__cartSummaryViewCartText}>
+                  View Cart
+                </Text>
                 <View style={styles.kitchenDetails__cartSummaryCartCountBadge}>
                   <Text style={styles.kitchenDetails__cartSummaryMiniCartCount}>
                     {pastKitchenDetails.itemCount}
@@ -1207,7 +1268,8 @@ const HomeKitchenDetails = ({ route }) => {
         </View>
       )}
 
-      {/* Item Detail Modal - IMPROVED DESIGN */}
+      {/* Item Detail Modal - UPDATED DESIGN */}
+
       <Modal
         animationType="slide"
         transparent={true}
@@ -1217,15 +1279,13 @@ const HomeKitchenDetails = ({ route }) => {
       >
         <View style={styles.modal__container}>
           <View style={styles.modal__content}>
-            {/* Close button - only show when not in conflict mode */}
-            {modalMode !== "conflict" && (
-              <TouchableOpacity
-                style={styles.modal__closeButton}
-                onPress={closeItemModal}
-              >
-                <Icon name="close" size={24} color="#fff" />
-              </TouchableOpacity>
-            )}
+            {/* Close button */}
+            <TouchableOpacity
+              style={styles.modal__closeButton}
+              onPress={closeItemModal}
+            >
+              <Icon name="close" size={24} color="#fff" />
+            </TouchableOpacity>
 
             {selectedItem ? (
               <View style={styles.modal__fixedContent}>
@@ -1240,34 +1300,75 @@ const HomeKitchenDetails = ({ route }) => {
                   <View style={styles.modal__imageOverlay} />
                 </View>
 
-                {/* Content area with improved spacing */}
-                <View style={styles.modal__body}>
-                  {/* Title and Veg Indicator */}
-                  <View style={styles.modal__titleRow}>
-                    <View style={styles.modal__vegIndicatorContainer}>
-                      {selectedItem.isVeg ? (
-                        <View style={[styles.modal__vegIndicator, styles.modal__veg]}>
-                          <View style={[styles.modal__vegInnerDot, { backgroundColor: "green" }]} />
+                {/* Scrollable Content Area */}
+                <View style={styles.modal__scrollContent}>
+                  <ScrollView
+                    style={styles.modal__scrollView}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    <View style={styles.modal__body}>
+                      {/* Title and Veg Indicator */}
+                      <View style={styles.modal__titleRow}>
+                        <View style={styles.modal__vegIndicatorContainer}>
+                          {selectedItem.isVeg ? (
+                            <View
+                              style={[
+                                styles.modal__vegIndicator,
+                                styles.modal__veg,
+                              ]}
+                            >
+                              <View
+                                style={[
+                                  styles.modal__vegInnerDot,
+                                  { backgroundColor: "#22c55e" },
+                                ]}
+                              />
+                            </View>
+                          ) : (
+                            <View
+                              style={[
+                                styles.modal__vegIndicator,
+                                styles.modal__nonVeg,
+                              ]}
+                            >
+                              <View
+                                style={[
+                                  styles.modal__vegInnerDot,
+                                  { backgroundColor: "#dc2626" },
+                                ]}
+                              />
+                            </View>
+                          )}
                         </View>
-                      ) : (
-                        <View style={[styles.modal__vegIndicator, styles.modal__nonVeg]}>
-                          <View style={[styles.modal__vegInnerDot, { backgroundColor: "#cc0000" }]} />
-                        </View>
-                      )}
+                        <Text style={styles.modal__itemName} numberOfLines={2}>
+                          {selectedItem.name}
+                        </Text>
+                      </View>
+
+                      {/* Scrollable Description */}
+                      <Text style={styles.modal__itemDescription}>
+                        {selectedItem.description}
+                      </Text>
                     </View>
-                    <Text style={styles.modal__itemName} numberOfLines={2}>
-                      {selectedItem.name}
-                    </Text>
-                  </View>
+                  </ScrollView>
+                </View>
 
-                  {/* Description with better typography */}
-                  <Text style={styles.modal__itemDescription} numberOfLines={3}>
-                    {selectedItem.description}
-                  </Text>
+                {/* Fixed Bottom Section - Price and Action Buttons */}
+                <View style={styles.modal__fixedBottom}>
+                  {/* Unavailable Message */}
+                  {!selectedItem.isCompletelyAvailable && (
+                    <View style={styles.modal__unavailableMessage}>
+                      <Icon name="error-outline" size={20} color="#dc2626" />
+                      <Text style={styles.modal__unavailableMessageText}>
+                        This item is currently unavailable
+                      </Text>
+                    </View>
+                  )}
 
-                  {/* Enhanced Price row - removed bottom border */}
-                  <View style={styles.modal__priceRow}>
-                    <View style={styles.modal__priceContainer}>
+                  {/* Price and Action Buttons Row */}
+                  <View style={styles.modal__actionRow}>
+                    {/* Price Section */}
+                    <View style={styles.modal__priceSection}>
                       {selectedItem.discountActive ? (
                         <>
                           <Text style={styles.modal__currentPrice}>
@@ -1292,100 +1393,9 @@ const HomeKitchenDetails = ({ route }) => {
                         </Text>
                       )}
                     </View>
-                    
-                    {/* Rating moved to price row */}
-                    {selectedItem.rating && (
-                      <View style={styles.modal__ratingContainer}>
-                        <Icon name="star" size={16} color="#FFD700" />
-                        <Text style={styles.modal__ratingText}>
-                          {selectedItem.rating}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
 
-                  {/* Unavailable Message with improved styling */}
-                  {!selectedItem.isCompletelyAvailable && (
-                    <View style={styles.modal__unavailableMessage}>
-                      <Icon name="time-outline" size={16} color="#dc2626" />
-                      <Text style={styles.modal__unavailableMessageText}>
-                        {!selectedItem.availability
-                          ? "This item is currently unavailable"
-                          : "Not available at this time"}
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* Kitchen Conflict Message - Enhanced */}
-                  {modalMode === "conflict" && (
-                    <View style={styles.modal__conflictSection}>
-                      <View style={styles.modal__conflictHeader}>
-                        <Icon name="warning" size={24} color="#FF6B35" />
-                        <Text style={styles.modal__conflictTitle}>
-                          Kitchen Conflict Detected
-                        </Text>
-                      </View>
-                      
-                      <View style={styles.modal__conflictContent}>
-                        <Text style={styles.modal__conflictMessage}>
-                          Your cart contains items from another restaurant. Adding this item will reset your current cart.
-                        </Text>
-
-                        {pastKitchenDetails && (
-                          <View style={styles.modal__conflictKitchenInfo}>
-                            <Image
-                              source={{
-                                uri: pastKitchenDetails.image || PLACEHOLDER_RESTAURANT,
-                              }}
-                              style={styles.modal__conflictKitchenImage}
-                              defaultSource={{ uri: PLACEHOLDER_RESTAURANT }}
-                            />
-                            <View style={styles.modal__conflictKitchenDetails}>
-                              <Text style={styles.modal__conflictKitchenName} numberOfLines={1}>
-                                {pastKitchenDetails.name}
-                              </Text>
-                              <Text style={styles.modal__conflictKitchenItemCount}>
-                                {pastKitchenDetails.itemCount} item
-                                {pastKitchenDetails.itemCount !== 1 ? "s" : ""} in cart
-                              </Text>
-                            </View>
-                          </View>
-                        )}
-
-                        <View style={styles.modal__conflictActions}>
-                          <TouchableOpacity
-                            style={[
-                              styles.modal__conflictButton,
-                              styles.modal__conflictCancelButton,
-                            ]}
-                            onPress={() => {
-                              setModalMode("view");
-                              setPendingCartAction(null);
-                            }}
-                          >
-                            <Text style={styles.modal__conflictCancelText}>
-                              Keep Current Cart
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[
-                              styles.modal__conflictButton,
-                              styles.modal__conflictConfirmButton,
-                            ]}
-                            onPress={handleClearCartAndProceed}
-                          >
-                            <Text style={styles.modal__conflictConfirmText}>
-                              Start Fresh & Add
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    </View>
-                  )}
-
-                  {/* Enhanced Add Button & Quantity Controls - Only show in view mode */}
-                  {modalMode === "view" && (
-                    <View style={styles.modal__actionContainer}>
+                    {/* Action Buttons */}
+                    <View style={styles.modal__actionButtons}>
                       {modalQuantity === 0 ? (
                         <TouchableOpacity
                           style={[
@@ -1400,79 +1410,82 @@ const HomeKitchenDetails = ({ route }) => {
                           }
                         >
                           {updatingItemId === selectedItem.id ? (
-                            <ActivityIndicator size="small" color="#fff" />
+                            <View style={styles.modal__addButtonContent}>
+                              <ActivityIndicator size="small" color="#fff" />
+                            </View>
                           ) : (
                             <View style={styles.modal__addButtonContent}>
-                              <Icon name="cart-outline" size={20} color="#fff" />
                               <Text style={styles.modal__addButtonText}>
-                                ADD TO CART
+                                ADD
                               </Text>
                             </View>
                           )}
                         </TouchableOpacity>
                       ) : (
-                        <View style={styles.modal__quantitySection}>
-                          <Text style={styles.modal__quantityLabel}>
-                            {modalQuantity} item{modalQuantity !== 1 ? 's' : ''} in cart
+                        <View style={styles.modal__quantityContainer}>
+                          <TouchableOpacity
+                            style={styles.modal__quantityButton}
+                            onPress={() => updateModalQuantity(-1)}
+                            disabled={
+                              modalQuantity === 0 ||
+                              !selectedItem.isCompletelyAvailable ||
+                              updatingItemId === selectedItem.id
+                            }
+                          >
+                            {updatingItemId === selectedItem.id ? (
+                              <ActivityIndicator size="small" color="#ccc" />
+                            ) : (
+                              <Icon
+                                name="remove"
+                                size={20}
+                                color={
+                                  modalQuantity === 0 ||
+                                  !selectedItem.isCompletelyAvailable
+                                    ? "#ccc"
+                                    : "#e65c00"
+                                }
+                              />
+                            )}
+                          </TouchableOpacity>
+
+                          <Text style={styles.modal__quantityText}>
+                            {modalQuantity}
                           </Text>
-                          <View style={styles.modal__quantityControls}>
-                            <TouchableOpacity
-                              style={styles.modal__quantityButton}
-                              onPress={() => updateModalQuantity(-1)}
-                              disabled={
-                                modalQuantity === 0 ||
-                                !selectedItem.isCompletelyAvailable ||
-                                updatingItemId === selectedItem.id
-                              }
-                            >
-                              {updatingItemId === selectedItem.id ? (
-                                <ActivityIndicator size="small" color="#ccc" />
-                              ) : (
-                                <Icon
-                                  name="remove"
-                                  size={20}
-                                  color={
-                                    modalQuantity === 0 ||
-                                    !selectedItem.isCompletelyAvailable
-                                      ? "#ccc"
-                                      : "#e65c00"
-                                  }
-                                />
-                              )}
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={styles.modal__quantityButton}
-                              onPress={() => updateModalQuantity(1)}
-                              disabled={
-                                !selectedItem.isCompletelyAvailable ||
-                                updatingItemId === selectedItem.id
-                              }
-                            >
-                              {updatingItemId === selectedItem.id ? (
-                                <ActivityIndicator size="small" color="#ccc" />
-                              ) : (
-                                <Icon
-                                  name="add"
-                                  size={20}
-                                  color={
-                                    !selectedItem.isCompletelyAvailable
-                                      ? "#ccc"
-                                      : "#e65c00"
-                                  }
-                                />
-                              )}
-                            </TouchableOpacity>
-                          </View>
+
+                          <TouchableOpacity
+                            style={styles.modal__quantityButton}
+                            onPress={() => updateModalQuantity(1)}
+                            disabled={
+                              !selectedItem.isCompletelyAvailable ||
+                              updatingItemId === selectedItem.id
+                            }
+                          >
+                            {updatingItemId === selectedItem.id ? (
+                              <ActivityIndicator size="small" color="#ccc" />
+                            ) : (
+                              <Icon
+                                name="add"
+                                size={20}
+                                color={
+                                  !selectedItem.isCompletelyAvailable
+                                    ? "#ccc"
+                                    : "#e65c00"
+                                }
+                              />
+                            )}
+                          </TouchableOpacity>
                         </View>
                       )}
                     </View>
-                  )}
+                  </View>
                 </View>
               </View>
             ) : (
               <View style={styles.modal__loadingContainer}>
                 <ActivityIndicator size="large" color="#e65c00" />
-                <Text style={styles.modal__loadingText}>Loading item details...</Text>
+                <Text style={styles.modal__loadingText}>
+                  Loading item details...
+                </Text>
               </View>
             )}
           </View>
@@ -1513,7 +1526,9 @@ const HomeKitchenDetails = ({ route }) => {
                         <Icon name="pricetag" size={20} color="#e65c00" />
                       </View>
                       <View style={styles.offersModal__itemContent}>
-                        <Text style={styles.offersModal__itemTitle}>{item.title}</Text>
+                        <Text style={styles.offersModal__itemTitle}>
+                          {item.title}
+                        </Text>
                         <Text style={styles.offersModal__itemDescription}>
                           {item.description}
                         </Text>
@@ -1521,8 +1536,12 @@ const HomeKitchenDetails = ({ route }) => {
                           <Text style={styles.offersModal__codeText}>
                             Use code: {item.code}
                           </Text>
-                          <TouchableOpacity style={styles.offersModal__copyButton}>
-                            <Text style={styles.offersModal__copyButtonText}>COPY</Text>
+                          <TouchableOpacity
+                            style={styles.offersModal__copyButton}
+                          >
+                            <Text style={styles.offersModal__copyButtonText}>
+                              COPY
+                            </Text>
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -1546,7 +1565,7 @@ const HomeKitchenDetails = ({ route }) => {
         </View>
       </Modal>
 
-      {/* Kitchen Conflict Modal */}
+      {/* Kitchen Conflict Modal - SINGLE MODAL FOR ALL CONFLICTS */}
       <Modal
         visible={showKitchenConflictModal}
         transparent
@@ -1561,8 +1580,8 @@ const HomeKitchenDetails = ({ route }) => {
               <Text style={styles.conflictModal__title}>Kitchen Conflict</Text>
             </View>
             <Text style={styles.conflictModal__text}>
-              Your cart contains items from another restaurant. Would you like
-              to reset your cart and start fresh with items from this kitchen?
+              Your cart contains items from another kitchen. Would you like to
+              reset your cart and start fresh with items from this kitchen?
             </Text>
             {pastKitchenDetails && (
               <View style={styles.conflictModal__kitchenInfo}>
@@ -1574,7 +1593,10 @@ const HomeKitchenDetails = ({ route }) => {
                   defaultSource={{ uri: PLACEHOLDER_RESTAURANT }}
                 />
                 <View style={styles.conflictModal__kitchenDetails}>
-                  <Text style={styles.conflictModal__kitchenName} numberOfLines={1}>
+                  <Text
+                    style={styles.conflictModal__kitchenName}
+                    numberOfLines={1}
+                  >
                     {pastKitchenDetails.name}
                   </Text>
                   <Text style={styles.conflictModal__kitchenItemCount}>
@@ -1586,13 +1608,18 @@ const HomeKitchenDetails = ({ route }) => {
             )}
             <View style={styles.conflictModal__buttonRow}>
               <TouchableOpacity
-                style={[styles.conflictModal__button, styles.conflictModal__cancelButton]}
+                style={[
+                  styles.conflictModal__button,
+                  styles.conflictModal__cancelButton,
+                ]}
                 onPress={() => {
                   setShowKitchenConflictModal(false);
                   setPendingCartAction(null);
                 }}
               >
-                <Text style={styles.conflictModal__buttonText}>No, Keep Items</Text>
+                <Text style={styles.conflictModal__buttonText}>
+                  No, Keep Items
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -2344,7 +2371,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   kitchenDetails__cartSummaryKitchenName: {
-    fontSize: FONT.LG,
+    fontSize: 14,
     fontWeight: "600",
     color: "#333",
     marginBottom: 4,
@@ -2391,7 +2418,8 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
 
-  // IMPROVED Item Detail Modal Styles
+  // UPDATED Item Detail Modal Styles
+
   modal__container: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.6)",
@@ -2402,16 +2430,13 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: "90%",
-    minHeight: "70%",
-  },
-  modal__contentConflict: {
-    maxHeight: "95%",
+    minHeight: "80%",
   },
   modal__fixedContent: {
     flex: 1,
   },
   modal__imageContainer: {
-    position: 'relative',
+    position: "relative",
     height: 250,
   },
   modal__image: {
@@ -2443,10 +2468,17 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
-  modal__body: {
+
+  // Scrollable Content Area
+  modal__scrollContent: {
     flex: 1,
+  },
+  modal__scrollView: {
+    flex: 1,
+  },
+  modal__body: {
     padding: 20,
-    paddingBottom: Platform.OS === 'ios' ? 30 : 20,
+    paddingBottom: 0, // Remove bottom padding since fixed section is separate
   },
   modal__titleRow: {
     flexDirection: "row",
@@ -2477,7 +2509,7 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
   modal__itemName: {
-    fontSize: FONT.XXL,
+    fontSize: FONT.XL,
     fontWeight: "700",
     color: "#1f2937",
     flex: 1,
@@ -2489,16 +2521,31 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginBottom: 20,
   },
-  modal__priceRow: {
+
+  // Fixed Bottom Section
+  modal__fixedBottom: {
+    backgroundColor: "white",
+    borderTopWidth: 1,
+    borderTopColor: "#f3f4f6",
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: Platform.OS === "ios" ? 30 : 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 8,
+  },
+  modal__actionRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 24,
   },
-  modal__priceContainer: {
+  modal__priceSection: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    flex: 1,
   },
   modal__currentPrice: {
     fontSize: FONT.XXL,
@@ -2521,27 +2568,87 @@ const styles = StyleSheet.create({
     fontSize: FONT.XS,
     fontWeight: "700",
   },
-  modal__ratingContainer: {
+
+  // Action Buttons
+  modal__actionButtons: {
+    flexShrink: 0,
+  },
+  modal__addButton: {
+    backgroundColor: "#e65c00",
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#e65c00",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+    minHeight: 52,
+    minWidth: 120,
+  },
+  modal__addButtonContent: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    backgroundColor: "#fefce8",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    justifyContent: "center",
+    gap: 8,
+  },
+  modal__addButtonDisabled: {
+    backgroundColor: "#9ca3af",
+    shadowColor: "transparent",
+    elevation: 0,
+  },
+  modal__addButtonText: {
+    color: "white",
+    fontSize: FONT.LG,
+    fontWeight: "700",
+  },
+
+  // Quantity Controls
+  modal__quantityContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f8fafc",
+    borderRadius: 12,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    height: 52,
+    gap: 12,
+    minWidth: 140,
+    justifyContent: "center",
+  },
+  modal__quantityButton: {
+    width: 32,
+    height: 32,
     borderRadius: 16,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#e65c00",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  modal__ratingText: {
-    fontSize: FONT.SM,
-    color: "#854d0e",
-    fontWeight: "600",
+  modal__quantityText: {
+    fontSize: FONT.LG,
+    fontWeight: "700",
+    color: "#1f2937",
+    minWidth: 30,
+    textAlign: "center",
   },
+
   modal__unavailableMessage: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#fef2f2",
     padding: 12,
     borderRadius: 8,
-    marginBottom: 20,
+    marginBottom: 16,
     borderLeftWidth: 4,
     borderLeftColor: "#dc2626",
     gap: 8,
@@ -2553,178 +2660,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  // Enhanced Conflict Mode Styles
-  modal__conflictSection: {
-    marginTop: 16,
-    borderWidth: 1,
-    borderColor: '#fed7aa',
-    borderRadius: 12,
-    backgroundColor: '#fff7ed',
-    overflow: 'hidden',
-  },
-  modal__conflictHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 16,
-    backgroundColor: '#ffedd5',
-  },
-  modal__conflictTitle: {
-    fontSize: FONT.LG,
-    fontWeight: '700',
-    color: '#ea580c',
-  },
-  modal__conflictContent: {
-    padding: 16,
-  },
-  modal__conflictMessage: {
-    fontSize: FONT.SM,
-    color: '#92400e',
-    lineHeight: 20,
-    marginBottom: 16,
-  },
-  modal__conflictKitchenInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 12,
-    backgroundColor: 'white',
-    borderRadius: 8,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#fed7aa',
-  },
-  modal__conflictKitchenImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 8,
-  },
-  modal__conflictKitchenDetails: {
-    flex: 1,
-  },
-  modal__conflictKitchenName: {
-    fontSize: FONT.SM,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 4,
-  },
-  modal__conflictKitchenItemCount: {
-    fontSize: FONT.XS,
-    color: '#6b7280',
-  },
-  modal__conflictActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  modal__conflictButton: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  modal__conflictCancelButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: '#d1d5db',
-  },
-  modal__conflictConfirmButton: {
-    backgroundColor: '#dc2626',
-  },
-  modal__conflictCancelText: {
-    color: '#374151',
-    fontWeight: '600',
-    fontSize: FONT.SM,
-  },
-  modal__conflictConfirmText: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: FONT.SM,
-  },
-
-  // Enhanced Action Section
-  modal__actionContainer: {
-    marginTop: 'auto',
-  },
-  modal__addButton: {
-    backgroundColor: '#e65c00',
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#e65c00',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  modal__addButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  modal__addButtonDisabled: {
-    backgroundColor: '#9ca3af',
-    shadowColor: 'transparent',
-    elevation: 0,
-  },
-  modal__addButtonText: {
-    color: 'white',
-    fontSize: FONT.LG,
-    fontWeight: '700',
-  },
-
-  // Enhanced Quantity Section
-  modal__quantitySection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#f8fafc',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  modal__quantityLabel: {
-    fontSize: FONT.LG,
-    fontWeight: '600',
-    color: '#1f2937',
-  },
-  modal__quantityControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  modal__quantityButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#e65c00',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-
   modal__loadingContainer: {
     padding: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 200,
   },
   modal__loadingText: {
     marginTop: 12,
     fontSize: FONT.SM,
-    color: '#666',
+    color: "#666",
   },
 
   // Offers Modal Styles
@@ -2810,25 +2755,25 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   offersModal__noOffersContent: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     padding: 30,
   },
   offersModal__noOffersText: {
     fontSize: FONT.BASE,
-    fontWeight: '600',
-    color: '#999',
+    fontWeight: "600",
+    color: "#999",
     marginTop: 12,
     marginBottom: 6,
   },
   offersModal__noOffersSubText: {
     fontSize: FONT.SM,
-    color: '#ccc',
-    textAlign: 'center',
+    color: "#ccc",
+    textAlign: "center",
     lineHeight: 18,
   },
 
-  // Conflict Modal Styles
+  // Kitchen Conflict Modal - SINGLE MODAL FOR ALL CONFLICTS
   conflictModal__overlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",

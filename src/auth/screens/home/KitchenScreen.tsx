@@ -38,7 +38,7 @@ const FONT = {
   XXXL: normalize(24),
 };
 
-// Enhanced Color Palette with Diwali Theme
+// Enhanced Color Palette
 const COLORS = {
   primary: '#FF6B35',
   primaryLight: '#FF9F5B',
@@ -92,7 +92,7 @@ const COLORS = {
   discount: '#FF4757',
   newBadge: '#2ED573',
   trendingBadge: '#FF6B9D',
-  // Enhanced Diwali Colors
+  // Diwali Colors
   diwaliGold: '#FFD700',
   diwaliOrange: '#FF6B35',
   diwaliRed: '#FF4757',
@@ -101,12 +101,6 @@ const COLORS = {
   diwaliDark: '#8B4513',
   diwaliDeepOrange: '#FF8C00',
   diwaliSparkle: '#FFA500',
-  diwaliFlame: '#FF6B00',
-  diwaliDiyaBase: '#964B00',
-  diwaliOfferBg: 'rgba(255, 215, 0, 0.1)',
-  diwaliGradientStart: '#FF6B35',
-  diwaliGradientMiddle: '#FF8C00',
-  diwaliGradientEnd: '#FFD700',
 };
 
 const FONTS = {
@@ -117,7 +111,7 @@ const FONTS = {
   light: isAndroid ? 'sans-serif-light' : 'Inter-Light',
 };
 
-const DEFAULT_CATEGORY_ICON = "";
+const DEFAULT_CATEGORY_ICON = "https://via.placeholder.com/60";
 const ACTIVE_ORDERS_LIMIT = 3;
 const RECOMMENDED_KITCHENS_PER_ROW = 2;
 
@@ -130,35 +124,7 @@ const SEARCH_PLACEHOLDERS = [
   "🍰 Search for desserts or drinks..."
 ];
 
-// Diwali Offers Configuration
-const DIWALI_OFFERS = [
-  {
-    id: '1',
-    title: '50% OFF',
-    subtitle: 'On all orders',
-    icon: 'flash',
-    color: COLORS.diwaliGold,
-    description: 'Get flat 50% discount on all orders above ₹199'
-  },
-  {
-    id: '2',
-    title: 'Buy 1 Get 1',
-    subtitle: 'Free on selective items',
-    icon: 'gift',
-    color: COLORS.diwaliOrange,
-    description: 'Buy one and get one free on selected festive specials'
-  },
-  {
-    id: '3',
-    title: 'Free Sweets',
-    subtitle: 'With every order',
-    icon: 'star',
-    color: COLORS.diwaliRed,
-    description: 'Complimentary traditional sweets with every order'
-  }
-];
-
-// Types
+// Types (keeping the same types as before)
 interface User {
   id: string;
   name: string;
@@ -325,6 +291,9 @@ type RootStackParamList = {
     itemId?: string;
     suggestionsData?: SearchSuggestionResponse;
   };
+  CategoryResults: {
+    query: string;
+  };
 };
 
 type NavigationProp = {
@@ -351,7 +320,114 @@ const useDebounce = (value: string, delay: number) => {
   return debouncedValue;
 };
 
-// FIXED: Enhanced Diwali Timer Component with improved layout
+// Firecracker Component for Home Screen
+const Firecracker: React.FC<{ 
+  firecracker: { 
+    id: string; 
+    x: number; 
+    y: number; 
+    scale: number;
+    delay: number;
+  }; 
+  visible: boolean 
+}> = React.memo(({ firecracker, visible }) => {
+  const anim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      const animation = Animated.sequence([
+        Animated.delay(firecracker.delay),
+        Animated.timing(anim, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(anim, {
+          toValue: 0,
+          duration: 400,
+          useNativeDriver: true,
+        })
+      ]);
+      
+      const loop = Animated.loop(animation);
+      loop.start();
+      
+      return () => loop.stop();
+    }
+  }, [visible, anim, firecracker.delay]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.firecracker,
+        {
+          left: firecracker.x,
+          top: firecracker.y,
+          transform: [
+            { scale: firecracker.scale },
+            {
+              scale: anim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.3, 1]
+              })
+            }
+          ],
+          opacity: anim
+        }
+      ]}
+    >
+      <Icon name="sparkles" size={moderateScale(16)} color={COLORS.diwaliSparkle} />
+    </Animated.View>
+  );
+});
+
+// Separate Firework component that properly uses hooks
+const Firework: React.FC<{ firework: { id: string; x: number; y: number; scale: number }; visible: boolean }> = React.memo(({ firework, visible }) => {
+  const fireworkAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.sequence([
+        Animated.timing(fireworkAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fireworkAnim, {
+          toValue: 0,
+          duration: 400,
+          useNativeDriver: true,
+        })
+      ]).start();
+    }
+  }, [visible, fireworkAnim]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.firework,
+        {
+          left: firework.x,
+          top: firework.y,
+          transform: [
+            { scale: firework.scale },
+            {
+              scale: fireworkAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, 1]
+              })
+            }
+          ],
+          opacity: fireworkAnim
+        }
+      ]}
+    >
+      <Icon name="sparkles" size={moderateScale(24)} color={COLORS.diwaliGold} />
+    </Animated.View>
+  );
+});
+
+// Diwali Timer Component for Home Screen
 const DiwaliTimer: React.FC<{ onPress: () => void }> = React.memo(({ onPress }) => {
   const [timeLeft, setTimeLeft] = useState({
     days: 0,
@@ -360,45 +436,37 @@ const DiwaliTimer: React.FC<{ onPress: () => void }> = React.memo(({ onPress }) 
     seconds: 0
   });
 
-  const [firecrackers] = useState<Array<{
+  const [firecrackers, setFirecrackers] = useState<Array<{
     id: string;
     x: number;
     y: number;
     scale: number;
     delay: number;
-  }>>(() => 
-    Array.from({ length: 8 }, (_, i) => ({
-      id: `firecracker-${i}`,
-      x: Math.random() * (width - 120) + 60,
-      y: Math.random() * 25 + 5,
-      scale: Math.random() * 0.6 + 0.3,
-      delay: Math.random() * 1500
-    }))
-  );
+  }>>([]);
 
   useEffect(() => {
-    const calculateTimeLeft = () => {
-      const diwaliDate = new Date(Date.UTC(2025, 9, 18, 0, 0, 0));
-      const diwaliIST = new Date(diwaliDate.getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000));
-      const now = new Date();
-      const difference = diwaliIST.getTime() - now.getTime();
-
-      if (difference > 0) {
-        setTimeLeft({
-          days: Math.floor(difference / (1000 * 60 * 60 * 24)),
-          hours: Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
-          minutes: Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60)),
-          seconds: Math.floor((difference % (1000 * 60)) / 1000)
-        });
-      } else {
-        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
-      }
-    };
-
-    calculateTimeLeft();
-    const timer = setInterval(calculateTimeLeft, 1000);
-    return () => clearInterval(timer);
-  }, []);
+      const calculateTimeLeft = () => {
+        const diwaliDate = new Date(Date.UTC(2025, 9, 18, 0, 0, 0));
+        const diwaliIST = new Date(diwaliDate.getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000));
+        const now = new Date();
+        const difference = diwaliIST.getTime() - now.getTime();
+  
+        if (difference > 0) {
+          setTimeLeft({
+            days: Math.floor(difference / (1000 * 60 * 60 * 24)),
+            hours: Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+            minutes: Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60)),
+            seconds: Math.floor((difference % (1000 * 60)) / 1000)
+          });
+        } else {
+          setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+        }
+      };
+  
+      calculateTimeLeft();
+      const timer = setInterval(calculateTimeLeft, 1000);
+      return () => clearInterval(timer);
+    }, []);
 
   const TimerItem: React.FC<{ value: number; label: string }> = ({ value, label }) => (
     <View style={styles.timerItem}>
@@ -411,8 +479,6 @@ const DiwaliTimer: React.FC<{ onPress: () => void }> = React.memo(({ onPress }) 
     </View>
   );
 
-  const isDiwaliStarted = timeLeft.days === 0 && timeLeft.hours === 0 && timeLeft.minutes === 0 && timeLeft.seconds === 0;
-
   return (
     <TouchableOpacity 
       style={styles.diwaliTimerContainer} 
@@ -420,65 +486,36 @@ const DiwaliTimer: React.FC<{ onPress: () => void }> = React.memo(({ onPress }) 
       onPress={onPress}
     >
       <LinearGradient
-        colors={[COLORS.diwaliGradientStart, COLORS.diwaliGradientMiddle, COLORS.diwaliGradientEnd]}
+        colors={[COLORS.diwaliOrange, COLORS.diwaliRed, COLORS.diwaliDeepOrange]}
         style={styles.diwaliTimerGradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
       >
         {/* Firecrackers Background */}
         {firecrackers.map((firecracker) => (
-          <View
-            key={firecracker.id}
-            style={[
-              styles.firecrackerStatic,
-              {
-                left: firecracker.x,
-                top: firecracker.y,
-                transform: [{ scale: firecracker.scale }],
-              }
-            ]}
-          >
-            <Icon name="sparkles" size={moderateScale(8)} color={COLORS.diwaliSparkle} />
-          </View>
+          <Firecracker key={firecracker.id} firecracker={firecracker} visible={true} />
         ))}
 
-        {/* Content Container */}
-        <View style={styles.timerContentContainer}>
-          {/* Left Side - Diya and Text */}
-          <View style={styles.timerLeftContent}>
-            <View style={styles.timerIconContainer}>
-              <View style={styles.diyaBaseSmall}>
-                <LinearGradient
-                  colors={[COLORS.diwaliDiyaBase, COLORS.diwaliDark]}
-                  style={styles.diyaBaseGradientSmall}
-                />
-              </View>
-              <View style={styles.diyaFlameSmall} />
-            </View>
-            <View style={styles.timerTextContainer}>
-              <Text style={styles.timerTitle}>Diwali 2025</Text>
-              <Text style={styles.timerSubtitle}>
-                {isDiwaliStarted ? 'Festival Started! 🎉' : 'Starting in'}
-              </Text>
-            </View>
+        {/* Left Side - Icon and Text */}
+        <View style={styles.timerLeftContent}>
+          <View style={styles.timerIconContainer}>
+            <Icon name="sparkles" size={moderateScale(20)} color={COLORS.diwaliGold} />
           </View>
+          <View style={styles.timerTextContainer}>
+            <Text style={styles.timerTitle}>Diwali Offers</Text>
+            <Text style={styles.timerSubtitle}>Starting in</Text>
+          </View>
+        </View>
 
-          {/* Right Side - Countdown */}
-          {!isDiwaliStarted ? (
-            <View style={styles.timerRightContent}>
-              <TimerItem value={timeLeft.days} label="Days" />
-              <Text style={styles.timerColon}>:</Text>
-              <TimerItem value={timeLeft.hours} label="Hours" />
-              <Text style={styles.timerColon}>:</Text>
-              <TimerItem value={timeLeft.minutes} label="Mins" />
-              <Text style={styles.timerColon}>:</Text>
-              <TimerItem value={timeLeft.seconds} label="Secs" />
-            </View>
-          ) : (
-            <View style={styles.diwaliStartedContainer}>
-              <Text style={styles.diwaliStartedText}>Happy Diwali! 🪔</Text>
-            </View>
-          )}
+        {/* Right Side - Countdown */}
+        <View style={styles.timerRightContent}>
+          <TimerItem value={timeLeft.days} label="Days" />
+          <Text style={styles.timerColon}>:</Text>
+          <TimerItem value={timeLeft.hours} label="Hours" />
+          <Text style={styles.timerColon}>:</Text>
+          <TimerItem value={timeLeft.minutes} label="Mins" />
+          <Text style={styles.timerColon}>:</Text>
+          <TimerItem value={timeLeft.seconds} label="Secs" />
         </View>
 
         {/* Tap Indicator */}
@@ -490,13 +527,14 @@ const DiwaliTimer: React.FC<{ onPress: () => void }> = React.memo(({ onPress }) 
   );
 });
 
-// FIXED: Enhanced Diwali Popup Component with smooth bottom slide animation
+// Enhanced Diwali Popup Component with bottom slide animation
 interface DiwaliPopupProps {
   visible: boolean;
   onClose: () => void;
 }
 
 const DiwaliPopup: React.FC<DiwaliPopupProps> = React.memo(({ visible, onClose }) => {
+  const [fireworks, setFireworks] = useState<Array<{id: string; x: number; y: number; scale: number}>>([]);
   const [timeLeft, setTimeLeft] = useState({
     days: 0,
     hours: 0,
@@ -505,11 +543,22 @@ const DiwaliPopup: React.FC<DiwaliPopupProps> = React.memo(({ visible, onClose }
   });
   
   const slideAnim = useRef(new Animated.Value(height)).current;
-  const backdropAnim = useRef(new Animated.Value(0)).current;
-  const contentScaleAnim = useRef(new Animated.Value(0.95)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+  const contentScaleAnim = useRef(new Animated.Value(0.9)).current;
 
   useEffect(() => {
-    const calculateTimeLeft = () => {
+    if (visible) {
+      // Create fireworks
+      const newFireworks = Array.from({ length: 15 }, (_, i) => ({
+        id: `firework-${i}`,
+        x: Math.random() * width,
+        y: Math.random() * height,
+        scale: Math.random() * 1.2 + 0.8
+      }));
+      setFireworks(newFireworks);
+
+      // Calculate time until Diwali
+      const calculateTimeLeft = () => {
       const diwaliDate = new Date(Date.UTC(2025, 9, 18, 0, 0, 0));
       const diwaliIST = new Date(diwaliDate.getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000));
       const now = new Date();
@@ -527,58 +576,53 @@ const DiwaliPopup: React.FC<DiwaliPopupProps> = React.memo(({ visible, onClose }
       }
     };
 
-    if (visible) {
       calculateTimeLeft();
       const timer = setInterval(calculateTimeLeft, 1000);
 
-      // Enhanced animation sequence
-      Animated.sequence([
-        // Fade in backdrop
-        Animated.timing(backdropAnim, {
+      // Slide up animation
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacityAnim, {
           toValue: 1,
           duration: 300,
           useNativeDriver: true,
         }),
-        // Slide up modal with bounce effect
-        Animated.spring(slideAnim, {
-          toValue: 0,
-          tension: 70,
-          friction: 12,
-          useNativeDriver: true,
-        }),
-        // Scale in content
         Animated.spring(contentScaleAnim, {
           toValue: 1,
-          tension: 70,
-          friction: 12,
+          tension: 100,
+          friction: 8,
           useNativeDriver: true,
         })
       ]).start();
 
-      return () => {
-        clearInterval(timer);
-      };
+      return () => clearInterval(timer);
     } else {
-      // Enhanced close animation
+      // Slide down animation
       Animated.parallel([
         Animated.timing(slideAnim, {
           toValue: height,
-          duration: 300,
+          duration: 400,
           useNativeDriver: true,
         }),
-        Animated.timing(backdropAnim, {
+        Animated.timing(opacityAnim, {
           toValue: 0,
-          duration: 250,
+          duration: 200,
           useNativeDriver: true,
         }),
         Animated.timing(contentScaleAnim, {
-          toValue: 0.95,
+          toValue: 0.9,
           duration: 300,
           useNativeDriver: true,
         })
-      ]).start();
+      ]).start(() => {
+        setFireworks([]);
+      });
     }
-  }, [visible, slideAnim, backdropAnim, contentScaleAnim]);
+  }, [visible, slideAnim, opacityAnim, contentScaleAnim]);
 
   const handleClose = () => {
     onClose();
@@ -595,134 +639,177 @@ const DiwaliPopup: React.FC<DiwaliPopupProps> = React.memo(({ visible, onClose }
     </View>
   );
 
-  const isDiwaliStarted = timeLeft.days === 0 && timeLeft.hours === 0 && timeLeft.minutes === 0 && timeLeft.seconds === 0;
-
   return (
     <Modal
-      visible={visible}
-      transparent={true}
-      animationType="none"
-      onRequestClose={handleClose}
-      statusBarTranslucent={true}
+  visible={visible}
+  transparent={true}
+  animationType="none"
+  onRequestClose={handleClose}
+  statusBarTranslucent={true}
+>
+  <Animated.View 
+    style={[
+      styles.diwaliModalOverlay,
+      { opacity: opacityAnim }
+    ]}
+  >
+    {/* Enhanced Fireworks Background */}
+    {fireworks.map((firework) => (
+      <Firework key={firework.id} firework={firework} visible={visible} />
+    ))}
+    
+    {/* Backdrop Touch Area */}
+    <TouchableOpacity 
+      style={styles.backdropTouchable}
+      activeOpacity={1}
+      onPress={handleClose}
+    />
+    
+    {/* Main Modal Content */}
+    <Animated.View 
+      style={[
+        styles.diwaliModalContainerBottom,
+        {
+          transform: [{ translateY: slideAnim }],
+        }
+      ]}
     >
-      <Animated.View 
+      {/* Pull Handle Bar */}
+      <View style={styles.pullHandleBar} />
+      
+      <Animated.View
         style={[
-          styles.diwaliModalOverlay,
-          { opacity: backdropAnim }
+          styles.diwaliModalContent,
+          {
+            transform: [{ scale: contentScaleAnim }]
+          }
         ]}
       >
-        {/* Backdrop Touch Area */}
+        {/* Close Button */}
         <TouchableOpacity 
-          style={styles.diwaliModalBackdrop}
-          activeOpacity={1}
+          style={styles.diwaliCloseButton}
           onPress={handleClose}
-        />
-        
-        {/* Main Modal Content */}
-        <Animated.View 
-          style={[
-            styles.diwaliModalContainerBottom,
-            {
-              transform: [{ translateY: slideAnim }],
-            }
-          ]}
         >
-          <Animated.View
-            style={[
-              styles.diwaliModalContent,
-              {
-                transform: [{ scale: contentScaleAnim }]
-              }
-            ]}
-          >
-            {/* Header with decorative elements */}
+          <Icon name="close" size={moderateScale(20)} color={COLORS.textDark} />
+        </TouchableOpacity>
 
+        {/* Header with Animated Diya */}
+        <View style={styles.diwaliHeader}>
+          <View style={[styles.diyaContainer, styles.diyaLeft]}>
+            <View style={styles.diyaBase}>
+              <View style={[styles.diyaFlame, styles.flameAnimation]} />
+            </View>
+          </View>
+          
+          <Text style={styles.diwaliTitle}>Happy Diwali! 🪔</Text>
+          
+          <View style={[styles.diyaContainer, styles.diyaRight]}>
+            <View style={styles.diyaBase}>
+              <View style={[styles.diyaFlame, styles.flameAnimation]} />
+            </View>
+          </View>
+        </View>
 
-            {/* Close Button */}
-            <TouchableOpacity 
-              style={styles.diwaliCloseButton}
-              onPress={handleClose}
-            >
-              <Icon name="close" size={moderateScale(20)} color={COLORS.textDark} />
-            </TouchableOpacity>
-
-            {/* Content */}
-            <View style={styles.diwaliContent}>
-              <Text style={styles.diwaliSubtitle}>
-                {isDiwaliStarted ? 'Diwali Festival is Here! 🎉' : 'Diwali Coming Soon!'}
-              </Text>
-              <Text style={styles.diwaliMessage}>
-                {isDiwaliStarted 
-                  ? 'Celebrate the festival of lights with exclusive offers and delicious festive specials!'
-                  : 'Celebrate the festival of lights with exclusive offers and festive specials from October 18, 2025!'
-                }
-              </Text>
-              
-              {/* Countdown Timer */}
-              {!isDiwaliStarted && (
-                <View style={styles.popupCountdownContainer}>
-                  <View style={styles.popupCountdownTimer}>
-                    <TimerItem value={timeLeft.days} label="Days" />
-                    <Text style={styles.popupTimerColon}>:</Text>
-                    <TimerItem value={timeLeft.hours} label="Hours" />
-                    <Text style={styles.popupTimerColon}>:</Text>
-                    <TimerItem value={timeLeft.minutes} label="Minutes" />
-                    <Text style={styles.popupTimerColon}>:</Text>
-                    <TimerItem value={timeLeft.seconds} label="Seconds" />
-                  </View>
-                </View>
-              )}
-
-              {/* Offer Highlights */}
-              <View style={styles.popupOfferHighlights}>
-                {DIWALI_OFFERS.map((offer, index) => (
-                  <View key={offer.id} style={styles.popupOfferItem}>
-                    <View style={[styles.popupOfferIcon, { backgroundColor: `${offer.color}20` }]}>
-                      <Icon name={offer.icon} size={moderateScale(18)} color={offer.color} />
-                    </View>
-                    <View style={styles.popupOfferTextContainer}>
-                      <Text style={styles.popupOfferTitle}>{offer.title}</Text>
-                      <Text style={styles.popupOfferDesc}>{offer.subtitle}</Text>
-                    </View>
-                    {index < DIWALI_OFFERS.length - 1 && <View style={styles.offerDivider} />}
-                  </View>
-                ))}
+        {/* Content with ScrollView */}
+        <ScrollView 
+          style={styles.contentScrollView}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* Content */}
+          <View style={styles.diwaliContent}>
+            <Text style={styles.diwaliSubtitle}>Diwali Coming Soon!</Text>
+            <Text style={styles.diwaliMessage}>
+              Get ready for the festival of lights with{'\n'}
+              exclusive offers and delicious festive specials
+            </Text>
+            
+            {/* Enhanced Countdown Timer */}
+            <View style={styles.popupCountdownContainer}>
+              <Text style={styles.popupCountdownText}>Festival starts in</Text>
+              <View style={styles.popupCountdownTimer}>
+                <TimerItem value={timeLeft.days} label="Days" />
+                <Text style={styles.popupTimerColon}>:</Text>
+                <TimerItem value={timeLeft.hours} label="Hours" />
+                <Text style={styles.popupTimerColon}>:</Text>
+                <TimerItem value={timeLeft.minutes} label="Minutes" />
+                <Text style={styles.popupTimerColon}>:</Text>
+                <TimerItem value={timeLeft.seconds} label="Seconds" />
               </View>
             </View>
 
-            {/* Action Button */}
-            <TouchableOpacity 
-              style={styles.diwaliButton}
-              onPress={handleClose}
-              activeOpacity={0.8}
-            >
-              <LinearGradient
-                colors={[COLORS.diwaliGold, COLORS.diwaliOrange]}
-                style={styles.diwaliButtonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                <Icon name="notifications" size={moderateScale(18)} color="#FFF" />
-                <Text style={styles.diwaliButtonText}>
-                  {isDiwaliStarted ? 'Explore Offers' : 'Get Notified'}
-                </Text>
-                <Icon name="chevron-forward" size={moderateScale(16)} color="#FFF" />
-              </LinearGradient>
-            </TouchableOpacity>
-          </Animated.View>
-
-          {/* Bottom decorative line */}
-          <View style={styles.bottomDecorLine}>
-            <LinearGradient
-              colors={[COLORS.diwaliGold, COLORS.diwaliOrange, COLORS.diwaliGold]}
-              style={styles.bottomDecorGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            />
+            {/* Enhanced Offer Highlights */}
+            <View style={styles.popupOfferHighlights}>
+              <View style={styles.popupOfferItem}>
+                <View style={styles.popupOfferIcon}>
+                  <Icon name="flash" size={moderateScale(24)} color={COLORS.diwaliGold} />
+                </View>
+                <View style={styles.offerTextContainer}>
+                  <Text style={styles.popupOfferTitle}>Upto 50% OFF</Text>
+                  <Text style={styles.popupOfferDesc}>On all orders</Text>
+                </View>
+              </View>
+              
+              <View style={styles.popupOfferItem}>
+                <View style={styles.popupOfferIcon}>
+                  <Icon name="gift" size={moderateScale(24)} color={COLORS.diwaliGold} />
+                </View>
+                <View style={styles.offerTextContainer}>
+                  <Text style={styles.popupOfferTitle}>Free Delivery</Text>
+                  <Text style={styles.popupOfferDesc}>No minimum order</Text>
+                </View>
+              </View>
+              
+              <View style={styles.popupOfferItem}>
+                <View style={styles.popupOfferIcon}>
+                  <Icon name="star" size={moderateScale(24)} color={COLORS.diwaliGold} />
+                </View>
+                <View style={styles.offerTextContainer}>
+                  <Text style={styles.popupOfferTitle}>Free Traditional Sweets</Text>
+                  <Text style={styles.popupOfferDesc}>On all orders</Text>
+                </View>
+              </View>
+            </View>
           </View>
-        </Animated.View>
+        </ScrollView>
+
+        {/* Enhanced Action Button */}
+        <TouchableOpacity 
+          style={styles.diwaliButton}
+          onPress={handleClose}
+          activeOpacity={0.8}
+        >
+          <LinearGradient
+            colors={[COLORS.diwaliGold, COLORS.diwaliOrange, COLORS.diwaliRed]}
+            style={styles.diwaliButtonGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+          >
+            <View style={styles.buttonContent}>
+              <Icon name="notifications" size={moderateScale(20)} color="#FFF" />
+              <Text style={styles.diwaliButtonText}>Get Notified</Text>
+              <Icon name="chevron-forward" size={moderateScale(16)} color="#FFF" />
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
       </Animated.View>
-    </Modal>
+
+      {/* Enhanced Decorative Elements */}
+      <View style={styles.decorativeTopLeft}>
+        <Icon name="sparkles" size={moderateScale(24)} color={COLORS.diwaliGold} />
+      </View>
+      <View style={styles.decorativeTopRight}>
+        <Icon name="sparkles" size={moderateScale(24)} color={COLORS.diwaliGold} />
+      </View>
+      <View style={styles.decorativeBottomLeft}>
+        <Icon name="flower" size={moderateScale(18)} color={COLORS.diwaliOrange} />
+      </View>
+      <View style={styles.decorativeBottomRight}>
+        <Icon name="flower" size={moderateScale(18)} color={COLORS.diwaliOrange} />
+      </View>
+    </Animated.View>
+  </Animated.View>
+</Modal>
   );
 });
 
@@ -753,7 +840,10 @@ const SearchInput: React.FC<SearchInputProps> = React.memo(({ onPress, placehold
     );
 
     pulseAnimation.start();
-    return () => pulseAnimation.stop();
+
+    return () => {
+      pulseAnimation.stop();
+    };
   }, [pulseAnim]);
 
   return (
@@ -767,6 +857,10 @@ const SearchInput: React.FC<SearchInputProps> = React.memo(({ onPress, placehold
               outputRange: [1, 0.98],
             }),
           }],
+          opacity: animatedValue.interpolate({
+            inputRange: [0, 1],
+            outputRange: [1, 0.9],
+          }),
         },
         {
           transform: [{ scale: pulseAnim }],
@@ -798,12 +892,14 @@ const SearchInput: React.FC<SearchInputProps> = React.memo(({ onPress, placehold
             />
           </View>
         </View>
+        
+        <View style={styles.searchShimmer} />
       </TouchableOpacity>
     </Animated.View>
   );
 });
 
-// Enhanced Kitchen Card Component
+// Enhanced Kitchen Card Component for Side-by-Side Layout
 interface KitchenCardProps {
   kitchen: Kitchen;
   onPress: (kitchen: Kitchen) => void;
@@ -1116,10 +1212,13 @@ const KitchenScreen: React.FC = () => {
   const [searchHistory, setSearchHistory] = useState<SearchItem[]>([]);
   const [searchSuggestionsData, setSearchSuggestionsData] = useState<SearchSuggestionResponse | null>(null);
   
+  
   // Diwali Popup State
   const [showDiwaliPopup, setShowDiwaliPopup] = useState(false);
   const [diwaliPopupShown, setDiwaliPopupShown] = useState(false);
   
+  // Scroll animation refs
+  const scrollY = useRef(new Animated.Value(0)).current;
   const searchAnim = useRef(new Animated.Value(0)).current;
   const searchInputRef = useRef<TextInput>(null);
   const placeholderAnim = useRef(new Animated.Value(0)).current;
@@ -1136,11 +1235,25 @@ const KitchenScreen: React.FC = () => {
   // Debounced search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
+  // Scroll animation for sticky search and compact categories
+  const headerHeight = scrollY.interpolate({
+    inputRange: [0, 80],
+    outputRange: [160, 80],
+    extrapolate: 'clamp',
+  });
+
+  const searchOpacity = scrollY.interpolate({
+    inputRange: [0, 60],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
   // Check and show Diwali popup
   const checkAndShowDiwaliPopup = useCallback(async () => {
     try {
       const popupShown = await AsyncStorage.getItem('diwali_popup_shown');
       if (!popupShown && !diwaliPopupShown) {
+        // Wait a bit for the main content to load
         setTimeout(() => {
           setShowDiwaliPopup(true);
           setDiwaliPopupShown(true);
@@ -1154,12 +1267,58 @@ const KitchenScreen: React.FC = () => {
 
   // Enhanced placeholder animation
   useEffect(() => {
+    const animatePlaceholder = () => {
+      Animated.timing(placeholderAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }).start(() => {
+        placeholderAnim.setValue(0);
+      });
+    };
+
     const interval = setInterval(() => {
-      setCurrentPlaceholderIndex(prev => (prev + 1) % SEARCH_PLACEHOLDERS.length);
+      setCurrentPlaceholderIndex(prev => {
+        animatePlaceholder();
+        return (prev + 1) % SEARCH_PLACEHOLDERS.length;
+      });
     }, 3000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [placeholderAnim]);
+
+  // Fixed Modal animation - Shadow first, then modal
+  useEffect(() => {
+    if (isSearchModalVisible) {
+      // First show the shadow/overlay
+      Animated.timing(modalOpacityAnim, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => {
+        // Then slide in the modal
+        Animated.timing(modalSlideAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }).start();
+      });
+    } else {
+      // First slide out the modal
+      Animated.timing(modalSlideAnim, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }).start(() => {
+        // Then hide the shadow/overlay
+        Animated.timing(modalOpacityAnim, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }).start();
+      });
+    }
+  }, [isSearchModalVisible, modalSlideAnim, modalOpacityAnim]);
 
   // Fetch user data
   const fetchUserData = useCallback(async () => {
@@ -1191,6 +1350,31 @@ const KitchenScreen: React.FC = () => {
       console.error('Error fetching search data:', error);
     }
   }, []);
+
+  // Save search data
+  const saveToRecentSearches = useCallback(async (query: string, item?: SearchItem) => {
+    try {
+      const updatedSearches = [
+        query,
+        ...recentSearches.filter(search => search.toLowerCase() !== query.toLowerCase())
+      ].slice(0, 5);
+      
+      setRecentSearches(updatedSearches);
+      await AsyncStorage.setItem('recentSearches', JSON.stringify(updatedSearches));
+
+      if (item) {
+        const updatedHistory = [
+          { ...item, searchedAt: new Date().toISOString() },
+          ...searchHistory.filter(hist => hist.id !== item.id)
+        ].slice(0, 10);
+        
+        setSearchHistory(updatedHistory);
+        await AsyncStorage.setItem('searchHistory', JSON.stringify(updatedHistory));
+      }
+    } catch (error) {
+      console.error('Error saving search data:', error);
+    }
+  }, [recentSearches, searchHistory]);
 
   // Fetch active orders
   const fetchActiveOrders = useCallback(async (userId: string) => {
@@ -1354,6 +1538,88 @@ const KitchenScreen: React.FC = () => {
     }
   }, []);
 
+  // Enhanced search functionality
+  const fetchSearchSuggestions = useCallback(async (query: string) => {
+    if (query.length < 1) {
+      setSearchSuggestionsData(null);
+      setSearchResults([]);
+      setSearchLoading(false);
+      return;
+    }
+
+    try {
+      setSearchLoading(true);
+
+      const response = await searchSuggestions(query);
+      if (response?.data) {
+        setSearchSuggestionsData(response.data);
+        
+        const transformedResults: SearchItem[] = [];
+        
+        // Transform menu items
+        response.data.menus.forEach(menu => {
+          menu.items.forEach(item => {
+            transformedResults.push({
+              id: `menu-${item.id}`,
+              name: item.item_name || menu.menu_name,
+              image: item.item_image,
+              type: 'food',
+              category: menu.menu_name,
+              price: item.item_price,
+              foodType: item.food_type,
+              restaurant: item.restaurant,
+              originalData: item,
+              rating: Math.random() * 2 + 3,
+              deliveryTime: `${Math.floor(Math.random() * 20) + 15}-${Math.floor(Math.random() * 20) + 35} min`
+            });
+          });
+        });
+        
+        // Transform restaurants
+        response.data.restaurants.forEach(restaurant => {
+          const cuisineNames = restaurant.cuisines
+            .filter(cuisine => cuisine.cuisine_name)
+            .map(cuisine => cuisine.cuisine_name)
+            .join(', ');
+            
+          transformedResults.push({
+            id: `restaurant-${restaurant.restaurant_id}`,
+            name: restaurant.restaurant_name,
+            image: restaurant.profile_image,
+            type: 'restaurant',
+            category: cuisineNames || 'Various cuisines',
+            originalData: restaurant,
+            rating: restaurant.rating || Math.random() * 2 + 3,
+            deliveryTime: restaurant.delivery_time || `${Math.floor(Math.random() * 20) + 15}-${Math.floor(Math.random() * 20) + 35} min`,
+            distance: restaurant.distance || `${(Math.random() * 5).toFixed(1)} km`
+          });
+        });
+
+        // Add trending items if available
+        if (response.data.trending_items) {
+          response.data.trending_items.forEach(item => {
+            transformedResults.unshift({
+              id: `trending-${item.id}`,
+              name: item.name,
+              image: item.image,
+              type: 'trending',
+              originalData: item
+            });
+          });
+        }
+
+        setSearchResults(transformedResults);
+      } else {
+        setSearchResults([]);
+      }
+    } catch (error) {
+      console.error('Error fetching search suggestions:', error);
+      setSearchResults([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  }, []);
+
   // Initial data loading
   useEffect(() => {
     let isMounted = true;
@@ -1389,6 +1655,15 @@ const KitchenScreen: React.FC = () => {
     };
   }, [fetchKitchens, fetchPastKitchenDetails, fetchUserData, fetchActiveOrders, fetchRecentSearches, checkAndShowDiwaliPopup]);
 
+  // Search effect
+  useEffect(() => {
+    if (debouncedSearchQuery && isSearchModalVisible) {
+      fetchSearchSuggestions(debouncedSearchQuery);
+    } else if (debouncedSearchQuery.length === 0 && isSearchModalVisible) {
+      setSearchResults([]);
+    }
+  }, [debouncedSearchQuery, isSearchModalVisible, fetchSearchSuggestions]);
+
   // Refresh control
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -1410,6 +1685,96 @@ const KitchenScreen: React.FC = () => {
     }
   }, [fetchKitchens, fetchActiveOrders, fetchPastKitchenDetails, fetchUserData]);
 
+  // Enhanced Search handlers with fixed animation sequence
+  const openSearchModal = useCallback(() => {
+    setIsSearchModalVisible(true);
+    Animated.timing(searchAnim, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, [searchAnim]);
+
+  const closeSearchModal = useCallback(() => {
+    setIsSearchModalVisible(false);
+    setSearchQuery('');
+    setSearchResults([]);
+    setSearchSuggestionsData(null);
+    Animated.timing(searchAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+  }, [searchAnim]);
+
+  const handleSearchChange = useCallback((text: string) => {
+    setSearchQuery(text);
+  }, []);
+
+  const handleSearchSubmit = useCallback(async () => {
+    if (searchQuery.trim()) {
+      try {
+        await saveToRecentSearches(searchQuery);
+        closeSearchModal();
+        
+        navigation.navigate('HomeKitchenNavigate', { 
+          screen: 'SearchResults', 
+          params: { 
+            query: searchQuery,
+            suggestionsData: searchSuggestionsData
+          } 
+        });
+      } catch (error) {
+        console.error('Error handling search submit:', error);
+      }
+    }
+  }, [searchQuery, navigation, closeSearchModal, saveToRecentSearches, searchSuggestionsData]);
+
+  const handleRecentSearchPress = useCallback((query: string) => {
+    setSearchQuery(query);
+    setTimeout(() => {
+      handleSearchSubmit();
+    }, 100);
+  }, [handleSearchSubmit]);
+
+  const handlePopularSearchPress = useCallback((query: string) => {
+    setSearchQuery(query);
+    setTimeout(() => {
+      handleSearchSubmit();
+    }, 100);
+  }, [handleSearchSubmit]);
+
+  const handleSearchResultPress = useCallback((item: SearchItem) => {
+    saveToRecentSearches(item.name, item);
+    closeSearchModal();
+    
+    if (item.type === 'restaurant') {
+      navigation.navigate('HomeKitchenDetails', { 
+        kitchenId: item.originalData?.restaurant_id || item.id.replace('restaurant-', '')
+      });
+    } else {
+      navigation.navigate('HomeKitchenNavigate', { 
+        screen: 'SearchResults', 
+        params: { 
+          query: item.name,
+          itemId: item.id.replace('menu-', ''),
+          suggestionsData: searchSuggestionsData
+        } 
+      });
+    }
+  }, [closeSearchModal, navigation, saveToRecentSearches, searchSuggestionsData]);
+
+  const clearRecentSearches = useCallback(async () => {
+    try {
+      setRecentSearches([]);
+      setSearchHistory([]);
+      await AsyncStorage.removeItem('recentSearches');
+      await AsyncStorage.removeItem('searchHistory');
+    } catch (error) {
+      console.error('Error clearing search history:', error);
+    }
+  }, []);
+
   // Diwali popup handlers
   const handleDiwaliPopupClose = useCallback(() => {
     setShowDiwaliPopup(false);
@@ -1417,17 +1782,6 @@ const KitchenScreen: React.FC = () => {
 
   const handleDiwaliTimerPress = useCallback(() => {
     setShowDiwaliPopup(true);
-  }, []);
-
-  const openSearchModal = useCallback(() => {
-    setIsSearchModalVisible(true);
-  }, []);
-
-  const closeSearchModal = useCallback(() => {
-    setIsSearchModalVisible(false);
-    setSearchQuery('');
-    setSearchResults([]);
-    setSearchSuggestionsData(null);
   }, []);
 
   // Order handlers
@@ -1494,12 +1848,13 @@ const KitchenScreen: React.FC = () => {
     return result;
   }, [apiData, searchQuery, activeCategory, filters]);
 
+  // UPDATED: Category press handler with navigation
   const handleCategoryPress = useCallback((categoryId: number, categoryName: string) => {
     navigation.navigate('HomeKitchenNavigate', {
       screen: 'CategoryResults',
       params: { 
-          query: categoryName,
-        } 
+        query: categoryName,
+      } 
     });
   }, [navigation]);
 
@@ -1557,7 +1912,12 @@ const KitchenScreen: React.FC = () => {
     }
   }, [navigation, pastKitchenDetails]);
 
+  const handleRemoveRecentSearch = (query: string) => {
+    setRecentSearches(prev => prev.filter(item => item !== query));
+  }
+
   // Render functions for main content
+  // UPDATED: Category renderer with circular images
   const renderCategory = useCallback(({ item, index }: { item: Category, index: number }) => (
     <TouchableOpacity 
       style={[
@@ -1574,7 +1934,7 @@ const KitchenScreen: React.FC = () => {
         ]}
       >
         <Image 
-          source={{ uri: item.icon }} 
+          source={{ uri: item.icon || DEFAULT_CATEGORY_ICON }} 
           style={styles.categoryImage} 
           resizeMode="cover"
           defaultSource={{ uri: DEFAULT_CATEGORY_ICON }}
@@ -1625,7 +1985,7 @@ const KitchenScreen: React.FC = () => {
     );
   }, [handleKitchenPress, toggleFavorite, favoriteLoading]);
 
-  // Side by side kitchen item renderer for recommended section
+  // Side by side kitchen item renderer for recommended section - Now in horizontal FlatList
   const renderSideBySideKitchenItem = useCallback(({ item }: { item: Kitchen }) => {
     return (
       <KitchenCard
@@ -1733,6 +2093,50 @@ const KitchenScreen: React.FC = () => {
         onClose={handleDiwaliPopupClose}
       />
 
+      {/* Search Modal */}
+      {isSearchModalVisible && (
+        <Animated.View 
+          style={[
+            styles.searchModalOverlay,
+            {
+              opacity: modalOpacityAnim,
+            }
+          ]}
+        >
+          <Animated.View 
+            style={[
+              styles.searchModalContainer,
+              {
+                transform: [{
+                  translateY: modalSlideAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [height, 0],
+                  }),
+                }],
+              }
+            ]}
+          >
+            <SearchModal
+              isVisible={isSearchModalVisible}
+              onClose={closeSearchModal}
+              searchQuery={searchQuery}
+              onSearchChange={handleSearchChange}
+              onSearchSubmit={handleSearchSubmit}
+              recentSearches={recentSearches}
+              searchHistory={searchHistory}
+              searchResults={searchResults}
+              searchLoading={searchLoading}
+              onRecentSearchPress={handleRecentSearchPress}
+              onPopularSearchPress={handlePopularSearchPress}
+              onSearchResultPress={handleSearchResultPress}
+              onClearRecentSearches={clearRecentSearches}
+              searchInputRef={searchInputRef}
+              onRemoveRecentSearch={handleRemoveRecentSearch}
+            />
+          </Animated.View>
+        </Animated.View>
+      )}
+
       {/* Active Orders Footer */}
       {activeOrders.length > 0 && !ordersLoading && (
         <View style={styles.activeOrdersFooter}>
@@ -1763,38 +2167,21 @@ const KitchenScreen: React.FC = () => {
         </View>
       )}
 
-      {/* Enhanced Header Section */}
-      <Animated.View style={styles.headerContainer}>
+      {/* Sticky Search Bar */}
+      <Animated.View style={[styles.stickySearchContainer, { opacity: searchOpacity }]}>
         <LinearGradient
           colors={[COLORS.gradientStart, COLORS.gradientMiddle, COLORS.gradientEnd]}
-          style={styles.headerGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
+          style={styles.stickySearchGradient}
         >
-          <View style={styles.searchContainer}>
-            <SearchInput
-              onPress={openSearchModal}
-              placeholder={SEARCH_PLACEHOLDERS[currentPlaceholderIndex]}
-              animatedValue={placeholderAnim}
-            />
-          </View>
-
-          {/* Diwali Timer - Above Categories */}
-          <DiwaliTimer onPress={handleDiwaliTimerPress} />
-
-          <Animated.FlatList
-            horizontal
-            data={apiData?.data?.CategoryList || []}
-            renderItem={renderCategory}
-            keyExtractor={(item) => item.id.toString()}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoryListContainer}
+          <SearchInput
+            onPress={openSearchModal}
+            placeholder={SEARCH_PLACEHOLDERS[currentPlaceholderIndex]}
           />
         </LinearGradient>
       </Animated.View>
 
-      {/* Main Content */}
-      <ScrollView
+      {/* Main ScrollView */}
+      <Animated.ScrollView
         style={styles.scrollContainer}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -1806,56 +2193,114 @@ const KitchenScreen: React.FC = () => {
             tintColor={COLORS.refreshControl}
           />
         }
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+        scrollEventThrottle={16}
       >
+        {/* Enhanced Header Section - Scrolls with content */}
+        <Animated.View style={[styles.headerContainer, { height: headerHeight + 25 }]}>
+          <LinearGradient
+            colors={[COLORS.gradientStart, COLORS.gradientMiddle, COLORS.gradientEnd]}
+            style={styles.headerGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+          >
+            {/* Main Search - Hidden when scrolling */}
+            <Animated.View 
+              style={[
+                styles.searchContainer,
+                { 
+                  opacity: scrollY.interpolate({
+                    inputRange: [0, 50],
+                    outputRange: [1, 0],
+                    extrapolate: 'clamp',
+                  }) 
+                }
+              ]}
+            >
+              <SearchInput
+                onPress={openSearchModal}
+                placeholder={SEARCH_PLACEHOLDERS[currentPlaceholderIndex]}
+                animatedValue={placeholderAnim}
+              />
+            </Animated.View>
 
-        {/* Quick Filters */}
-        <View style={styles.sectionContainer}>
-          <FlatList
-            horizontal
-            data={filters}
-            renderItem={renderFilter}
-            keyExtractor={(item) => item.id}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterList}
-          />
-        </View>
+            {/* Diwali Timer - Above Categories */}
+            <Animated.View style={styles.diwaliTimerWrapper}>
+              <DiwaliTimer onPress={handleDiwaliTimerPress} />
+            </Animated.View>
+          </LinearGradient>
+        </Animated.View>
 
-        {/* Featured Kitchens - Horizontal Side by Side Layout */}
-        {apiData?.data?.FeatureKitchenList?.length > 0 && (
-          <View style={styles.featuredSectionContainer}>
-            <Text style={styles.sectionTitle}>Recommended for you</Text>
+        {/* Main Content */}
+        <View style={styles.mainContent}>
+          {/* Categories Section - MOVED TO BODY */}
+          {apiData?.data?.CategoryList && apiData.data.CategoryList.length > 0 && (
+            <View style={styles.categoriesSection}>
+              <FlatList
+                horizontal
+                data={apiData.data.CategoryList}
+                renderItem={renderCategory}
+                keyExtractor={(item) => item.id.toString()}
+                showsHorizontalScrollIndicator={false}
+                snapToInterval={scale(80)}
+                decelerationRate="fast"
+              />
+            </View>
+          )}
+
+          {/* Quick Filters */}
+          <View style={styles.sectionContainer}>
             <FlatList
               horizontal
-              data={apiData.data.FeatureKitchenList}
-              renderItem={renderSideBySideKitchenItem}
-              keyExtractor={(item) => item.restaurant_id}
+              data={filters}
+              renderItem={renderFilter}
+              keyExtractor={(item) => item.id}
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.recommendedListContainer}
-              snapToInterval={sideBySideCardWidth + scale(8)}
-              decelerationRate="fast"
+              contentContainerStyle={styles.filterList}
             />
           </View>
-        )}
 
-        {/* All Kitchens - Detailed Layout (One below one) */}
-        <View style={styles.sectionContainer}>
-          {filteredKitchens.length === 0 ? (
-            <View style={styles.emptyResultContainer}>
-              <Icon name="restaurant-outline" size={moderateScale(60)} color={COLORS.textLight} />
-              <Text style={styles.emptyText}>No restaurants found</Text>
-              <Text style={styles.emptySubText}>Try adjusting your filters or search</Text>
+          {/* Featured Kitchens - Horizontal Side by Side Layout */}
+          {apiData?.data?.FeatureKitchenList?.length > 0 && (
+            <View style={styles.featuredSectionContainer}>
+              <Text style={styles.sectionTitle}>RECOMMENDED FOR YOU</Text>
+              <FlatList
+                horizontal
+                data={apiData.data.FeatureKitchenList}
+                renderItem={renderSideBySideKitchenItem}
+                keyExtractor={(item) => item.restaurant_id}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.recommendedListContainer}
+                snapToInterval={sideBySideCardWidth + scale(8)}
+                decelerationRate="fast"
+              />
             </View>
-          ) : (
-            <FlatList
-              data={filteredKitchens}
-              renderItem={renderKitchenItem}
-              keyExtractor={(item) => item.restaurant_id}
-              scrollEnabled={false}
-              contentContainerStyle={styles.kitchenList}
-            />
           )}
+
+          {/* All Kitchens - Detailed Layout (One below one) */}
+          <View style={styles.sectionContainer}>
+            <Text style={styles.sectionTitle}>DISCOVER KITCHENS NEAR YOU</Text>
+            {filteredKitchens.length === 0 ? (
+              <View style={styles.emptyResultContainer}>
+                <Icon name="restaurant-outline" size={moderateScale(60)} color={COLORS.textLight} />
+                <Text style={styles.emptyText}>No restaurants found</Text>
+                <Text style={styles.emptySubText}>Try adjusting your filters or search</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={filteredKitchens}
+                renderItem={renderKitchenItem}
+                keyExtractor={(item) => item.restaurant_id}
+                scrollEnabled={false}
+                contentContainerStyle={styles.kitchenList}
+              />
+            )}
+          </View>
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
 
       {/* Cart Summary */}
       {pastKitchenDetails && activeOrders.length === 0 && (
@@ -1896,8 +2341,9 @@ const KitchenScreen: React.FC = () => {
   );
 };
 
-// Enhanced Styles with improved Diwali components
+// Reorganized Styles following kitchen-home-screen pattern with responsive text
 const styles = StyleSheet.create({
+  // Base container styles
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -1944,10 +2390,34 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.semiBold,
   },
 
-  // Diwali Timer Styles - Compact and inline
+  // Sticky Search Styles
+  stickySearchContainer: {
+    position: 'absolute',
+    top: isAndroid ? scale(10) : scale(15),
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+    paddingHorizontal: scale(16),
+  },
+  stickySearchGradient: {
+    borderRadius: scale(16),
+    padding: scale(2),
+  },
+
+  // Firecracker Styles
+  firecracker: {
+    position: 'absolute',
+    zIndex: 1,
+  },
+  firework: {
+    position: 'absolute',
+    zIndex: 1,
+  },
+
+  // Diwali Timer Styles
   diwaliTimerContainer: {
     marginHorizontal: scale(16),
-    marginBottom: scale(12),
+    marginBottom: scale(8),
     borderRadius: scale(12),
     overflow: 'hidden',
     shadowColor: COLORS.diwaliOrange,
@@ -1957,13 +2427,11 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   diwaliTimerGradient: {
-    padding: scale(14),
-    position: 'relative',
-  },
-  timerContentContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    padding: scale(14),
+    position: 'relative',
   },
   timerLeftContent: {
     flexDirection: 'row',
@@ -1978,25 +2446,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: scale(12),
-    position: 'relative',
-  },
-  diyaBaseSmall: {
-    width: scale(16),
-    height: scale(12),
-    borderRadius: scale(3),
-    overflow: 'hidden',
-  },
-  diyaBaseGradientSmall: {
-    width: '100%',
-    height: '100%',
-  },
-  diyaFlameSmall: {
-    position: 'absolute',
-    top: scale(4),
-    width: scale(4),
-    height: scale(6),
-    borderRadius: scale(2),
-    backgroundColor: COLORS.diwaliFlame,
+    shadowColor: COLORS.diwaliGold,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
   timerTextContainer: {
     flex: 1,
@@ -2006,6 +2460,9 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.bold,
     color: '#FFFFFF',
     marginBottom: scale(2),
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   timerSubtitle: {
     fontSize: FONT.SM,
@@ -2016,31 +2473,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  diwaliStartedContainer: {
-    paddingHorizontal: scale(12),
-    paddingVertical: scale(6),
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: scale(8),
-  },
-  diwaliStartedText: {
-    fontSize: FONT.SM,
-    fontFamily: FONTS.semiBold,
-    color: '#FFFFFF',
-  },
   timerItem: {
     alignItems: 'center',
     marginHorizontal: scale(2),
   },
   timerValueContainer: {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: scale(4),
-    paddingHorizontal: scale(4),
-    paddingVertical: scale(2),
-    minWidth: scale(24),
+    borderRadius: scale(6),
+    paddingHorizontal: scale(6),
+    paddingVertical: scale(4),
+    minWidth: scale(28),
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
   },
   timerValue: {
-    fontSize: FONT.XS,
+    fontSize: FONT.SM,
     fontFamily: FONTS.bold,
     color: COLORS.diwaliOrange,
   },
@@ -2048,246 +2499,334 @@ const styles = StyleSheet.create({
     fontSize: FONT.XS,
     fontFamily: FONTS.medium,
     color: 'rgba(255, 255, 255, 0.9)',
-    marginTop: scale(1),
+    marginTop: scale(2),
   },
   timerColon: {
-    fontSize: FONT.SM,
+    fontSize: FONT.LG,
     fontFamily: FONTS.bold,
     color: '#FFFFFF',
     marginHorizontal: scale(1),
-    marginBottom: scale(4),
+    marginBottom: scale(8),
   },
   tapIndicator: {
-    position: 'absolute',
-    right: scale(12),
-    top: '50%',
-    marginTop: scale(-8),
+    marginLeft: scale(8),
   },
-  firecrackerStatic: {
-    position: 'absolute',
-    zIndex: 1,
+  diwaliTimerWrapper: {
+    marginTop: scale(8),
   },
-
-  // Enhanced Diwali Popup Styles
-  diwaliModalOverlay: {
+  // Bottom Slide Diwali Popup Styles
+    diwaliModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
     justifyContent: 'flex-end',
   },
-  diwaliModalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+  backdropTouchable: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   diwaliModalContainerBottom: {
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: scale(24),
-    borderTopRightRadius: scale(24),
-    maxHeight: height * 0.75,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 10,
+    borderTopLeftRadius: scale(30),
+    borderTopRightRadius: scale(30),
+    paddingBottom: scale(20),
+    maxHeight: height * 0.85,
+    shadowColor: COLORS.diwaliGold,
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 25,
+    elevation: 20,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 215, 0, 0.2)',
+  },
+  pullHandleBar: {
+    width: scale(40),
+    height: scale(4),
+    backgroundColor: '#E5E5E5',
+    borderRadius: scale(2),
+    alignSelf: 'center',
+    marginTop: scale(8),
+    marginBottom: scale(8),
   },
   diwaliModalContent: {
-    padding: scale(24),
-    paddingBottom: scale(30),
+    padding: scale(20),
+    paddingTop: scale(10),
+  },
+  contentScrollView: {
+    maxHeight: height * 0.6,
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   diwaliCloseButton: {
     position: 'absolute',
-    top: scale(16),
-    right: scale(16),
+    top: scale(12),
+    right: scale(12),
     zIndex: 10,
-    width: scale(32),
-    height: scale(32),
-    borderRadius: scale(16),
-    backgroundColor: COLORS.lightGray,
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(18),
+    backgroundColor: '#FFF',
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
   },
   diwaliHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: scale(25),
+    marginTop: scale(15),
+    paddingHorizontal: scale(10),
+  },
+  diyaContainer: {
+    alignItems: 'center',
+  },
+  diyaLeft: {
+    transform: [{ rotate: '-5deg' }],
+  },
+  diyaRight: {
+    transform: [{ rotate: '5deg' }],
+  },
+  diyaBase: {
+    width: scale(24),
+    height: scale(18),
+    backgroundColor: COLORS.diwaliDark,
+    borderRadius: scale(12),
     justifyContent: 'center',
-    marginBottom: scale(20),
-    marginTop: scale(10),
+    alignItems: 'center',
+    shadowColor: COLORS.diwaliOrange,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  decorativeLeft: {
-    marginRight: scale(12),
+  diyaFlame: {
+    width: scale(8),
+    height: scale(12),
+    backgroundColor: COLORS.diwaliOrange,
+    borderRadius: scale(4),
   },
-  decorativeRight: {
-    marginLeft: scale(12),
+  flameAnimation: {
+    shadowColor: COLORS.diwaliOrange,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 10,
   },
   diwaliTitle: {
-    fontSize: FONT.XXL,
+    fontSize: FONT.XXL + 2,
     fontFamily: FONTS.bold,
     color: COLORS.diwaliOrange,
     textAlign: 'center',
-    textShadowColor: 'rgba(255, 215, 0, 0.3)',
+    textShadowColor: 'rgba(255, 215, 0, 0.4)',
     textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 3,
+    textShadowRadius: 5,
+    letterSpacing: 0.5,
   },
   diwaliContent: {
     alignItems: 'center',
-    marginBottom: scale(20),
+    marginBottom: scale(15),
   },
   diwaliSubtitle: {
-    fontSize: FONT.XL,
+    fontSize: FONT.XL + 2,
     fontFamily: FONTS.semiBold,
     color: COLORS.diwaliRed,
-    marginBottom: scale(12),
+    marginBottom: scale(15),
     textAlign: 'center',
+    textShadowColor: 'rgba(255, 107, 53, 0.2)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   diwaliMessage: {
     fontSize: FONT.LG,
     fontFamily: FONTS.regular,
     color: COLORS.textDark,
     textAlign: 'center',
-    lineHeight: scale(22),
-    marginBottom: scale(20),
+    lineHeight: scale(24),
+    marginBottom: scale(25),
+    paddingHorizontal: scale(10),
   },
   popupCountdownContainer: {
     alignItems: 'center',
-    marginBottom: scale(20),
-    backgroundColor: 'rgba(255, 107, 53, 0.1)',
-    padding: scale(16),
-    borderRadius: scale(12),
+    marginBottom: scale(25),
+    backgroundColor: 'rgba(255, 107, 53, 0.08)',
+    padding: scale(20),
+    borderRadius: scale(16),
     width: '100%',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 53, 0.1)',
   },
   popupCountdownText: {
     fontSize: FONT.LG,
     fontFamily: FONTS.medium,
     color: COLORS.diwaliOrange,
-    marginBottom: scale(12),
+    marginBottom: scale(15),
+    letterSpacing: 0.3,
   },
   popupCountdownTimer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  popupTimerItem: {
-    alignItems: 'center',
-    marginHorizontal: scale(4),
-  },
-  popupTimerValueContainer: {
-    backgroundColor: COLORS.diwaliOrange,
-    borderRadius: scale(6),
-    paddingHorizontal: scale(6),
-    paddingVertical: scale(4),
-    minWidth: scale(32),
-    alignItems: 'center',
-  },
-  popupTimerValue: {
-    fontSize: FONT.SM,
-    fontFamily: FONTS.bold,
-    color: '#FFFFFF',
-  },
-  popupTimerLabel: {
-    fontSize: FONT.XS,
-    fontFamily: FONTS.medium,
-    color: COLORS.textMedium,
-    marginTop: scale(2),
+    flexWrap: 'wrap',
   },
   popupTimerColon: {
-    fontSize: FONT.LG,
+    fontSize: FONT.XL,
     fontFamily: FONTS.bold,
     color: COLORS.diwaliOrange,
-    marginBottom: scale(8),
-    marginHorizontal: scale(1),
+    marginBottom: scale(15),
+    marginHorizontal: scale(3),
   },
   popupOfferHighlights: {
     width: '100%',
-    marginBottom: scale(20),
-    backgroundColor: COLORS.diwaliOfferBg,
-    borderRadius: scale(12),
-    padding: scale(16),
-  },
-  offersTitle: {
-    fontSize: FONT.LG,
-    fontFamily: FONTS.semiBold,
-    color: COLORS.diwaliOrange,
-    marginBottom: scale(12),
-    textAlign: 'center',
+    marginBottom: scale(15),
   },
   popupOfferItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: scale(10),
+    backgroundColor: 'rgba(255, 215, 0, 0.07)',
+    padding: scale(18),
+    borderRadius: scale(14),
+    marginBottom: scale(14),
+    borderLeftWidth: 5,
+    borderLeftColor: COLORS.diwaliGold,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   popupOfferIcon: {
-    width: scale(36),
-    height: scale(36),
-    borderRadius: scale(18),
+    width: scale(44),
+    height: scale(44),
+    borderRadius: scale(22),
+    backgroundColor: 'rgba(255, 215, 0, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: scale(12),
+    marginRight: scale(15),
+    shadowColor: COLORS.diwaliGold,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 2,
   },
-  popupOfferTextContainer: {
+  offerTextContainer: {
     flex: 1,
   },
   popupOfferTitle: {
     fontSize: FONT.LG,
     fontFamily: FONTS.semiBold,
     color: COLORS.textDark,
-    marginBottom: scale(2),
+    marginBottom: scale(3),
   },
   popupOfferDesc: {
     fontSize: FONT.SM,
-    fontFamily: FONTS.medium,
-    color: COLORS.textMedium,
-  },
-  popupOfferDetail: {
-    fontSize: FONT.XS,
     fontFamily: FONTS.regular,
-    color: COLORS.textLight,
-    marginTop: scale(2),
-  },
-  offerDivider: {
-    height: 1,
-    backgroundColor: 'rgba(255, 215, 0, 0.3)',
-    marginVertical: scale(8),
-    marginLeft: scale(48),
+    color: COLORS.textMedium,
+    lineHeight: scale(18),
   },
   diwaliButton: {
     width: '100%',
-    borderRadius: scale(12),
+    borderRadius: scale(14),
     overflow: 'hidden',
+    marginTop: scale(15),
+    shadowColor: COLORS.diwaliOrange,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   diwaliButtonGradient: {
+    paddingVertical: scale(18),
+    paddingHorizontal: scale(24),
+  },
+  buttonContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: scale(14),
-    paddingHorizontal: scale(24),
   },
   diwaliButtonText: {
-    fontSize: FONT.LG,
+    fontSize: FONT.LG + 1,
     fontFamily: FONTS.semiBold,
     color: '#FFF',
-    marginHorizontal: scale(8),
+    marginHorizontal: scale(10),
+    letterSpacing: 0.3,
   },
-  bottomDecorLine: {
-    height: scale(4),
-    width: '100%',
+  decorativeTopLeft: {
+    position: 'absolute',
+    top: scale(12),
+    left: scale(12),
   },
-  bottomDecorGradient: {
+  decorativeTopRight: {
+    position: 'absolute',
+    top: scale(12),
+    right: scale(12),
+  },
+  decorativeBottomLeft: {
+    position: 'absolute',
+    bottom: scale(12),
+    left: scale(12),
+  },
+  decorativeBottomRight: {
+    position: 'absolute',
+    bottom: scale(12),
+    right: scale(12),
+  },
+
+  // Search Modal Styles
+  searchModalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: COLORS.modalBackground,
+    zIndex: 1000,
+  },
+  searchModalContainer: {
     flex: 1,
   },
 
   // Header Styles
   headerContainer: {
-    paddingBottom: scale(10),
     zIndex: 100,
     borderBottomLeftRadius: scale(16),
     borderBottomRightRadius: scale(16),
     overflow: 'hidden',
   },
   headerGradient: {
-    paddingBottom: scale(10),
+    flex: 1,
+    paddingBottom: scale(8),
   },
   searchContainer: {
     marginTop: isAndroid ? scale(10) : scale(15),
     paddingHorizontal: scale(20),
+    marginBottom: scale(12),
+  },
+
+  // Main Content Styles
+  mainContent: {
+    backgroundColor: COLORS.background,
+    minHeight: height * 0.6,
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: scale(100),
+  },
+
+  // Categories Section Styles
+  categoriesSection: {
+    marginTop: scale(16),
     marginBottom: scale(8),
   },
 
@@ -2335,77 +2874,78 @@ const styles = StyleSheet.create({
     color: COLORS.background,
     marginLeft: scale(8),
   },
-
-  // Category Styles
-  categoryListContainer: {
-    paddingHorizontal: scale(8),
+  searchShimmer: {
+    position: 'absolute',
+    top: 0,
+    left: -100,
+    width: 50,
+    height: '100%',
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    transform: [{ skewX: '-20deg' }],
   },
+
+  // UPDATED: Category Styles with circular images
   categoryCard: {
-    width: scale(80),
+    width: scale(65),
     alignItems: 'center',
     marginHorizontal: scale(8),
     paddingVertical: scale(8),
-  },
-  activeCategoryCard: {
-    borderBottomWidth: 2,
-    borderBottomColor: COLORS.textOnGradient,
-  },
-  categoryIconContainer: {
-    width: scale(64),
-    height: scale(64),
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: scale(8),
-    borderRadius: scale(32),
-    padding: scale(8),
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
-  activeCategoryIconContainer: {
-    backgroundColor: 'rgba(255,255,255,0.4)',
+  activeCategoryCard: {
+    backgroundColor: COLORS.primary,
     transform: [{ scale: 1.05 }],
   },
+  categoryIconContainer: {
+    width: scale(50),
+    height: scale(50),
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: scale(2),
+    borderRadius: scale(25), // Circular shape
+    backgroundColor: COLORS.lightGray,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  activeCategoryIconContainer: {
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderColor: COLORS.primary,
+  },
   categoryImage: {
-    width: scale(65),
-    height: scale(65),
-    borderRadius: scale(32),
+    width: scale(50),
+    height: scale(50),
+    borderRadius: scale(15), // Circular image
   },
   categoryName: {
-    fontSize: FONT.XS,
+    fontSize: 13,
     fontFamily: FONTS.medium,
-    color: COLORS.categoryText,
+    color: COLORS.textDark,
     textAlign: 'center',
   },
   activeCategoryName: {
-    color: COLORS.activeCategoryText,
+    color: '#FFFFFF',
     fontFamily: FONTS.semiBold,
   },
 
-  // Main Content Styles
-  scrollContainer: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: scale(100),
-  },
+  // Section Styles
   sectionContainer: {
-    marginTop: scale(10),
-    paddingHorizontal: scale(10),
+    marginTop: scale(16),
+    paddingHorizontal: scale(16),
   },
   featuredSectionContainer: {
     marginTop: scale(20),
     marginBottom: scale(10),
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 16,
     fontFamily: FONTS.bold,
     color: COLORS.textDark,
-    paddingHorizontal: scale(16),
     marginBottom: scale(12),
+    paddingHorizontal: scale(16),
   },
 
   // Recommended Section - Horizontal Layout
@@ -2416,7 +2956,7 @@ const styles = StyleSheet.create({
 
   // Filter Styles
   filterList: {
-    paddingHorizontal: scale(16),
+    paddingHorizontal: scale(0),
   },
   filterCard: {
     flexDirection: 'row',
@@ -2641,7 +3181,7 @@ const styles = StyleSheet.create({
     marginBottom: scale(8),
   },
   priceTextSideBySide: {
-    fontSize: FONT.XS,
+    fontSize: 14,
     fontFamily: FONTS.medium,
     color: COLORS.textDark,
   },
@@ -2790,7 +3330,7 @@ const styles = StyleSheet.create({
     marginRight: scale(12),
   },
   cartSummaryKitchenName: {
-    fontSize: FONT.LG,
+    fontSize: 13,
     fontFamily: FONTS.semiBold,
     color: COLORS.textDark,
     marginBottom: scale(4),
@@ -2801,13 +3341,13 @@ const styles = StyleSheet.create({
   },
   cartSummaryViewMenuText: {
     color: COLORS.primary,
-    fontSize: FONT.XS,
+    fontSize: 12,
     fontFamily: FONTS.medium,
   },
   cartSummaryMiniCartBtn: {
     backgroundColor: COLORS.primary,
     borderRadius: scale(8),
-    paddingHorizontal: scale(16),
+    paddingHorizontal: scale(14),
     paddingVertical: scale(10),
     flexDirection: 'row',
     alignItems: 'center',
@@ -2819,15 +3359,15 @@ const styles = StyleSheet.create({
   },
   cartSummaryViewCartText: {
     color: '#fff',
-    fontSize: FONT.SM,
+    fontSize: 12,
     fontFamily: FONTS.semiBold,
     marginRight: scale(8),
   },
   cartSummaryCartCountBadge: {
     backgroundColor: '#fff',
     borderRadius: scale(10),
-    width: scale(20),
-    height: scale(20),
+    width: scale(17),
+    height: scale(17),
     justifyContent: 'center',
     alignItems: 'center',
   },

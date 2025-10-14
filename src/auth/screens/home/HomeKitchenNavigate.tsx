@@ -24,6 +24,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { searchSuggestions, searchResult } from '../../../api/search';
 import SearchModal from './searchmodal';
 import { updateCart } from '../../../api/cart';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width, height } = Dimensions.get('window');
 const isIOS = Platform.OS === 'ios';
@@ -119,7 +120,7 @@ const HomeKitchenNavigate = () => {
   const savePastKitchenDetails = async (details) => {
     try {
       setPastKitchenDetails(details);
-      // await AsyncStorage.setItem('pastKitchenDetails', JSON.stringify(details));
+      await AsyncStorage.setItem('pastKitchenDetails', JSON.stringify(details));
     } catch (error) {
       console.error('Error saving past kitchen details:', error);
     }
@@ -402,6 +403,7 @@ const HomeKitchenNavigate = () => {
       setSearchQuery(route.params.params.query);
       fetchSearchResults(route.params.params.query);
     }
+    fetchUserData();
   }, [route?.params?.params?.query]);
 
   const toggleKitchenFavorite = (id) => {
@@ -499,6 +501,22 @@ const HomeKitchenNavigate = () => {
     }
   }, [sessionId, pastKitchenDetails, dishes]);
 
+  const [user, setUser] = useState(null);
+
+  const fetchUserData = useCallback(async () => {
+    try {
+      const [userData] = await Promise.all([
+        AsyncStorage.getItem("user"),
+      ]);
+
+      if (userData) setUser(JSON.parse(userData));
+      return { user: userData};
+    } catch (error) {
+      console.error("Error fetching user data:", error);
+      return { user: null};
+    }
+  }, []);
+
   // Updated cart API integration
   const updateCartItem = useCallback(async (itemId, action, force = false) => {
     try {
@@ -538,11 +556,14 @@ const HomeKitchenNavigate = () => {
         source: 'ITEMLIST',
         action,
         quantity: 1,
-        user_id: 1 // Replace with actual user ID from your auth system
+        user_id: user.id // Replace with actual user ID from your auth system
       };
 
       const response = await updateCart(payload);
       
+      // console.log("response===",response.data)
+      // return true
+
       if (response.status == 200 ) {
         const currentItemCount = cartItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
         const newPastKitchenDetails = {
@@ -551,6 +572,7 @@ const HomeKitchenNavigate = () => {
           image: kitchen.image,
           itemCount: action === 'add' ? currentItemCount + 1 : Math.max(0, currentItemCount - 1)
         };
+
         await savePastKitchenDetails(newPastKitchenDetails);
         
         // Fetch updated cart data
