@@ -57,6 +57,28 @@ const FONT = {
   XXXL: normalize(24),
 };
 
+// Color palette
+const COLORS = {
+  primary: "#e65c00",
+  primaryLight: "#ff8c42",
+  primaryDark: "#cc5200",
+  secondary: "#2e7d32",
+  background: "#ffffff",
+  surface: "#f8f9fa",
+  error: "#d32f2f",
+  warning: "#ffa000",
+  success: "#388e3c",
+  text: {
+    primary: "#1a1a1a",
+    secondary: "#666666",
+    disabled: "#9e9e9e",
+    light: "#ffffff",
+  },
+  border: "#e0e0e0",
+  divider: "#f0f0f0",
+  overlay: "rgba(0,0,0,0.6)",
+};
+
 // Placeholder images
 const PLACEHOLDER_FOOD = "https://via.placeholder.com/150";
 const PLACEHOLDER_RESTAURANT = "https://via.placeholder.com/300";
@@ -737,7 +759,7 @@ const HomeKitchenDetails = ({ route }) => {
       activeOpacity={0.8}
     >
       <View style={styles.kitchenDetails__offerIcon}>
-        <Icon name="pricetag" size={20} color="#e65c00" />
+        <Icon name="pricetag" size={20} color={COLORS.primary} />
       </View>
       <View style={styles.kitchenDetails__offerContent}>
         <Text style={styles.kitchenDetails__offerTitle}>{item.title}</Text>
@@ -795,7 +817,7 @@ const HomeKitchenDetails = ({ route }) => {
                 <View
                   style={[
                     styles.kitchenDetails__vegInnerDot,
-                    { backgroundColor: "green" },
+                    { backgroundColor: COLORS.success },
                   ]}
                 />
               </View>
@@ -804,7 +826,7 @@ const HomeKitchenDetails = ({ route }) => {
                 <View
                   style={[
                     styles.kitchenDetails__vegInnerDot,
-                    { backgroundColor: "#cc0000" },
+                    { backgroundColor: COLORS.error },
                   ]}
                 />
               </View>
@@ -818,6 +840,13 @@ const HomeKitchenDetails = ({ route }) => {
           <Text style={styles.kitchenDetails__menuItemName} numberOfLines={2}>
             {item.name}
           </Text>
+
+          {/* Description */}
+          {item.description ? (
+            <Text style={styles.kitchenDetails__menuItemDescription} numberOfLines={2}>
+              {item.description}
+            </Text>
+          ) : null}
 
           {/* Price and Discount Section */}
           <View style={styles.kitchenDetails__priceDiscountContainer}>
@@ -848,12 +877,15 @@ const HomeKitchenDetails = ({ route }) => {
           {isAvailable ? (
             quantity === 0 ? (
               <TouchableOpacity
-                style={styles.kitchenDetails__addButton}
+                style={[
+                  styles.kitchenDetails__addButton,
+                  isUpdating && styles.kitchenDetails__addButtonLoading
+                ]}
                 onPress={() => handleAddItemFromList(item.id)}
                 disabled={isUpdating}
               >
                 {isUpdating ? (
-                  <ActivityIndicator size="small" color="#e65c00" />
+                  <ActivityIndicator size="small" color={COLORS.text.light} />
                 ) : (
                   <Text style={styles.kitchenDetails__addButtonText}>ADD</Text>
                 )}
@@ -866,9 +898,9 @@ const HomeKitchenDetails = ({ route }) => {
                   disabled={isUpdating}
                 >
                   {isUpdating ? (
-                    <ActivityIndicator size="small" color="#e65c00" />
+                    <ActivityIndicator size="small" color={COLORS.primary} />
                   ) : (
-                    <Icon name="remove" size={16} color="#e65c00" />
+                    <Icon name="remove" size={16} color={COLORS.primary} />
                   )}
                 </TouchableOpacity>
                 <Text style={styles.kitchenDetails__quantityText}>
@@ -880,9 +912,9 @@ const HomeKitchenDetails = ({ route }) => {
                   disabled={isUpdating}
                 >
                   {isUpdating ? (
-                    <ActivityIndicator size="small" color="#e65c00" />
+                    <ActivityIndicator size="small" color={COLORS.primary} />
                   ) : (
-                    <Icon name="add" size={16} color="#e65c00" />
+                    <Icon name="add" size={16} color={COLORS.primary} />
                   )}
                 </TouchableOpacity>
               </View>
@@ -916,7 +948,7 @@ const HomeKitchenDetails = ({ route }) => {
             <Icon
               name={isExpanded ? "chevron-up" : "chevron-down"}
               size={24}
-              color="#e65c00"
+              color={COLORS.primary}
             />
           </View>
         </TouchableOpacity>
@@ -940,7 +972,7 @@ const HomeKitchenDetails = ({ route }) => {
       <SafeAreaView style={styles.kitchenDetails__loadingContainer}>
         <StatusBar barStyle="dark-content" />
         <View style={styles.kitchenDetails__loadingContent}>
-          <ActivityIndicator size="large" color="#e65c00" />
+          <ActivityIndicator size="large" color={COLORS.primary} />
           <Text style={styles.kitchenDetails__loadingText}>
             Loading Kitchen Details...
           </Text>
@@ -954,7 +986,7 @@ const HomeKitchenDetails = ({ route }) => {
       <SafeAreaView style={styles.kitchenDetails__errorContainer}>
         <StatusBar barStyle="dark-content" />
         <View style={styles.kitchenDetails__errorContent}>
-          <Icon name="alert-circle-outline" size={60} color="#e65c00" />
+          <Icon name="alert-circle-outline" size={60} color={COLORS.primary} />
           <Text style={styles.kitchenDetails__errorText}>
             Failed to load kitchen details
           </Text>
@@ -995,7 +1027,7 @@ const HomeKitchenDetails = ({ route }) => {
           style={styles.kitchenDetails__backButton}
           onPress={handleBackPress}
         >
-          <Icon name="arrow-back" size={24} color="white" />
+          <Icon name="arrow-back" size={24} color={COLORS.text.light} />
         </TouchableOpacity>
 
         <Animated.Text
@@ -1024,8 +1056,8 @@ const HomeKitchenDetails = ({ route }) => {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={refreshData}
-            colors={["#e65c00"]}
-            tintColor="#e65c00"
+            colors={[COLORS.primary]}
+            tintColor={COLORS.primary}
           />
         }
       >
@@ -1041,7 +1073,7 @@ const HomeKitchenDetails = ({ route }) => {
                   {kitchenInfo.name}
                 </Text>
                 <View style={styles.kitchenDetails__ratingBadge}>
-                  <Icon name="star" size={12} color="#fff" />
+                  <Icon name="star" size={12} color={COLORS.text.light} />
                   <Text style={styles.kitchenDetails__ratingText}>
                     {kitchenInfo.rating}
                   </Text>
@@ -1062,7 +1094,7 @@ const HomeKitchenDetails = ({ route }) => {
             <View style={styles.kitchenDetails__detailsContainer}>
               <View style={styles.kitchenDetails__detailRow}>
                 <View style={styles.kitchenDetails__detailItem}>
-                  <Icon name="time-outline" size={14} color="#666" />
+                  <Icon name="time-outline" size={14} color={COLORS.text.secondary} />
                   <Text style={styles.kitchenDetails__detailText}>
                     {kitchenInfo.deliveryTime}
                   </Text>
@@ -1071,7 +1103,7 @@ const HomeKitchenDetails = ({ route }) => {
                 <View style={styles.kitchenDetails__dotSeparator} />
 
                 <View style={styles.kitchenDetails__detailItem}>
-                  <Icon name="navigate-outline" size={14} color="#666" />
+                  <Icon name="navigate-outline" size={14} color={COLORS.text.secondary} />
                   <Text style={styles.kitchenDetails__detailText}>
                     {kitchenInfo.distance}
                   </Text>
@@ -1114,14 +1146,14 @@ const HomeKitchenDetails = ({ route }) => {
         {offers.length > 0 ? (
           <View style={styles.kitchenDetails__offersContainer}>
             <View style={styles.kitchenDetails__offersHeader}>
-              <Icon name="pricetag" size={20} color="#e65c00" />
+              <Icon name="pricetag" size={20} color={COLORS.primary} />
               <Text style={styles.kitchenDetails__offersTitle}>Offers</Text>
               <TouchableOpacity
                 onPress={openOffersModal}
                 style={styles.kitchenDetails__viewAllButton}
               >
                 <Text style={styles.kitchenDetails__viewAllText}>View All</Text>
-                <Icon name="chevron-forward" size={16} color="#e65c00" />
+                <Icon name="chevron-forward" size={16} color={COLORS.primary} />
               </TouchableOpacity>
             </View>
             <FlatList
@@ -1154,7 +1186,7 @@ const HomeKitchenDetails = ({ route }) => {
           </View>
         ) : (
           <View style={styles.kitchenDetails__noOffersContainer}>
-            <Icon name="pricetag-outline" size={24} color="#ccc" />
+            <Icon name="pricetag-outline" size={24} color={COLORS.border} />
             <Text style={styles.kitchenDetails__noOffersText}>
               No offers available at the moment
             </Text>
@@ -1174,7 +1206,7 @@ const HomeKitchenDetails = ({ route }) => {
         {/* Kitchen Closed Message */}
         {!isKitchenOpen && (
           <View style={styles.kitchenDetails__closedMessageContainer}>
-            <Icon name="time-outline" size={24} color="#e65c00" />
+            <Icon name="time-outline" size={24} color={COLORS.primary} />
             <Text style={styles.kitchenDetails__closedMessageText}>
               This kitchen is currently closed. You can browse the menu but
               cannot place orders.
@@ -1193,7 +1225,7 @@ const HomeKitchenDetails = ({ route }) => {
             />
           ) : (
             <View style={styles.kitchenDetails__noItemsContainer}>
-              <Icon name="fast-food-outline" size={60} color="#ccc" />
+              <Icon name="fast-food-outline" size={60} color={COLORS.border} />
               <Text style={styles.kitchenDetails__noItemsText}>
                 No items found for this filter
               </Text>
@@ -1248,7 +1280,6 @@ const HomeKitchenDetails = ({ route }) => {
       )}
 
       {/* Item Detail Modal */}
-
       <Modal
         animationType="slide"
         transparent={true}
@@ -1263,7 +1294,7 @@ const HomeKitchenDetails = ({ route }) => {
               style={styles.modal__closeButton}
               onPress={closeItemModal}
             >
-              <Icon name="close" size={24} color="#fff" />
+              <Icon name="close" size={24} color={COLORS.text.light} />
             </TouchableOpacity>
 
             {selectedItem ? (
@@ -1299,7 +1330,7 @@ const HomeKitchenDetails = ({ route }) => {
                               <View
                                 style={[
                                   styles.modal__vegInnerDot,
-                                  { backgroundColor: "#22c55e" },
+                                  { backgroundColor: COLORS.success },
                                 ]}
                               />
                             </View>
@@ -1313,7 +1344,7 @@ const HomeKitchenDetails = ({ route }) => {
                               <View
                                 style={[
                                   styles.modal__vegInnerDot,
-                                  { backgroundColor: "#dc2626" },
+                                  { backgroundColor: COLORS.error },
                                 ]}
                               />
                             </View>
@@ -1337,7 +1368,7 @@ const HomeKitchenDetails = ({ route }) => {
                   {/* Unavailable Message */}
                   {!selectedItem.isCompletelyAvailable && (
                     <View style={styles.modal__unavailableMessage}>
-                      <Icon name="error-outline" size={20} color="#dc2626" />
+                      <Icon name="error-outline" size={20} color={COLORS.error} />
                       <Text style={styles.modal__unavailableMessageText}>
                         This item is currently unavailable
                       </Text>
@@ -1390,7 +1421,7 @@ const HomeKitchenDetails = ({ route }) => {
                         >
                           {updatingItemId === selectedItem.id ? (
                             <View style={styles.modal__addButtonContent}>
-                              <ActivityIndicator size="small" color="#fff" />
+                              <ActivityIndicator size="small" color={COLORS.text.light} />
                             </View>
                           ) : (
                             <View style={styles.modal__addButtonContent}>
@@ -1412,7 +1443,7 @@ const HomeKitchenDetails = ({ route }) => {
                             }
                           >
                             {updatingItemId === selectedItem.id ? (
-                              <ActivityIndicator size="small" color="#ccc" />
+                              <ActivityIndicator size="small" color={COLORS.primary} />
                             ) : (
                               <Icon
                                 name="remove"
@@ -1420,8 +1451,8 @@ const HomeKitchenDetails = ({ route }) => {
                                 color={
                                   modalQuantity === 0 ||
                                   !selectedItem.isCompletelyAvailable
-                                    ? "#ccc"
-                                    : "#e65c00"
+                                    ? COLORS.border
+                                    : COLORS.primary
                                 }
                               />
                             )}
@@ -1440,15 +1471,15 @@ const HomeKitchenDetails = ({ route }) => {
                             }
                           >
                             {updatingItemId === selectedItem.id ? (
-                              <ActivityIndicator size="small" color="#ccc" />
+                              <ActivityIndicator size="small" color={COLORS.primary} />
                             ) : (
                               <Icon
                                 name="add"
                                 size={20}
                                 color={
                                   !selectedItem.isCompletelyAvailable
-                                    ? "#ccc"
-                                    : "#e65c00"
+                                    ? COLORS.border
+                                    : COLORS.primary
                                 }
                               />
                             )}
@@ -1461,7 +1492,7 @@ const HomeKitchenDetails = ({ route }) => {
               </View>
             ) : (
               <View style={styles.modal__loadingContainer}>
-                <ActivityIndicator size="large" color="#e65c00" />
+                <ActivityIndicator size="large" color={COLORS.primary} />
                 <Text style={styles.modal__loadingText}>
                   Loading item details...
                 </Text>
@@ -1492,7 +1523,7 @@ const HomeKitchenDetails = ({ route }) => {
                   style={styles.offersModal__closeButton}
                   onPress={closeOffersModal}
                 >
-                  <Icon name="close" size={28} color="#333" />
+                  <Icon name="close" size={28} color={COLORS.text.primary} />
                 </TouchableOpacity>
               </View>
 
@@ -1502,7 +1533,7 @@ const HomeKitchenDetails = ({ route }) => {
                   renderItem={({ item }) => (
                     <View style={styles.offersModal__item}>
                       <View style={styles.offersModal__icon}>
-                        <Icon name="pricetag" size={20} color="#e65c00" />
+                        <Icon name="pricetag" size={20} color={COLORS.primary} />
                       </View>
                       <View style={styles.offersModal__itemContent}>
                         <Text style={styles.offersModal__itemTitle}>
@@ -1530,7 +1561,7 @@ const HomeKitchenDetails = ({ route }) => {
                 />
               ) : (
                 <View style={styles.offersModal__noOffersContent}>
-                  <Icon name="pricetag-outline" size={48} color="#e0e0e0" />
+                  <Icon name="pricetag-outline" size={48} color={COLORS.divider} />
                   <Text style={styles.offersModal__noOffersText}>
                     No offers available
                   </Text>
@@ -1544,7 +1575,7 @@ const HomeKitchenDetails = ({ route }) => {
         </View>
       </Modal>
 
-      {/* Kitchen Conflict Modal - SINGLE MODAL FOR ALL CONFLICTS */}
+      {/* Kitchen Conflict Modal */}
       <Modal
         visible={showKitchenConflictModal}
         transparent
@@ -1555,7 +1586,7 @@ const HomeKitchenDetails = ({ route }) => {
         <View style={styles.conflictModal__overlay}>
           <View style={styles.conflictModal__card}>
             <View style={styles.conflictModal__header}>
-              <Icon name="warning" size={32} color="#FF6B35" />
+              <Icon name="warning" size={32} color={COLORS.primary} />
               <Text style={styles.conflictModal__title}>Kitchen Conflict</Text>
             </View>
             <Text style={styles.conflictModal__text}>
@@ -1624,17 +1655,17 @@ const styles = StyleSheet.create({
   // Main Container Styles
   kitchenDetails__container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: COLORS.background,
   },
   kitchenDetails__loadingContainer: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: COLORS.background,
     justifyContent: "center",
     alignItems: "center",
   },
   kitchenDetails__errorContainer: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: COLORS.background,
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
@@ -1648,7 +1679,7 @@ const styles = StyleSheet.create({
   kitchenDetails__loadingText: {
     marginTop: 16,
     fontSize: FONT.LG,
-    color: "#666",
+    color: COLORS.text.secondary,
   },
 
   // Error Styles
@@ -1660,24 +1691,24 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: FONT.XL,
     fontWeight: "bold",
-    color: "#333",
+    color: COLORS.text.primary,
     textAlign: "center",
   },
   kitchenDetails__errorSubText: {
     marginTop: 8,
     fontSize: FONT.SM,
-    color: "#666",
+    color: COLORS.text.secondary,
     textAlign: "center",
     marginBottom: 20,
   },
   kitchenDetails__retryButton: {
-    backgroundColor: "#e65c00",
+    backgroundColor: COLORS.primary,
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 8,
   },
   kitchenDetails__retryButtonText: {
-    color: "white",
+    color: COLORS.text.light,
     fontSize: FONT.BASE,
     fontWeight: "600",
   },
@@ -1690,7 +1721,7 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 999,
     elevation: 5,
-    backgroundColor: "#fff",
+    backgroundColor: COLORS.background,
     overflow: "hidden",
   },
   kitchenDetails__headerImage: {
@@ -1719,7 +1750,7 @@ const styles = StyleSheet.create({
     top: Platform.OS === "ios" ? 52 : 28,
     left: 64,
     right: 16,
-    color: "#333",
+    color: COLORS.text.primary,
     fontSize: FONT.LG,
     fontWeight: "bold",
     zIndex: 11,
@@ -1733,7 +1764,7 @@ const styles = StyleSheet.create({
 
   // Kitchen Card Styles
   kitchenDetails__kitchenCard: {
-    backgroundColor: "#fff",
+    backgroundColor: COLORS.background,
     marginTop: 230,
     marginBottom: 10,
     marginHorizontal: 12,
@@ -1744,7 +1775,7 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
     borderWidth: 1,
-    borderColor: "#f5f5f5",
+    borderColor: COLORS.divider,
     overflow: "hidden",
   },
   kitchenDetails__kitchenInfo: {
@@ -1763,14 +1794,14 @@ const styles = StyleSheet.create({
   kitchenDetails__kitchenName: {
     fontSize: FONT.XL,
     fontWeight: "700",
-    color: "#1a1a1a",
+    color: COLORS.text.primary,
     flex: 1,
     marginRight: 8,
   },
   kitchenDetails__ratingBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#3a9c39",
+    backgroundColor: COLORS.secondary,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
@@ -1778,7 +1809,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   kitchenDetails__ratingText: {
-    color: "#fff",
+    color: COLORS.text.light,
     fontWeight: "700",
     marginLeft: 2,
     fontSize: FONT.XS,
@@ -1790,7 +1821,7 @@ const styles = StyleSheet.create({
   },
   kitchenDetails__kitchenAddress: {
     fontSize: FONT.SM,
-    color: "#666",
+    color: COLORS.text.secondary,
     fontWeight: "500",
     flex: 1,
   },
@@ -1809,14 +1840,14 @@ const styles = StyleSheet.create({
   },
   kitchenDetails__detailText: {
     fontSize: FONT.XS,
-    color: "#666",
+    color: COLORS.text.secondary,
     fontWeight: "500",
   },
   kitchenDetails__dotSeparator: {
     width: 3,
     height: 3,
     borderRadius: 1.5,
-    backgroundColor: "#ccc",
+    backgroundColor: COLORS.border,
   },
   kitchenDetails__statusContainer: {
     flexDirection: "row",
@@ -1829,10 +1860,10 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   kitchenDetails__openIndicator: {
-    backgroundColor: "#00c853",
+    backgroundColor: COLORS.success,
   },
   kitchenDetails__closedIndicator: {
-    backgroundColor: "#ff4444",
+    backgroundColor: COLORS.error,
   },
   kitchenDetails__kitchenStatus: {
     fontSize: FONT.XS,
@@ -1840,41 +1871,41 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   kitchenDetails__openText: {
-    color: "#00c853",
+    color: COLORS.success,
   },
   kitchenDetails__closedText: {
-    color: "#ff4444",
+    color: COLORS.error,
   },
   kitchenDetails__timingRow: {
     marginTop: 2,
   },
   kitchenDetails__kitchenTimings: {
     fontSize: FONT.XS,
-    color: "#888",
+    color: COLORS.text.disabled,
     fontWeight: "500",
   },
 
   // Offers Styles
   kitchenDetails__offersContainer: {
     padding: 20,
-    backgroundColor: "#fff",
+    backgroundColor: COLORS.background,
     borderBottomWidth: 6,
-    borderBottomColor: "#f5f5f5",
+    borderBottomColor: COLORS.divider,
   },
   kitchenDetails__noOffersContainer: {
     alignItems: "center",
     justifyContent: "center",
     padding: 10,
-    backgroundColor: "#f9f9f9",
+    backgroundColor: COLORS.surface,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#f0f0f0",
+    borderColor: COLORS.divider,
     borderStyle: "dashed",
   },
   kitchenDetails__noOffersText: {
     fontSize: FONT.LG,
     fontWeight: "600",
-    color: "#6c757d",
+    color: COLORS.text.disabled,
     textAlign: "center",
     marginBottom: 8,
     lineHeight: 24,
@@ -1888,7 +1919,7 @@ const styles = StyleSheet.create({
   kitchenDetails__offersTitle: {
     fontSize: FONT.LG,
     fontWeight: "bold",
-    color: "#333",
+    color: COLORS.text.primary,
     flex: 1,
   },
   kitchenDetails__viewAllButton: {
@@ -1896,7 +1927,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   kitchenDetails__viewAllText: {
-    color: "#e65c00",
+    color: COLORS.primary,
     fontSize: FONT.SM,
     fontWeight: "500",
     marginRight: 4,
@@ -1906,11 +1937,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 16,
     borderRadius: 16,
-    backgroundColor: "#f9f9f9",
+    backgroundColor: COLORS.surface,
     marginRight: 16,
     width: width - 40,
     borderWidth: 1.5,
-    borderColor: "#f0f0f0",
+    borderColor: COLORS.divider,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -1920,7 +1951,7 @@ const styles = StyleSheet.create({
   kitchenDetails__offerItemActive: {
     backgroundColor: "#fff8e6",
     borderColor: "#ffd166",
-    shadowColor: "#e65c00",
+    shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
     shadowRadius: 6,
@@ -1941,12 +1972,12 @@ const styles = StyleSheet.create({
   kitchenDetails__offerTitle: {
     fontSize: FONT.LG,
     fontWeight: "bold",
-    color: "#333",
+    color: COLORS.text.primary,
     marginBottom: 4,
   },
   kitchenDetails__offerDescription: {
     fontSize: FONT.SM,
-    color: "#666",
+    color: COLORS.text.secondary,
     marginBottom: 6,
   },
   kitchenDetails__offerCodeContainer: {
@@ -1958,17 +1989,17 @@ const styles = StyleSheet.create({
   },
   kitchenDetails__offerCodeText: {
     fontSize: FONT.XS,
-    color: "#e65c00",
+    color: COLORS.primary,
     fontWeight: "500",
   },
   kitchenDetails__offerCount: {
-    backgroundColor: "#e65c00",
+    backgroundColor: COLORS.primary,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
   },
   kitchenDetails__offerCountText: {
-    color: "white",
+    color: COLORS.text.light,
     fontSize: FONT.XS,
     fontWeight: "bold",
   },
@@ -1983,18 +2014,18 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#ccc",
+    backgroundColor: COLORS.border,
   },
   kitchenDetails__paginationDotActive: {
-    backgroundColor: "#e65c00",
+    backgroundColor: COLORS.primary,
     width: 12,
   },
 
   // Filters Styles
   kitchenDetails__filtersContainer: {
-    backgroundColor: "#fff",
+    backgroundColor: COLORS.background,
     borderBottomWidth: 6,
-    borderBottomColor: "#f5f5f5",
+    borderBottomColor: COLORS.divider,
   },
   kitchenDetails__filtersContent: {
     paddingHorizontal: 16,
@@ -2005,21 +2036,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 20,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: COLORS.surface,
     borderWidth: 1,
-    borderColor: "#e0e0e0",
+    borderColor: COLORS.border,
   },
   kitchenDetails__filterChipActive: {
-    backgroundColor: "#e65c00",
-    borderColor: "#e65c00",
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
   },
   kitchenDetails__filterText: {
     fontSize: FONT.SM,
-    color: "#666",
+    color: COLORS.text.secondary,
     fontWeight: "500",
   },
   kitchenDetails__filterTextActive: {
-    color: "white",
+    color: COLORS.text.light,
   },
 
   // Closed Message Styles
@@ -2037,14 +2068,14 @@ const styles = StyleSheet.create({
   kitchenDetails__closedMessageText: {
     marginLeft: 12,
     fontSize: FONT.SM,
-    color: "#e65c00",
+    color: COLORS.primary,
     flex: 1,
   },
 
   // Menu Container Styles
   kitchenDetails__menuContainer: {
     padding: 16,
-    backgroundColor: "#fff",
+    backgroundColor: COLORS.background,
     minHeight: 300,
   },
   kitchenDetails__noItemsContainer: {
@@ -2055,7 +2086,7 @@ const styles = StyleSheet.create({
   kitchenDetails__noItemsText: {
     marginTop: 16,
     fontSize: FONT.LG,
-    color: "#999",
+    color: COLORS.text.disabled,
     textAlign: "center",
   },
 
@@ -2063,10 +2094,10 @@ const styles = StyleSheet.create({
   kitchenDetails__menuSection: {
     marginBottom: 16,
     borderRadius: 16,
-    backgroundColor: "#fff",
+    backgroundColor: COLORS.background,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "#f0f0f0",
+    borderColor: COLORS.divider,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -2075,7 +2106,7 @@ const styles = StyleSheet.create({
   },
   kitchenDetails__sectionHeader: {
     padding: 16,
-    backgroundColor: "#fafafa",
+    backgroundColor: COLORS.surface,
   },
   kitchenDetails__sectionHeaderContent: {
     flexDirection: "row",
@@ -2085,7 +2116,7 @@ const styles = StyleSheet.create({
   kitchenDetails__sectionTitle: {
     fontSize: FONT.LG,
     fontWeight: "bold",
-    color: "#333",
+    color: COLORS.text.primary,
   },
   kitchenDetails__sectionContent: {
     padding: 16,
@@ -2097,7 +2128,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    borderBottomColor: COLORS.divider,
     alignItems: "flex-start",
   },
   kitchenDetails__menuItemImageContainer: {
@@ -2124,7 +2155,7 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderWidth: 1,
-    borderColor: "green",
+    borderColor: COLORS.success,
     borderRadius: 2,
     alignItems: "center",
     justifyContent: "center",
@@ -2133,7 +2164,7 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderWidth: 1,
-    borderColor: "#cc0000",
+    borderColor: COLORS.error,
     borderRadius: 2,
     alignItems: "center",
     justifyContent: "center",
@@ -2151,9 +2182,15 @@ const styles = StyleSheet.create({
   kitchenDetails__menuItemName: {
     fontSize: FONT.SM,
     fontWeight: "600",
-    color: "#333",
+    color: COLORS.text.primary,
     lineHeight: 18,
     marginBottom: 4,
+  },
+  kitchenDetails__menuItemDescription: {
+    fontSize: FONT.XS,
+    color: COLORS.text.secondary,
+    lineHeight: 16,
+    marginBottom: 6,
   },
   kitchenDetails__priceDiscountContainer: {
     marginBottom: 8,
@@ -2167,31 +2204,31 @@ const styles = StyleSheet.create({
   kitchenDetails__menuItemPrice: {
     fontSize: FONT.LG,
     fontWeight: "600",
-    color: "#333",
+    color: COLORS.text.primary,
   },
   kitchenDetails__discountedPrice: {
     fontSize: FONT.LG,
     fontWeight: "600",
-    color: "#333",
+    color: COLORS.text.primary,
   },
   kitchenDetails__originalPrice: {
     fontSize: FONT.SM,
-    color: "#999",
+    color: COLORS.text.disabled,
     textDecorationLine: "line-through",
   },
   kitchenDetails__discountBadge: {
-    backgroundColor: "#e65c00",
+    backgroundColor: COLORS.primary,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
   },
   kitchenDetails__discountText: {
-    color: "white",
+    color: COLORS.text.light,
     fontSize: FONT.XS,
     fontWeight: "bold",
   },
   kitchenDetails__addButton: {
-    backgroundColor: "#e65c00",
+    backgroundColor: COLORS.primary,
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 6,
@@ -2200,13 +2237,16 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     minWidth: 60,
   },
+  kitchenDetails__addButtonLoading: {
+    opacity: 0.8,
+  },
   kitchenDetails__addButtonText: {
-    color: "white",
+    color: COLORS.text.light,
     fontSize: FONT.XS,
     fontWeight: "bold",
   },
   kitchenDetails__addButtonDisabled: {
-    backgroundColor: "#ccc",
+    backgroundColor: COLORS.text.disabled,
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 6,
@@ -2216,14 +2256,14 @@ const styles = StyleSheet.create({
     minWidth: 80,
   },
   kitchenDetails__addButtonDisabledText: {
-    color: "white",
+    color: COLORS.text.light,
     fontSize: FONT.XS,
     fontWeight: "bold",
   },
   kitchenDetails__quantityControls: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#e65c00",
+    backgroundColor: COLORS.primary,
     borderRadius: 20,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -2235,12 +2275,12 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: "#fff",
+    backgroundColor: COLORS.text.light,
     alignItems: "center",
     justifyContent: "center",
   },
   kitchenDetails__quantityText: {
-    color: "#fff",
+    color: COLORS.text.light,
     fontWeight: "bold",
     fontSize: FONT.SM,
     minWidth: 20,
@@ -2253,7 +2293,7 @@ const styles = StyleSheet.create({
     bottom: Platform.OS === "android" ? 0 : 0,
     left: 0,
     right: 0,
-    backgroundColor: "#ffffff",
+    backgroundColor: COLORS.background,
     padding: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
@@ -2284,22 +2324,22 @@ const styles = StyleSheet.create({
   kitchenDetails__cartSummaryKitchenName: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#333",
+    color: COLORS.text.primary,
     marginBottom: 4,
   },
   kitchenDetails__cartSummaryItemCount: {
     fontSize: FONT.XS,
-    color: "#666",
+    color: COLORS.text.secondary,
   },
   kitchenDetails__cartSummaryMiniCartBtn: {
-    backgroundColor: "#e65c00",
+    backgroundColor: COLORS.primary,
     borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#e65c00",
+    shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
@@ -2310,13 +2350,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   kitchenDetails__cartSummaryViewCartText: {
-    color: "#fff",
+    color: COLORS.text.light,
     fontSize: FONT.SM,
     fontWeight: "600",
     marginRight: 8,
   },
   kitchenDetails__cartSummaryCartCountBadge: {
-    backgroundColor: "#fff",
+    backgroundColor: COLORS.text.light,
     borderRadius: 10,
     width: 20,
     height: 20,
@@ -2324,7 +2364,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   kitchenDetails__cartSummaryMiniCartCount: {
-    color: "#e65c00",
+    color: COLORS.primary,
     fontSize: FONT.XS,
     fontWeight: "bold",
   },
@@ -2332,11 +2372,11 @@ const styles = StyleSheet.create({
   // Item Detail Modal Styles
   modal__container: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: COLORS.overlay,
     justifyContent: "flex-end",
   },
   modal__content: {
-    backgroundColor: "white",
+    backgroundColor: COLORS.background,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: "90%",
@@ -2408,10 +2448,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   modal__veg: {
-    borderColor: "#22c55e",
+    borderColor: COLORS.success,
   },
   modal__nonVeg: {
-    borderColor: "#dc2626",
+    borderColor: COLORS.error,
   },
   modal__vegInnerDot: {
     width: 10,
@@ -2421,22 +2461,22 @@ const styles = StyleSheet.create({
   modal__itemName: {
     fontSize: FONT.XL,
     fontWeight: "700",
-    color: "#1f2937",
+    color: COLORS.text.primary,
     flex: 1,
     lineHeight: 28,
   },
   modal__itemDescription: {
     fontSize: FONT.BASE,
-    color: "#6b7280",
+    color: COLORS.text.secondary,
     lineHeight: 22,
     marginBottom: 20,
   },
 
   // Fixed Bottom Section
   modal__fixedBottom: {
-    backgroundColor: "white",
+    backgroundColor: COLORS.background,
     borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
+    borderTopColor: COLORS.divider,
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: Platform.OS === "ios" ? 30 : 20,
@@ -2460,21 +2500,21 @@ const styles = StyleSheet.create({
   modal__currentPrice: {
     fontSize: FONT.XXL,
     fontWeight: "700",
-    color: "#1f2937",
+    color: COLORS.text.primary,
   },
   modal__originalPrice: {
     fontSize: FONT.LG,
-    color: "#9ca3af",
+    color: COLORS.text.disabled,
     textDecorationLine: "line-through",
   },
   modal__discountBadge: {
-    backgroundColor: "#dc2626",
+    backgroundColor: COLORS.error,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
   },
   modal__discountText: {
-    color: "white",
+    color: COLORS.text.light,
     fontSize: FONT.XS,
     fontWeight: "700",
   },
@@ -2484,13 +2524,13 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   modal__addButton: {
-    backgroundColor: "#e65c00",
+    backgroundColor: COLORS.primary,
     paddingHorizontal: 32,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#e65c00",
+    shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -2505,12 +2545,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   modal__addButtonDisabled: {
-    backgroundColor: "#9ca3af",
+    backgroundColor: COLORS.text.disabled,
     shadowColor: "transparent",
     elevation: 0,
   },
   modal__addButtonText: {
-    color: "white",
+    color: COLORS.text.light,
     fontSize: FONT.LG,
     fontWeight: "700",
   },
@@ -2519,11 +2559,11 @@ const styles = StyleSheet.create({
   modal__quantityContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f8fafc",
+    backgroundColor: COLORS.surface,
     borderRadius: 12,
     padding: 8,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: COLORS.border,
     height: 52,
     gap: 12,
     minWidth: 140,
@@ -2533,11 +2573,11 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#fff",
+    backgroundColor: COLORS.background,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
-    borderColor: "#e65c00",
+    borderColor: COLORS.primary,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -2547,7 +2587,7 @@ const styles = StyleSheet.create({
   modal__quantityText: {
     fontSize: FONT.LG,
     fontWeight: "700",
-    color: "#1f2937",
+    color: COLORS.text.primary,
     minWidth: 30,
     textAlign: "center",
   },
@@ -2560,11 +2600,11 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 16,
     borderLeftWidth: 4,
-    borderLeftColor: "#dc2626",
+    borderLeftColor: COLORS.error,
     gap: 8,
   },
   modal__unavailableMessageText: {
-    color: "#dc2626",
+    color: COLORS.error,
     fontWeight: "500",
     fontSize: FONT.SM,
     flex: 1,
@@ -2579,13 +2619,13 @@ const styles = StyleSheet.create({
   modal__loadingText: {
     marginTop: 12,
     fontSize: FONT.SM,
-    color: "#666",
+    color: COLORS.text.secondary,
   },
 
   // Offers Modal Styles
   offersModal__container: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: COLORS.overlay,
     justifyContent: "flex-end",
   },
   offersModal__backdrop: {
@@ -2593,7 +2633,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   offersModal__content: {
-    backgroundColor: "white",
+    backgroundColor: COLORS.background,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
@@ -2608,13 +2648,13 @@ const styles = StyleSheet.create({
   offersModal__title: {
     fontSize: FONT.LG,
     fontWeight: "bold",
-    color: "#333",
+    color: COLORS.text.primary,
   },
   offersModal__closeButton: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: COLORS.surface,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -2623,7 +2663,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    borderBottomColor: COLORS.divider,
   },
   offersModal__icon: {
     marginRight: 12,
@@ -2635,12 +2675,12 @@ const styles = StyleSheet.create({
   offersModal__itemTitle: {
     fontSize: FONT.BASE,
     fontWeight: "600",
-    color: "#333",
+    color: COLORS.text.primary,
     marginBottom: 2,
   },
   offersModal__itemDescription: {
     fontSize: FONT.SM,
-    color: "#666",
+    color: COLORS.text.secondary,
     marginBottom: 6,
   },
   offersModal__codeContainer: {
@@ -2650,17 +2690,17 @@ const styles = StyleSheet.create({
   },
   offersModal__codeText: {
     fontSize: FONT.XS,
-    color: "#e65c00",
+    color: COLORS.primary,
     fontWeight: "500",
   },
   offersModal__copyButton: {
-    backgroundColor: "#e65c00",
+    backgroundColor: COLORS.primary,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 4,
   },
   offersModal__copyButtonText: {
-    color: "white",
+    color: COLORS.text.light,
     fontSize: FONT.XS,
     fontWeight: "bold",
   },
@@ -2672,27 +2712,27 @@ const styles = StyleSheet.create({
   offersModal__noOffersText: {
     fontSize: FONT.BASE,
     fontWeight: "600",
-    color: "#999",
+    color: COLORS.text.disabled,
     marginTop: 12,
     marginBottom: 6,
   },
   offersModal__noOffersSubText: {
     fontSize: FONT.SM,
-    color: "#ccc",
+    color: COLORS.border,
     textAlign: "center",
     lineHeight: 18,
   },
 
-  // Kitchen Conflict Modal - SINGLE MODAL FOR ALL CONFLICTS
+  // Kitchen Conflict Modal
   conflictModal__overlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: COLORS.overlay,
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 16,
   },
   conflictModal__card: {
-    backgroundColor: "#fff",
+    backgroundColor: COLORS.background,
     borderRadius: 12,
     padding: 20,
     width: "100%",
@@ -2715,20 +2755,20 @@ const styles = StyleSheet.create({
   conflictModal__title: {
     fontSize: FONT.LG,
     fontWeight: "bold",
-    color: "#333",
+    color: COLORS.text.primary,
     flex: 1,
   },
   conflictModal__text: {
     fontSize: FONT.SM,
     marginBottom: 12,
     textAlign: "center",
-    color: "#666",
+    color: COLORS.text.secondary,
     lineHeight: 20,
   },
   conflictModal__kitchenInfo: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f5f5f5",
+    backgroundColor: COLORS.surface,
     borderRadius: 8,
     padding: 10,
     marginBottom: 16,
@@ -2745,12 +2785,12 @@ const styles = StyleSheet.create({
   conflictModal__kitchenName: {
     fontSize: FONT.SM,
     fontWeight: "600",
-    color: "#333",
+    color: COLORS.text.primary,
     marginBottom: 2,
   },
   conflictModal__kitchenItemCount: {
     fontSize: FONT.XS,
-    color: "#666",
+    color: COLORS.text.secondary,
   },
   conflictModal__buttonRow: {
     flexDirection: "row",
@@ -2766,15 +2806,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   conflictModal__cancelButton: {
-    backgroundColor: "#e0e0e0",
+    backgroundColor: COLORS.border,
     marginRight: 8,
   },
   conflictModal__confirmButton: {
-    backgroundColor: "#E65C00",
+    backgroundColor: COLORS.primary,
     marginLeft: 8,
   },
   conflictModal__buttonText: {
-    color: "#fff",
+    color: COLORS.text.light,
     fontWeight: "600",
     fontSize: FONT.SM,
   },

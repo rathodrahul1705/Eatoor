@@ -27,10 +27,17 @@ const { width, height } = Dimensions.get('window');
 const ASPECT_RATIO = width / height;
 const LATITUDE_DELTA = 0.0922;
 const LONGITUDE_DELTA = LATITUDE_DELTA * ASPECT_RATIO;
-const SMALL_MAP_HEIGHT = 200;
+const SMALL_MAP_HEIGHT = 220;
 const EXPANDED_MAP_HEIGHT = height * 0.75;
 const CARD_WIDTH = width - 32;
 const HEADER_HEIGHT = 60;
+
+// Responsive font sizes based on screen width
+const getResponsiveFontSize = (baseSize) => {
+  const scale = width / 375; // 375 is standard iPhone width
+  const newSize = baseSize * scale;
+  return Math.round(newSize);
+};
 
 // Delivery status constants
 const DELIVERY_STATUS = {
@@ -92,6 +99,7 @@ const TrackOrder = () => {
   } | null>(null);
   const [liveTrackingData, setLiveTrackingData] = useState<LiveTrackingData | null>(null);
   const [trackingInterval, setTrackingInterval] = useState<NodeJS.Timeout | null>(null);
+  const [lastUpdated, setLastUpdated] = useState(moment());
   
   const ANIMATION_DURATION = 2000;
   
@@ -121,14 +129,32 @@ const TrackOrder = () => {
     outputRange: ['0deg', '90deg']
   });
 
+  // Calculate distance between two coordinates (Haversine formula)
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // Radius of the earth in km
+    const dLat = deg2rad(lat2 - lat1);
+    const dLon = deg2rad(lon2 - lon1);
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c; // Distance in km
+  };
+
+  const deg2rad = (deg: number) => {
+    return deg * (Math.PI/180);
+  };
+
   // Fetch live tracking data
-  const fetchLiveTrackingData = useCallback(async () => {
+  const fetchLiveTrackingData = useCallback(async (showLoader = false) => {
     try {
       if (!order_number) return;
 
       const payload = {
         "order_id": order_number
-      }
+      };
+      
       const response = await getLiveTrackingDetails(payload);
       
       if (response.status === 200) {
@@ -171,12 +197,12 @@ const TrackOrder = () => {
               data.user_destination.lat,
               data.user_destination.lng
             );
-            setDistance(`${dist.toFixed(1)} km away`);
+            setDistance(`${dist.toFixed(1)} km`);
           }
           
           // Update ETA if available
           if (data.estimated_time_minutes) {
-            setEta(`~${data.estimated_time_minutes} mins`);
+            setEta(`${data.estimated_time_minutes} mins`);
           }
           
           // Update delivery status based on agent assignment
@@ -200,41 +226,107 @@ const TrackOrder = () => {
       }
     } catch (err) {
       console.error('Error fetching live tracking data:', err);
+      // Don't show alert during auto-refresh to avoid annoying the user
+      if (showLoader) {
+        Alert.alert('Error', 'Failed to fetch tracking data');
+      }
     }
   }, [order_number]);
 
-  // Calculate distance between two coordinates (Haversine formula)
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371; // Radius of the earth in km
-    const dLat = deg2rad(lat2 - lat1);
-    const dLon = deg2rad(lon2 - lon1);
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c; // Distance in km
-  };
+  // Fetch order details
+  const fetchOrderDetails = useCallback(async () => {
+    try {
+      const userData = await AsyncStorage.getItem('user');
+      if (!userData) throw new Error('User not logged in');
 
-  const deg2rad = (deg: number) => {
-    return deg * (Math.PI/180);
-  };
+      const parsedUser = JSON.parse(userData);
+      setUser(parsedUser);
 
-  // Refresh function
+      const response = await getOrderDetails({
+        order_number,
+        user_id: parsedUser.id
+      });
+
+      if (response.status === 200 && response.data.orders?.length > 0) {
+        const orderData = response.data.orders[0];
+        setOrder(orderData);
+
+        if (orderData.status == DELIVERY_STATUS.PREPARING) {
+          setDeliveryStatus(DELIVERY_STATUS.PREPARING);
+        } else if (orderData.status == DELIVERY_STATUS.ON_THE_WAY) {
+          setDeliveryStatus(DELIVERY_STATUS.ON_THE_WAY);
+        } else if (orderData.status == DELIVERY_STATUS.DELIVERED) {
+          setDeliveryStatus(DELIVERY_STATUS.DELIVERED);
+        } else {
+          setDeliveryStatus(DELIVERY_STATUS.PREPARING);
+        }
+        
+        const placedTime = moment(orderData.placed_on);
+        const estimatedTime = moment(orderData.estimated_delivery);
+        const diffMinutes = estimatedTime.diff(placedTime, 'minutes');
+        setEta(`${diffMinutes - 10}-${diffMinutes} mins`);
+      } else {
+        throw new Error('No order data available');
+      }
+    } catch (err) {
+      console.error('Error fetching order details:', err);
+      if (!order) { // Only set error if we don't have any order data
+        setError(err.message);
+      }
+    }
+  }, [order_number, order]);
+
+  // Combined data fetching function
+  const fetchAllData = useCallback(async (showLoader = false) => {
+    try {
+      if (showLoader) {
+        setRefreshing(true);
+      }
+
+      // Fetch both order details and live tracking data simultaneously
+      await Promise.all([
+        fetchOrderDetails(),
+        fetchLiveTrackingData(showLoader)
+      ]);
+      
+      setLastUpdated(moment());
+    } catch (err) {
+      console.error('Error fetching all data:', err);
+      if (showLoader) {
+        Alert.alert('Error', 'Failed to refresh data');
+      }
+    } finally {
+      if (showLoader) {
+        setRefreshing(false);
+      }
+      setLoading(false);
+    }
+  }, [fetchOrderDetails, fetchLiveTrackingData]);
+
+  // Manual refresh function
   const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await fetchLiveTrackingData();
-    setRefreshing(false);
-  }, [fetchLiveTrackingData]);
+    await fetchAllData(true);
+  }, [fetchAllData]);
 
+  // Initial data fetch and auto-refresh setup
   useEffect(() => {
-    fetchLiveTrackingData();
-    const interval = setInterval(fetchLiveTrackingData, 120000);
+    // Initial data fetch
+    fetchAllData(true);
+
+    // Set up interval for auto-refresh every 30 seconds
+    const interval = setInterval(() => {
+      fetchAllData(false);
+    }, 30000); // 30 seconds
+
     setTrackingInterval(interval);
+
+    // Cleanup function
     return () => {
-      clearInterval(interval);
+      if (interval) {
+        clearInterval(interval);
+      }
     };
-  }, [order?.status, order_number, fetchLiveTrackingData]);
+  }, [order_number]); // Only depend on order_number
 
   // Map animation
   const toggleMap = useCallback(() => {
@@ -278,57 +370,6 @@ const TrackOrder = () => {
     inputRange: [0, 0.8, 1],
     outputRange: [1, 0.5, 0]
   });
-
-  // Fetch order details
-  useEffect(() => {
-    const fetchOrderDetails = async () => {
-      try {
-        setLoading(true);
-        const userData = await AsyncStorage.getItem('user');
-        if (!userData) throw new Error('User not logged in');
-
-        const parsedUser = JSON.parse(userData);
-        setUser(parsedUser);
-
-        const response = await getOrderDetails({
-          order_number,
-          user_id: parsedUser.id
-        });
-
-        if (response.status === 200 && response.data.orders?.length > 0) {
-          const orderData = response.data.orders[0];
-          setOrder(orderData);
-
-          if (orderData.status == DELIVERY_STATUS.PREPARING) {
-            setDeliveryStatus(DELIVERY_STATUS.PREPARING);
-          } else if (orderData.status == DELIVERY_STATUS.ON_THE_WAY) {
-            setDeliveryStatus(DELIVERY_STATUS.ON_THE_WAY);
-          } else if (orderData.status == DELIVERY_STATUS.DELIVERED) {
-            setDeliveryStatus(DELIVERY_STATUS.DELIVERED);
-          } else {
-            setDeliveryStatus(DELIVERY_STATUS.PREPARING);
-          }
-          
-          const placedTime = moment(orderData.placed_on);
-          const estimatedTime = moment(orderData.estimated_delivery);
-          const diffMinutes = estimatedTime.diff(placedTime, 'minutes');
-          setEta(`${diffMinutes - 10}-${diffMinutes} mins`);
-        } else {
-          throw new Error('No order data available');
-        }
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (order_number) {
-      fetchOrderDetails();
-    } else {
-      setError('No order ID provided');
-    }
-  }, [order_number]);
 
   // Delivery simulation - only if we don't have live tracking data
   useEffect(() => {
@@ -596,28 +637,40 @@ const TrackOrder = () => {
 
           {/* Order Info Overlay - Only visible when map is small */}
           <Animated.View style={[styles.orderInfoOverlay, { opacity: infoOpacity }]}>
-            <View style={styles.kitchenInfo}>
-              <Image 
-                source={{ uri: order.restaurant_image }} 
-                style={styles.kitchenImage}
-              />
-              <View style={styles.kitchenText}>
-                <Text style={styles.kitchenName}>{order.restaurant_name}</Text>
-                <Text style={styles.kitchenStatus} numberOfLines={1}>
-                  <Icon name={statusDetails.icon} size={16} color={statusDetails.color} /> 
-                  {' '}{statusDetails.title}
-                </Text>
+            <View style={styles.kitchenHeader}>
+              <View style={styles.kitchenInfo}>
+                <Image 
+                  source={{ uri: order.restaurant_image }} 
+                  style={styles.kitchenImage}
+                />
+                <View style={styles.kitchenText}>
+                  <View style={styles.kitchenNameRow}>
+                    <Text style={styles.kitchenName} numberOfLines={1}>
+                      {order.restaurant_name}
+                    </Text>
+                  </View>
+                  <Text style={styles.kitchenStatus} numberOfLines={1}>
+                    <Icon name={statusDetails.icon} size={14} color={statusDetails.color} /> 
+                    {' '}{statusDetails.title}
+                  </Text>
+                </View>
               </View>
             </View>
             
             <View style={styles.deliveryInfo}>
               <View style={styles.deliveryInfoItem}>
-                <Icon name="location-outline" size={16} color="#FF7A33" />
+                <Icon name="location-outline" size={14} color="#FF7A33" />
                 <Text style={styles.deliveryText}>{distance}</Text>
               </View>
               <View style={styles.deliveryInfoItem}>
-                <Icon name="time-outline" size={16} color="#FF7A33" />
+                <Icon name="time-outline" size={14} color="#FF7A33" />
                 <Text style={styles.deliveryEta}>{eta}</Text>
+              </View>
+              <View style={styles.deliveryInfoItem}>
+                <Icon name="time-outline" size={12} color="#888" />
+                <Text style={styles.lastUpdatedText}>
+                  Updated {lastUpdated.fromNow()}
+                </Text>
               </View>
             </View>
           </Animated.View>
@@ -631,65 +684,88 @@ const TrackOrder = () => {
             onPress={toggleMap}
           >
             <Icon 
-              name={isMapExpanded ? "close" : "expand"} 
-              size={20} 
-              color={isMapExpanded ? "#333" : "#333"} 
+              name={isMapExpanded ? "chevron-down" : "expand"} 
+              size={18} 
+              color="#333" 
             />
           </TouchableOpacity>
         </Animated.View>
 
         {/* Status Timeline */}
-        <View style={styles.statusTimeline}>
-          {[1, 2, 3, 4].map((step) => (
-            <View key={step} style={styles.timelineStep}>
-              <View style={[
-                styles.stepIcon,
-                statusDetails.step >= step && { backgroundColor: statusDetails.color }
-              ]}>
-                {statusDetails.step >= step ? (
-                  <Icon name="checkmark" size={16} color="#fff" />
-                ) : (
-                  <Text style={styles.stepNumber}>{step}</Text>
+        <View style={styles.statusCard}>
+          <View style={styles.statusHeader}>
+            <Text style={styles.sectionTitle}>Order Status</Text>
+            <View style={styles.statusBadge}>
+              <Text style={[styles.statusBadgeText, { color: statusDetails.color }]}>
+                {deliveryStatus}
+              </Text>
+            </View>
+          </View>
+          
+          <View style={styles.statusTimeline}>
+            {[
+              { step: 1, label: 'Ordered', icon: 'receipt-outline' },
+              { step: 2, label: 'Preparing', icon: 'restaurant-outline' },
+              { step: 3, label: 'On the way', icon: 'bicycle-outline' },
+              { step: 4, label: 'Delivered', icon: 'checkmark-done-outline' }
+            ].map((item) => (
+              <View key={item.step} style={styles.timelineStep}>
+                <View style={[
+                  styles.stepIcon,
+                  statusDetails.step >= item.step && { backgroundColor: statusDetails.color }
+                ]}>
+                  {statusDetails.step >= item.step ? (
+                    <Icon name="checkmark" size={14} color="#fff" />
+                  ) : (
+                    <Icon name={item.icon} size={14} color="#999" />
+                  )}
+                </View>
+                <Text style={[
+                  styles.stepText,
+                  statusDetails.step >= item.step && { color: '#333', fontWeight: '600' }
+                ]}>
+                  {item.label}
+                </Text>
+                {item.step < 4 && (
+                  <View style={[
+                    styles.stepConnector,
+                    statusDetails.step > item.step && { backgroundColor: statusDetails.color }
+                  ]} />
                 )}
               </View>
-              <Text style={[
-                styles.stepText,
-                statusDetails.step >= step && { color: '#333', fontWeight: '600' }
-              ]}>
-                {['Ordered', 'Preparing', 'On the way', 'Delivered'][step - 1]}
-              </Text>
-              {step < 4 && (
-                <View style={[
-                  styles.stepConnector,
-                  statusDetails.step > step && { backgroundColor: statusDetails.color }
-                ]} />
-              )}
-            </View>
-          ))}
+            ))}
+          </View>
         </View>
 
         {/* Delivery Partner */}
         {[DELIVERY_STATUS.ON_THE_WAY, DELIVERY_STATUS.DELIVERED].includes(deliveryStatus) && (
           <View style={styles.deliveryPartnerCard}>
-            <Image source={{ uri: deliveryPartner.image }} style={styles.deliveryPartnerImage} />
-            <View style={styles.deliveryPartnerInfo}>
-              <Text style={styles.deliveryPartnerName}>{deliveryPartner.name}</Text>
-              <View style={styles.deliveryPartnerMeta}>
-                <Text style={styles.deliveryPartnerVehicle}>
-                  <Icon name="bicycle" size={14} color="#666" /> {deliveryPartner.vehicle}
-                </Text>
-                <Text style={styles.deliveryPartnerRating}>
-                  <Icon name="star" size={14} color="#FFC107" /> {deliveryPartner.rating}
-                </Text>
+            <View style={styles.deliveryPartnerHeader}>
+              <Text style={styles.sectionTitle}>Delivery Partner</Text>
+              <View style={styles.ratingContainer}>
+                <Icon name="star" size={12} color="#FFC107" />
+                <Text style={styles.ratingText}>{deliveryPartner.rating}</Text>
               </View>
-              <Text style={styles.contactText}>Contact Delivery Partner</Text>
             </View>
-            <TouchableOpacity 
-              style={[styles.callButton, { backgroundColor: statusDetails.color }]}
-              onPress={() => handleCall(deliveryPartner.phone)}
-            >
-              <Icon name="call" size={20} color="#fff" />
-            </TouchableOpacity>
+            
+            <View style={styles.deliveryPartnerContent}>
+              <Image source={{ uri: deliveryPartner.image }} style={styles.deliveryPartnerImage} />
+              <View style={styles.deliveryPartnerInfo}>
+                <Text style={styles.deliveryPartnerName}>{deliveryPartner.name}</Text>
+                <View style={styles.deliveryPartnerMeta}>
+                  <Text style={styles.deliveryPartnerVehicle}>
+                    <Icon name="bicycle" size={12} color="#666" /> {deliveryPartner.vehicle}
+                  </Text>
+                </View>
+                <Text style={styles.contactText}>Contact Delivery Partner</Text>
+              </View>
+              <TouchableOpacity 
+                style={[styles.callButton, { backgroundColor: statusDetails.color }]}
+                onPress={() => handleCall(deliveryPartner.phone)}
+              >
+                <Icon name="call" size={18} color="#fff" />
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -700,7 +776,7 @@ const TrackOrder = () => {
           {order.items.map((item, index) => (
             <View key={index} style={styles.orderItem}>
               <View style={styles.itemImagePlaceholder}>
-                <Icon name="fast-food-outline" size={20} color="#666" />
+                <Icon name="fast-food-outline" size={18} color="#666" />
               </View>
               <View style={styles.itemDetails}>
                 <Text style={styles.itemName}>{item.item_name}</Text>
@@ -741,7 +817,7 @@ const TrackOrder = () => {
             </View>
             
             <View style={styles.paymentMethod}>
-              <Icon name="card-outline" size={16} color="#666" />
+              <Icon name="card-outline" size={14} color="#666" />
               <Text style={styles.paymentMethodText}>{order.payment_method}</Text>
             </View>
           </View>
@@ -751,7 +827,7 @@ const TrackOrder = () => {
         <View style={styles.deliveryAddressCard}>
           <Text style={styles.sectionTitle}>Delivery Address</Text>
           <View style={styles.addressContent}>
-            <Icon name="location-outline" size={20} color="#FF7A33" />
+            <Icon name="location-outline" size={18} color="#FF7A33" />
             <View style={styles.addressTextContainer}>
               <Text style={styles.addressType}>{order.delivery_address?.home_type || 'Home'}</Text>
               <Text style={styles.addressText}>{order.delivery_address?.address}</Text>
@@ -759,10 +835,17 @@ const TrackOrder = () => {
                 <Text style={styles.addressLandmark}>Landmark: {order.delivery_address.landmark}</Text>
               )}
               <Text style={styles.addressPhone}>
-                <Icon name="call-outline" size={14} color="#666" /> {order.delivery_address?.phone_number}
+                <Icon name="call-outline" size={12} color="#666" /> {order.delivery_address?.phone_number}
               </Text>
             </View>
           </View>
+        </View>
+
+        {/* Last Updated Footer */}
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>
+            Last updated {lastUpdated.format('h:mm A')} • Auto-refreshes every 30 seconds
+          </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -790,7 +873,7 @@ const styles = StyleSheet.create({
     })
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: getResponsiveFontSize(18),
     fontWeight: '700',
     color: '#333'
   },
@@ -829,7 +912,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: 'rgba(255,255,255,0.95)',
-    padding: 16,
+    padding: 12,
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
     shadowColor: '#000',
@@ -838,54 +921,82 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
+  kitchenHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10
+  },
   kitchenInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12
+    flex: 1
   },
   kitchenImage: {
-    width: 50,
-    height: 50,
+    width: 44,
+    height: 44,
     borderRadius: 8,
-    marginRight: 12,
+    marginRight: 10,
     backgroundColor: '#f0f0f0'
   },
   kitchenText: {
     flex: 1
   },
-  kitchenName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#333',
+  kitchenNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 4
   },
+  kitchenName: {
+    fontSize: getResponsiveFontSize(15),
+    fontWeight: '700',
+    color: '#333',
+    flex: 1,
+    marginRight: 8
+  },
   kitchenStatus: {
-    fontSize: 14,
+    fontSize: getResponsiveFontSize(13),
     color: '#666'
+  },
+  refreshButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 122, 51, 0.1)'
   },
   deliveryInfo: {
     flexDirection: 'row',
-    justifyContent: 'space-between'
+    justifyContent: 'space-between',
+    alignItems: 'center'
   },
   deliveryInfoItem: {
     flexDirection: 'row',
     alignItems: 'center'
   },
   deliveryText: {
-    fontSize: 14,
+    fontSize: getResponsiveFontSize(13),
     color: '#333',
-    marginLeft: 4
+    marginLeft: 4,
+    fontWeight: '500'
   },
   deliveryEta: {
-    fontSize: 14,
+    fontSize: getResponsiveFontSize(13),
     color: '#333',
     fontWeight: '600',
     marginLeft: 4
   },
+  lastUpdatedText: {
+    fontSize: getResponsiveFontSize(11),
+    color: '#888',
+    marginLeft: 4
+  },
   restaurantMarker: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#FF7A33',
@@ -898,9 +1009,9 @@ const styles = StyleSheet.create({
     borderColor: '#fff'
   },
   deliveryMarker: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#FF7A33',
@@ -913,9 +1024,9 @@ const styles = StyleSheet.create({
     borderColor: '#fff'
   },
   deliveryPartnerMarker: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#FF7A33',
@@ -930,9 +1041,9 @@ const styles = StyleSheet.create({
   mapToggleButton: {
     position: 'absolute',
     backgroundColor: 'rgba(255,255,255,0.95)',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -942,115 +1053,145 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   expandButton: {
-    bottom: 80,
-    right: 16,
+    bottom: 70,
+    right: 12,
   },
   collapseButton: {
-    top: 16,
-    right: 16,
+    top: 12,
+    right: 12,
   },
-  statusTimeline: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 24,
+  statusCard: {
     backgroundColor: '#fff',
-    marginHorizontal: 16,
     borderRadius: 16,
-    marginBottom: 16,
+    padding: 14,
+    marginHorizontal: 16,
+    marginBottom: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
     elevation: 3
   },
+  statusHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14
+  },
+  statusBadge: {
+    backgroundColor: 'rgba(255, 122, 51, 0.1)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10
+  },
+  statusBadgeText: {
+    fontSize: getResponsiveFontSize(11),
+    fontWeight: '600'
+  },
+  statusTimeline: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
   timelineStep: {
     alignItems: 'center',
-    width: 70,
+    width: 65,
     position: 'relative'
   },
   stepIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: '#eee',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
     borderWidth: 2,
     borderColor: '#fff'
   },
-  stepNumber: {
-    fontSize: 12,
-    color: '#888',
-    fontWeight: '600'
-  },
   stepText: {
-    fontSize: 12,
+    fontSize: getResponsiveFontSize(11),
     color: '#888',
     textAlign: 'center',
     fontWeight: '500'
   },
   stepConnector: {
     position: 'absolute',
-    top: 16,
+    top: 14,
     left: '50%',
-    width: 70,
+    width: 65,
     height: 2,
     backgroundColor: '#eee',
     zIndex: -1
   },
   deliveryPartnerCard: {
-    flexDirection: 'row',
     backgroundColor: '#fff',
-    padding: 16,
     borderRadius: 16,
+    padding: 14,
     marginHorizontal: 16,
-    marginBottom: 16,
-    alignItems: 'center',
+    marginBottom: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
     elevation: 3
   },
+  deliveryPartnerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14
+  },
+  ratingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6
+  },
+  ratingText: {
+    fontSize: getResponsiveFontSize(11),
+    color: '#666',
+    marginLeft: 2,
+    fontWeight: '600'
+  },
+  deliveryPartnerContent: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
   deliveryPartnerImage: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    marginRight: 16,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 12,
     backgroundColor: '#f0f0f0'
   },
   deliveryPartnerInfo: {
     flex: 1
   },
   deliveryPartnerName: {
-    fontSize: 16,
+    fontSize: getResponsiveFontSize(15),
     fontWeight: '700',
     color: '#333',
-    marginBottom: 4
+    marginBottom: 3
   },
   deliveryPartnerMeta: {
     flexDirection: 'row',
-    marginBottom: 4
+    marginBottom: 3
   },
   deliveryPartnerVehicle: {
-    fontSize: 13,
+    fontSize: getResponsiveFontSize(12),
     color: '#666',
-    marginRight: 12
-  },
-  deliveryPartnerRating: {
-    fontSize: 13,
-    color: '#666'
+    marginRight: 10
   },
   contactText: {
-    fontSize: 12,
+    fontSize: getResponsiveFontSize(11),
     color: '#888'
   },
   callButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -1062,9 +1203,9 @@ const styles = StyleSheet.create({
   orderDetailsCard: {
     backgroundColor: '#fff',
     borderRadius: 16,
-    padding: 16,
+    padding: 14,
     marginHorizontal: 16,
-    marginBottom: 16,
+    marginBottom: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -1072,110 +1213,111 @@ const styles = StyleSheet.create({
     elevation: 3
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: getResponsiveFontSize(16),
     fontWeight: '700',
     color: '#333',
-    marginBottom: 16
+    marginBottom: 14
   },
   orderItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
-    paddingBottom: 16,
+    marginBottom: 12,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0'
   },
   itemImagePlaceholder: {
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
     borderRadius: 8,
     backgroundColor: '#f0f0f0',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12
+    marginRight: 10
   },
   itemDetails: {
     flex: 1
   },
   itemName: {
-    fontSize: 15,
+    fontSize: getResponsiveFontSize(14),
     color: '#333',
-    marginBottom: 4,
+    marginBottom: 3,
     fontWeight: '500'
   },
   bogoTag: {
     backgroundColor: '#FFEB3B',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 3,
     alignSelf: 'flex-start',
-    marginTop: 2,
-    marginBottom: 4
+    marginTop: 1,
+    marginBottom: 3
   },
   bogoText: {
-    fontSize: 10,
+    fontSize: getResponsiveFontSize(9),
     color: '#333',
     fontWeight: 'bold'
   },
   itemPrice: {
-    fontSize: 14,
+    fontSize: getResponsiveFontSize(13),
     color: '#666'
   },
   itemQuantity: {
-    fontSize: 15,
+    fontSize: getResponsiveFontSize(14),
     color: '#333',
     fontWeight: '600'
   },
   orderSummary: {
-    marginTop: 12
+    marginTop: 10
   },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8
+    marginBottom: 6
   },
   summaryLabel: {
-    fontSize: 14,
+    fontSize: getResponsiveFontSize(13),
     color: '#666'
   },
   summaryValue: {
-    fontSize: 14,
+    fontSize: getResponsiveFontSize(13),
     color: '#333',
     fontWeight: '500'
   },
   divider: {
     height: 1,
     backgroundColor: '#eee',
-    marginVertical: 12
+    marginVertical: 10
   },
   grandTotalLabel: {
-    fontSize: 16,
+    fontSize: getResponsiveFontSize(15),
     fontWeight: '700',
     color: '#333'
   },
   grandTotalValue: {
-    fontSize: 16,
+    fontSize: getResponsiveFontSize(15),
     fontWeight: '800',
     color: '#333'
   },
   paymentMethod: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
-    paddingTop: 8,
+    marginTop: 6,
+    paddingTop: 6,
     borderTopWidth: 1,
     borderTopColor: '#f0f0f0'
   },
   paymentMethodText: {
-    fontSize: 14,
+    fontSize: getResponsiveFontSize(13),
     color: '#666',
-    marginLeft: 8
+    marginLeft: 6
   },
   deliveryAddressCard: {
     backgroundColor: '#fff',
     borderRadius: 16,
-    padding: 16,
+    padding: 14,
     marginHorizontal: 16,
+    marginBottom: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -1187,28 +1329,38 @@ const styles = StyleSheet.create({
   },
   addressTextContainer: {
     flex: 1,
-    marginLeft: 12
+    marginLeft: 10
   },
   addressType: {
-    fontSize: 15,
+    fontSize: getResponsiveFontSize(14),
     fontWeight: '600',
     color: '#333',
-    marginBottom: 4
+    marginBottom: 3
   },
   addressText: {
-    fontSize: 14,
+    fontSize: getResponsiveFontSize(13),
     color: '#666',
-    marginBottom: 4,
-    lineHeight: 20
+    marginBottom: 3,
+    lineHeight: 18
   },
   addressLandmark: {
-    fontSize: 13,
+    fontSize: getResponsiveFontSize(12),
     color: '#888',
-    marginBottom: 4
+    marginBottom: 3
   },
   addressPhone: {
-    fontSize: 14,
+    fontSize: getResponsiveFontSize(13),
     color: '#666'
+  },
+  footer: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    alignItems: 'center'
+  },
+  footerText: {
+    fontSize: getResponsiveFontSize(11),
+    color: '#888',
+    textAlign: 'center'
   },
   loadingContainer: {
     flex: 1,
@@ -1218,7 +1370,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 16,
-    fontSize: 16,
+    fontSize: getResponsiveFontSize(15),
     color: '#666'
   },
   errorContainer: {
@@ -1228,28 +1380,28 @@ const styles = StyleSheet.create({
     padding: 20
   },
   errorText: {
-    fontSize: 18,
+    fontSize: getResponsiveFontSize(16),
     color: '#FF7A33',
     fontWeight: '600',
     marginTop: 16
   },
   errorSubtext: {
-    fontSize: 14,
+    fontSize: getResponsiveFontSize(13),
     color: '#666',
-    marginTop: 8,
-    marginBottom: 24,
+    marginTop: 6,
+    marginBottom: 20,
     textAlign: 'center'
   },
   goBackButton: {
     backgroundColor: '#FF7A33',
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 24
+    paddingHorizontal: 28,
+    paddingVertical: 10,
+    borderRadius: 20
   },
   goBackButtonText: {
     color: '#fff',
     fontWeight: '600',
-    fontSize: 16
+    fontSize: getResponsiveFontSize(14)
   },
 });
 
