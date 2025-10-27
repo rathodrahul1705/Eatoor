@@ -779,85 +779,7 @@ const HomeKitchenDetails = ({ route }) => {
         activeOpacity={isAvailable ? 0.7 : 1}
         disabled={!isAvailable}
       >
-        <View style={styles.kitchenDetails__menuItemContent}>
-          <View style={styles.kitchenDetails__menuItemHeader}>
-            <View style={styles.kitchenDetails__vegIndicatorContainer}>
-              {item.isVeg ? (
-                <View style={styles.kitchenDetails__vegIndicator}>
-                  <View
-                    style={[
-                      styles.kitchenDetails__vegInnerDot,
-                      { backgroundColor: "green" },
-                    ]}
-                  />
-                </View>
-              ) : (
-                <View style={styles.kitchenDetails__nonVegIndicator}>
-                  <View
-                    style={[
-                      styles.kitchenDetails__vegInnerDot,
-                      { backgroundColor: "#cc0000" },
-                    ]}
-                  />
-                </View>
-              )}
-            </View>
-            <View style={styles.kitchenDetails__menuItemTextContainer}>
-              <Text style={styles.kitchenDetails__menuItemName}>
-                {item.name}
-              </Text>
-              {item.isBestseller && (
-                <View style={styles.kitchenDetails__bestsellerBadge}>
-                  <Icon name="trophy" size={12} color="#FFD700" />
-                  <Text style={styles.kitchenDetails__bestsellerText}>
-                    Bestseller
-                  </Text>
-                </View>
-              )}
-            </View>
-          </View>
-          <Text
-            style={styles.kitchenDetails__menuItemDescription}
-            numberOfLines={2}
-            ellipsizeMode="tail"
-          >
-            {item.description}
-          </Text>
-          <View style={styles.kitchenDetails__menuItemFooter}>
-            <View style={styles.kitchenDetails__priceContainer}>
-              {discountedPrice ? (
-                <>
-                  <Text style={styles.kitchenDetails__discountedPrice}>
-                    ₹{discountedPrice}
-                  </Text>
-                  <Text style={styles.kitchenDetails__originalPrice}>
-                    ₹{item.price}
-                  </Text>
-                  {item.discountActive && (
-                    <View style={styles.kitchenDetails__discountBadge}>
-                      <Text style={styles.kitchenDetails__discountText}>
-                        {item.discountPercent}% OFF
-                      </Text>
-                    </View>
-                  )}
-                </>
-              ) : (
-                <Text style={styles.kitchenDetails__menuItemPrice}>
-                  ₹{item.price}
-                </Text>
-              )}
-            </View>
-            {item.rating && (
-              <View style={styles.kitchenDetails__ratingContainer}>
-                <Icon name="star" size={14} color="#FFD700" />
-                <Text style={styles.kitchenDetails__ratingText}>
-                  {item.rating}
-                </Text>
-              </View>
-            )}
-          </View>
-        </View>
-
+        {/* Image Section */}
         <View style={styles.kitchenDetails__menuItemImageContainer}>
           <Image
             source={{ uri: item.image || PLACEHOLDER_FOOD }}
@@ -865,7 +787,64 @@ const HomeKitchenDetails = ({ route }) => {
             resizeMode="cover"
             defaultSource={{ uri: PLACEHOLDER_FOOD }}
           />
+          
+          {/* Veg/Non-Veg Indicator */}
+          <View style={styles.kitchenDetails__vegIndicatorContainer}>
+            {item.isVeg ? (
+              <View style={styles.kitchenDetails__vegIndicator}>
+                <View
+                  style={[
+                    styles.kitchenDetails__vegInnerDot,
+                    { backgroundColor: "green" },
+                  ]}
+                />
+              </View>
+            ) : (
+              <View style={styles.kitchenDetails__nonVegIndicator}>
+                <View
+                  style={[
+                    styles.kitchenDetails__vegInnerDot,
+                    { backgroundColor: "#cc0000" },
+                  ]}
+                />
+              </View>
+            )}
+          </View>
+        </View>
 
+        {/* Content Section */}
+        <View style={styles.kitchenDetails__menuItemContent}>
+          {/* Item Name */}
+          <Text style={styles.kitchenDetails__menuItemName} numberOfLines={2}>
+            {item.name}
+          </Text>
+
+          {/* Price and Discount Section */}
+          <View style={styles.kitchenDetails__priceDiscountContainer}>
+            {discountedPrice ? (
+              <View style={styles.kitchenDetails__discountedPriceContainer}>
+                <Text style={styles.kitchenDetails__discountedPrice}>
+                  ₹{discountedPrice}
+                </Text>
+                <Text style={styles.kitchenDetails__originalPrice}>
+                  ₹{item.price}
+                </Text>
+                {item.discountActive && (
+                  <View style={styles.kitchenDetails__discountBadge}>
+                    <Text style={styles.kitchenDetails__discountText}>
+                      {item.discountPercent}% OFF
+                    </Text>
+                  </View>
+                )}
+              </View>
+            ) : (
+              <Text style={styles.kitchenDetails__menuItemPrice}>
+                ₹{item.price}
+              </Text>
+            )}
+          </View>
+
+          {/* Add to Cart Button */}
           {isAvailable ? (
             quantity === 0 ? (
               <TouchableOpacity
@@ -1268,7 +1247,7 @@ const HomeKitchenDetails = ({ route }) => {
         </View>
       )}
 
-      {/* Item Detail Modal - UPDATED DESIGN */}
+      {/* Item Detail Modal */}
 
       <Modal
         animationType="slide"
@@ -2113,52 +2092,37 @@ const styles = StyleSheet.create({
     paddingTop: 0,
   },
 
-  // Menu Item Styles
+  // UPDATED Menu Item Styles - Optimized Layout
   kitchenDetails__menuItem: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#f0f0f0",
+    alignItems: "flex-start",
+  },
+  kitchenDetails__menuItemImageContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    overflow: "hidden",
+    marginRight: 12,
     position: "relative",
   },
-  kitchenDetails__unavailableOverlay: {
-    position: "absolute",
-    bottom: 6,
-    right: 0,
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    zIndex: 1,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  kitchenDetails__unavailableText: {
-    color: "#cc0000",
-    fontWeight: "500",
-    fontSize: FONT.XS,
-    textAlign: "center",
-  },
-  kitchenDetails__menuItemContent: {
-    flex: 1,
-    gap: 8,
-  },
-  kitchenDetails__menuItemHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+  kitchenDetails__menuItemImage: {
+    width: "100%",
+    height: "100%",
   },
   kitchenDetails__vegIndicatorContainer: {
-    width: 20,
-    alignItems: "center",
-    justifyContent: "center",
+    position: "absolute",
+    top: 4,
+    left: 4,
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    borderRadius: 4,
+    padding: 2,
   },
   kitchenDetails__vegIndicator: {
-    width: 16,
-    height: 16,
+    width: 12,
+    height: 12,
     borderWidth: 1,
     borderColor: "green",
     borderRadius: 2,
@@ -2166,8 +2130,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   kitchenDetails__nonVegIndicator: {
-    width: 16,
-    height: 16,
+    width: 12,
+    height: 12,
     borderWidth: 1,
     borderColor: "#cc0000",
     borderRadius: 2,
@@ -2175,48 +2139,30 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   kitchenDetails__vegInnerDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
-  kitchenDetails__menuItemTextContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+  kitchenDetails__menuItemContent: {
+    flex: 1,
+    justifyContent: "space-between",
+    minHeight: 80,
   },
   kitchenDetails__menuItemName: {
-    fontSize: FONT.LG,
+    fontSize: FONT.SM,
     fontWeight: "600",
     color: "#333",
+    lineHeight: 18,
+    marginBottom: 4,
   },
-  kitchenDetails__bestsellerBadge: {
+  kitchenDetails__priceDiscountContainer: {
+    marginBottom: 8,
+  },
+  kitchenDetails__discountedPriceContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff8e1",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    gap: 4,
-  },
-  kitchenDetails__bestsellerText: {
-    fontSize: FONT.XS,
-    color: "#e65c00",
-    fontWeight: "500",
-  },
-  kitchenDetails__menuItemDescription: {
-    fontSize: FONT.SM,
-    color: "#666",
-    lineHeight: 20,
-  },
-  kitchenDetails__menuItemFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  kitchenDetails__priceContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+    flexWrap: "wrap",
+    gap: 6,
   },
   kitchenDetails__menuItemPrice: {
     fontSize: FONT.LG,
@@ -2244,88 +2190,51 @@ const styles = StyleSheet.create({
     fontSize: FONT.XS,
     fontWeight: "bold",
   },
-  kitchenDetails__ratingContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  kitchenDetails__menuItemImageContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 12,
-    overflow: "hidden",
-    marginLeft: 12,
-    position: "relative",
-  },
-  kitchenDetails__menuItemImage: {
-    width: "100%",
-    height: "100%",
-  },
   kitchenDetails__addButton: {
-    position: "absolute",
-    bottom: 8,
-    left: 20,
-    right: 20,
-    height: 24,
-    backgroundColor: "#fff",
-    paddingVertical: 4,
+    backgroundColor: "#e65c00",
+    paddingHorizontal: 16,
+    paddingVertical: 6,
     borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#e65c00",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    alignSelf: "flex-start",
+    minWidth: 60,
   },
   kitchenDetails__addButtonText: {
-    color: "#e65c00",
+    color: "white",
     fontSize: FONT.XS,
     fontWeight: "bold",
   },
   kitchenDetails__addButtonDisabled: {
-    position: "absolute",
-    bottom: 8,
-    left: "50%",
-    transform: [{ translateX: -40 }],
-    width: 80,
-    height: 24,
-    backgroundColor: "#fff",
-    paddingVertical: 4,
+    backgroundColor: "#ccc",
+    paddingHorizontal: 16,
+    paddingVertical: 6,
     borderRadius: 6,
     alignItems: "center",
     justifyContent: "center",
+    alignSelf: "flex-start",
+    minWidth: 80,
   },
   kitchenDetails__addButtonDisabledText: {
-    color: "#e65c00",
+    color: "white",
     fontSize: FONT.XS,
     fontWeight: "bold",
   },
   kitchenDetails__quantityControls: {
-    position: "absolute",
-    bottom: 8,
-    left: "50%",
-    transform: [{ translateX: -40 }],
-    width: 80,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     backgroundColor: "#e65c00",
     borderRadius: 20,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    alignSelf: "flex-start",
+    minWidth: 80,
+    justifyContent: "space-between",
   },
   kitchenDetails__quantityButton: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
@@ -2334,6 +2243,8 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "bold",
     fontSize: FONT.SM,
+    minWidth: 20,
+    textAlign: "center",
   },
 
   // Cart Summary Styles
@@ -2418,8 +2329,7 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
 
-  // UPDATED Item Detail Modal Styles
-
+  // Item Detail Modal Styles
   modal__container: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.6)",
