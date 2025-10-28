@@ -82,8 +82,8 @@ android {
         applicationId "com.eatoor"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 5
-        versionName "1.1.1"
+        versionCode 8
+        versionName "1.1.4"
         resValue "string", "build_config_package", "com.eatoor"
     }
     signingConfigs {
