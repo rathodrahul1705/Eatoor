@@ -24,21 +24,7 @@ const scale = (size: number) => (width / 375) * size;
 const verticalScale = (size: number) => (height / 812) * size;
 const moderateScale = (size: number, factor = 0.5) => size + (scale(size) - size) * factor;
 
-// Responsive font sizes based on screen width
-const normalize = (size: number) => Math.round(scale * size);
-
-const FONT = {
-  S: 10,
-  XS: normalize(10),
-  SM: normalize(12),
-  BASE: normalize(14),
-  LG: normalize(16),
-  XL: normalize(18),
-  XXL: normalize(20),
-  XXXL: normalize(24),
-};
-
-// Enhanced Color Palette
+// Enhanced Color Palette with richer colors for filters
 const COLORS = {
   primary: '#FF6B35',
   primaryLight: '#FF9F5B',
@@ -48,7 +34,7 @@ const COLORS = {
   textDark: '#1E2329',
   textMedium: '#5E6770',
   textLight: '#8A939C',
-  success: '#06C167',
+  success: '#008000',
   danger: '#FF3B30',
   info: '#5AC8FA',
   lightGray: '#F1F3F5',
@@ -92,6 +78,22 @@ const COLORS = {
   discount: '#FF4757',
   newBadge: '#2ED573',
   trendingBadge: '#FF6B9D',
+  // Enhanced filter colors
+  filterRating: '#FF6B35',
+  filterVeg: '#06C167',
+  filterOffers: '#FF4757',
+  filterFastDelivery: '#3B82F6',
+  filterRatingActive: '#E65C00',
+  filterVegActive: '#059669',
+  filterOffersActive: '#E63946',
+  filterFastDeliveryActive: '#2563EB',
+  // New rich colors
+  accentPurple: '#8B5CF6',
+  accentBlue: '#3B82F6',
+  accentGreen: '#10B981',
+  gradientPremium: ['#667eea', '#764ba2'],
+  gradientSuccess: ['#10B981', '#059669'],
+  gradientWarning: ['#F59E0B', '#D97706'],
 };
 
 const FONTS = {
@@ -104,18 +106,18 @@ const FONTS = {
 
 const DEFAULT_CATEGORY_ICON = "https://via.placeholder.com/60";
 const ACTIVE_ORDERS_LIMIT = 3;
-const RECOMMENDED_KITCHENS_PER_ROW = 2;
+const RECOMMENDED_KITCHENS_PER_ROW = 3;
 
-// Enhanced search placeholders
+// Enhanced search placeholders with smaller text
 const SEARCH_PLACEHOLDERS = [
-  "🍛 Search Biryani, Pizza, or Chinese...",
-  "🍱 Looking for Thalis or Combos?",
-  "🍔 Craving snacks or beverages?",
-  "🏠 Find your favorite home kitchen...",
-  "🍰 Search for desserts or drinks..."
+  "🍛 Search food or kitchens...",
+  "🍱 Find your favorite meals...",
+  "🍔 Craving something?",
+  "🏠 Discover home kitchens...",
+  "🍰 Search desserts..."
 ];
 
-// Types
+// Types (keeping the same as before)
 interface User {
   id: string;
   name: string;
@@ -153,6 +155,8 @@ interface Filter {
   icon: string;
   type: 'rating' | 'veg' | 'offer' | 'fastDelivery';
   active: boolean;
+  color: string;
+  activeColor: string;
 }
 
 interface ApiResponse {
@@ -189,7 +193,7 @@ interface ActiveOrder {
   deliveryAddress?: string;
 }
 
-// Enhanced Search Types
+// Enhanced Search Types (keeping the same)
 interface SearchSuggestionResponse {
   query: string;
   menus: SearchMenu[];
@@ -254,7 +258,7 @@ interface SearchItem {
   searchedAt?: string;
 }
 
-// Navigation Types
+// Navigation Types (keeping the same)
 type RootStackParamList = {
   HomeKitchenNavigate: {
     screen: string;
@@ -311,7 +315,7 @@ const useDebounce = (value: string, delay: number) => {
   return debouncedValue;
 };
 
-// Enhanced Search Input Component
+// Enhanced Search Input Component with smaller text
 interface SearchInputProps {
   onPress: () => void;
   placeholder: string;
@@ -373,7 +377,7 @@ const SearchInput: React.FC<SearchInputProps> = React.memo(({ onPress, placehold
         <View style={styles.searchInputContent}>
           <Icon 
             name="search" 
-            size={moderateScale(22)} 
+            size={moderateScale(18)} // Smaller icon
             color={COLORS.searchPlaceholder} 
             style={styles.searchIcon} 
           />
@@ -385,7 +389,7 @@ const SearchInput: React.FC<SearchInputProps> = React.memo(({ onPress, placehold
           <View style={styles.searchRightIcon}>
             <Icon 
               name="mic-outline" 
-              size={moderateScale(20)} 
+              size={moderateScale(16)} // Smaller icon
               color={COLORS.searchPlaceholder} 
             />
           </View>
@@ -397,15 +401,160 @@ const SearchInput: React.FC<SearchInputProps> = React.memo(({ onPress, placehold
   );
 });
 
-// Enhanced Kitchen Card Component for Side-by-Side Layout
+// UPDATED: Compact Kitchen Card with proper alignment
+interface CompactKitchenCardProps {
+  kitchen: Kitchen;
+  onPress: (kitchen: Kitchen) => void;
+  onToggleFavorite: (kitchenId: string) => void;
+  favoriteLoading: string | null;
+  cardWidth: number;
+}
+
+const CompactKitchenCard: React.FC<CompactKitchenCardProps> = React.memo(({ 
+  kitchen, 
+  onPress, 
+  onToggleFavorite, 
+  favoriteLoading,
+  cardWidth
+}) => {
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.95,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      friction: 3,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handleImageLoad = () => {
+    setImageLoaded(true);
+    Animated.timing(opacityAnim, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handleImageError = () => {
+    setImageError(true);
+    setImageLoaded(true);
+  };
+
+  const rating = kitchen.rating || (Math.random() * 1 + 4).toFixed(1);
+  const deliveryTime = kitchen.delivery_time || '30-40 min';
+  const reviewCount = kitchen.review_count || Math.floor(Math.random() * 100) + 1;
+  const discount = kitchen.discount || Math.random() > 0.7 ? Math.floor(Math.random() * 30) + 10 : 0;
+
+  return (
+    <Animated.View
+      style={[
+        styles.compactKitchenCard,
+        { width: 110 },
+        { transform: [{ scale: scaleAnim }] }
+      ]}
+    >
+      <TouchableOpacity
+        onPress={() => onPress(kitchen)}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        activeOpacity={0.9}
+        style={styles.compactKitchenTouchable}
+      >
+        {/* Image Container */}
+        <View style={styles.compactImageContainer}>
+          {!imageLoaded && (
+            <View style={[styles.compactKitchenImage, styles.imagePlaceholder]}>
+              <ActivityIndicator size="small" color={COLORS.primary} />
+            </View>
+          )}
+          
+          {imageError || !kitchen.restaurant_image ? (
+            <View style={[styles.compactKitchenImage, styles.imagePlaceholder]}>
+              <Icon name="restaurant-outline" size={moderateScale(20)} color={COLORS.textLight} />
+            </View>
+          ) : (
+            <Animated.Image 
+              source={{ uri: kitchen.restaurant_image }} 
+              style={[
+                styles.compactKitchenImage,
+                { opacity: opacityAnim }
+              ]}
+              resizeMode="cover"
+              onLoad={handleImageLoad}
+              onError={handleImageError}
+            />
+          )}
+          
+          {/* Discount Badge */}
+          {discount > 0 && (
+            <View style={styles.compactDiscountBadge}>
+              <Text style={styles.compactDiscountText}>{discount}% OFF</Text>
+            </View>
+          )}
+          
+          {/* Favorite Button */}
+          <TouchableOpacity 
+            style={styles.compactFavoriteButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              onToggleFavorite(kitchen.restaurant_id);
+            }}
+            disabled={favoriteLoading === kitchen.restaurant_id}
+          >
+            {favoriteLoading === kitchen.restaurant_id ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Icon 
+                name={kitchen.is_favourite ? "heart" : "heart-outline"} 
+                size={moderateScale(12)} 
+                color={kitchen.is_favourite ? COLORS.danger : "#fff"} 
+              />
+            )}
+          </TouchableOpacity>
+        </View>
+        
+        {/* Content with proper alignment */}
+        <View style={styles.compactContent}>
+          <Text style={styles.compactKitchenName} numberOfLines={1}>
+            {kitchen.restaurant_name}
+          </Text>
+          
+          <View style={styles.compactInfoRow}>
+            <View style={styles.compactRatingContainer}>
+              <Icon name="star" size={moderateScale(10)} color="#FFFFFF" />
+              <Text style={styles.compactRatingText}>{rating}</Text>
+            </View>
+            
+            <View style={styles.compactDeliveryContainer}>
+              <Icon name="time-outline" size={moderateScale(10)} color={COLORS.textMedium} />
+              <Text style={styles.compactDeliveryText}>{deliveryTime}</Text>
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+});
+
+// Detailed Kitchen Card with proper alignment
 interface KitchenCardProps {
   kitchen: Kitchen;
   onPress: (kitchen: Kitchen) => void;
   onToggleFavorite: (kitchenId: string) => void;
   favoriteLoading: string | null;
   isFeatured?: boolean;
-  cardStyle?: 'compact' | 'detailed' | 'sideBySide';
-  cardWidth?: number;
 }
 
 const KitchenCard: React.FC<KitchenCardProps> = React.memo(({ 
@@ -414,8 +563,6 @@ const KitchenCard: React.FC<KitchenCardProps> = React.memo(({
   onToggleFavorite, 
   favoriteLoading,
   isFeatured = false,
-  cardStyle = 'sideBySide',
-  cardWidth
 }) => {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
@@ -499,96 +646,6 @@ const KitchenCard: React.FC<KitchenCardProps> = React.memo(({
     return badges.slice(0, 2);
   };
 
-  // Side by side layout for recommended section
-  if (cardStyle === 'sideBySide') {
-    return (
-      <Animated.View
-        style={[
-          styles.kitchenCardSideBySide,
-          cardWidth ? { width: cardWidth } : {},
-          { transform: [{ scale: scaleAnim }] }
-        ]}
-      >
-        <TouchableOpacity
-          onPress={() => onPress(kitchen)}
-          onPressIn={handlePressIn}
-          onPressOut={handlePressOut}
-          activeOpacity={0.9}
-          style={styles.kitchenCardTouchable}
-        >
-          <View style={styles.kitchenImageContainerSideBySide}>
-            {!imageLoaded && (
-              <View style={[styles.kitchenImageSideBySide, styles.imagePlaceholder]}>
-                <ActivityIndicator size="small" color={COLORS.primary} />
-              </View>
-            )}
-            
-            {imageError || !kitchen.restaurant_image ? (
-              <View style={[styles.kitchenImageSideBySide, styles.imagePlaceholder]}>
-                <Icon name="restaurant-outline" size={moderateScale(30)} color={COLORS.textLight} />
-              </View>
-            ) : (
-              <Animated.Image 
-                source={{ uri: kitchen.restaurant_image }} 
-                style={[
-                  styles.kitchenImageSideBySide,
-                  { opacity: opacityAnim }
-                ]}
-                resizeMode="cover"
-                onLoad={handleImageLoad}
-                onError={handleImageError}
-              />
-            )}
-            
-            <View style={styles.badgeContainerSideBySide}>
-              {renderBadges()}
-            </View>
-            
-            <TouchableOpacity 
-              style={styles.favoriteButtonSideBySide}
-              onPress={(e) => {
-                e.stopPropagation();
-                onToggleFavorite(kitchen.restaurant_id);
-              }}
-              disabled={favoriteLoading === kitchen.restaurant_id}
-            >
-              {favoriteLoading === kitchen.restaurant_id ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Icon 
-                  name={kitchen.is_favourite ? "heart" : "heart-outline"} 
-                  size={moderateScale(16)} 
-                  color={kitchen.is_favourite ? COLORS.danger : "#fff"} 
-                />
-              )}
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.kitchenContentSideBySide}>
-            <Text style={styles.kitchenNameSideBySide} numberOfLines={1}>
-              {kitchen.restaurant_name}
-            </Text>
-            
-            <View style={styles.ratingContainerSideBySide}>
-              <Icon name="star" size={moderateScale(12)} color={COLORS.rating} />
-              <Text style={styles.ratingTextSideBySide}>{rating}</Text>
-              <Text style={styles.deliveryTimeSideBySide}>• {deliveryTime}</Text>
-            </View>
-            
-            <Text style={styles.kitchenCuisineSideBySide} numberOfLines={1}>
-              {cuisines.join(' • ')}
-            </Text>
-            
-            <Text style={styles.priceTextSideBySide}>
-              ₹{kitchen.avg_price_range || '200'} for one
-            </Text>
-          </View>
-        </TouchableOpacity>
-      </Animated.View>
-    );
-  }
-
-  // Detailed card for regular list view
   return (
     <Animated.View
       style={[
@@ -662,7 +719,7 @@ const KitchenCard: React.FC<KitchenCardProps> = React.memo(({
               {kitchen.restaurant_name}
             </Text>
             <View style={styles.ratingContainer}>
-              <Icon name="star" size={moderateScale(14)} color={COLORS.rating} />
+              <Icon name="star" size={moderateScale(12)} color="#FFFFFF" />
               <Text style={styles.ratingTextDetailed}>{rating}</Text>
             </View>
           </View>
@@ -718,11 +775,11 @@ const KitchenScreen: React.FC = () => {
   const modalSlideAnim = useRef(new Animated.Value(0)).current;
   const modalOpacityAnim = useRef(new Animated.Value(0)).current;
 
-  // Calculate card width for side-by-side layout
-  const sideBySideCardWidth = useMemo(() => {
+  // Calculate card width for compact layout (3 per screen)
+  const compactCardWidth = useMemo(() => {
     const screenPadding = scale(16);
-    const gap = scale(8);
-    return (width - screenPadding * 2 - gap) / RECOMMENDED_KITCHENS_PER_ROW;
+    const gap = scale(12);
+    return (width - screenPadding * 2 - gap * 2) / RECOMMENDED_KITCHENS_PER_ROW;
   }, [width]);
 
   // Debounced search query
@@ -763,16 +820,14 @@ const KitchenScreen: React.FC = () => {
     return () => clearInterval(interval);
   }, [placeholderAnim]);
 
-  // Fixed Modal animation - Shadow first, then modal
+  // Fixed Modal animation
   useEffect(() => {
     if (isSearchModalVisible) {
-      // First show the shadow/overlay
       Animated.timing(modalOpacityAnim, {
         toValue: 1,
         duration: 200,
         useNativeDriver: true,
       }).start(() => {
-        // Then slide in the modal
         Animated.timing(modalSlideAnim, {
           toValue: 1,
           duration: 300,
@@ -780,13 +835,11 @@ const KitchenScreen: React.FC = () => {
         }).start();
       });
     } else {
-      // First slide out the modal
       Animated.timing(modalSlideAnim, {
         toValue: 0,
         duration: 250,
         useNativeDriver: true,
       }).start(() => {
-        // Then hide the shadow/overlay
         Animated.timing(modalOpacityAnim, {
           toValue: 0,
           duration: 150,
@@ -1156,7 +1209,7 @@ const KitchenScreen: React.FC = () => {
     }
   }, [fetchKitchens, fetchActiveOrders, fetchPastKitchenDetails, fetchUserData]);
 
-  // Enhanced Search handlers with fixed animation sequence
+  // Enhanced Search handlers
   const openSearchModal = useCallback(() => {
     setIsSearchModalVisible(true);
     Animated.timing(searchAnim, {
@@ -1259,12 +1312,44 @@ const KitchenScreen: React.FC = () => {
     setShowAllActiveOrders(prev => !prev);
   }, []);
 
-  // Filters
+  // UPDATED: Enhanced Filters with white background and proper box visibility
   const [filters, setFilters] = useState<Filter[]>(useMemo(() => [
-    { id: '1', name: 'Rating 4.0+', icon: 'star', type: 'rating', active: false },
-    { id: '2', name: 'Pure Veg', icon: 'leaf', type: 'veg', active: false },
-    { id: '3', name: 'Offers', icon: 'pricetag', type: 'offer', active: false },
-    { id: '4', name: 'Fast Delivery', icon: 'rocket', type: 'fastDelivery', active: false },
+    { 
+      id: '1', 
+      name: 'Rating 4.0+', 
+      icon: 'star', 
+      type: 'rating', 
+      active: false,
+      color: '#FFFFFF',
+      activeColor: COLORS.filterRatingActive
+    },
+    { 
+      id: '2', 
+      name: 'Pure Veg', 
+      icon: 'leaf', 
+      type: 'veg', 
+      active: false,
+      color: '#FFFFFF',
+      activeColor: COLORS.filterVegActive
+    },
+    { 
+      id: '3', 
+      name: 'Offers', 
+      icon: 'pricetag', 
+      type: 'offer', 
+      active: false,
+      color: '#FFFFFF',
+      activeColor: COLORS.filterOffersActive
+    },
+    { 
+      id: '4', 
+      name: 'Fast Delivery', 
+      icon: 'rocket', 
+      type: 'fastDelivery', 
+      active: false,
+      color: '#FFFFFF',
+      activeColor: COLORS.filterFastDeliveryActive
+    },
   ], []));
 
   // Filtered kitchens
@@ -1411,11 +1496,13 @@ const KitchenScreen: React.FC = () => {
     </TouchableOpacity>
   ), [activeCategory, handleCategoryPress]);
 
+  // UPDATED: Enhanced Filter renderer with white background and proper box visibility
   const renderFilter = useCallback(({ item }: { item: Filter }) => (
     <TouchableOpacity 
       style={[
         styles.filterCard,
-        item.active && styles.activeFilterCard
+        item.active && [styles.activeFilterCard, { backgroundColor: item.activeColor }],
+        !item.active && { backgroundColor: item.color }
       ]}
       onPress={() => handleFilterPress(item.id)}
       activeOpacity={0.7}
@@ -1423,7 +1510,7 @@ const KitchenScreen: React.FC = () => {
       <Icon 
         name={item.icon} 
         size={moderateScale(16)} 
-        color={item.active ? '#fff' : COLORS.textMedium} 
+        color={item.active ? '#FFFFFF' : COLORS.textDark} 
       />
       <Text style={[
         styles.filterText,
@@ -1434,7 +1521,20 @@ const KitchenScreen: React.FC = () => {
     </TouchableOpacity>
   ), [handleFilterPress]);
 
-  // Kitchen item renderer - only detailed layout now
+  // UPDATED: Compact kitchen item renderer for recommendations
+  const renderCompactKitchenItem = useCallback(({ item }: { item: Kitchen }) => {
+    return (
+      <CompactKitchenCard
+        kitchen={item}
+        onPress={handleKitchenPress}
+        onToggleFavorite={toggleFavorite}
+        favoriteLoading={favoriteLoading}
+        cardWidth={compactCardWidth}
+      />
+    );
+  }, [handleKitchenPress, toggleFavorite, favoriteLoading, compactCardWidth]);
+
+  // Detailed kitchen item renderer for main list
   const renderKitchenItem = useCallback(({ item }: { item: Kitchen }) => {
     return (
       <KitchenCard
@@ -1442,24 +1542,9 @@ const KitchenScreen: React.FC = () => {
         onPress={handleKitchenPress}
         onToggleFavorite={toggleFavorite}
         favoriteLoading={favoriteLoading}
-        cardStyle="detailed"
       />
     );
   }, [handleKitchenPress, toggleFavorite, favoriteLoading]);
-
-  // Side by side kitchen item renderer for recommended section - Now in horizontal FlatList
-  const renderSideBySideKitchenItem = useCallback(({ item }: { item: Kitchen }) => {
-    return (
-      <KitchenCard
-        kitchen={item}
-        onPress={handleKitchenPress}
-        onToggleFavorite={toggleFavorite}
-        favoriteLoading={favoriteLoading}
-        cardStyle="sideBySide"
-        cardWidth={sideBySideCardWidth}
-      />
-    );
-  }, [handleKitchenPress, toggleFavorite, favoriteLoading, sideBySideCardWidth]);
 
   // Active order footer item
   const renderActiveOrderFooterItem = useCallback((order: ActiveOrder) => {
@@ -1623,7 +1708,7 @@ const KitchenScreen: React.FC = () => {
         </View>
       )}
 
-      {/* Sticky Search Bar */}
+      {/* Sticky Search Bar - FIXED: No extra gap on scroll */}
       <Animated.View style={[styles.stickySearchContainer, { opacity: searchOpacity }]}>
         <LinearGradient
           colors={[COLORS.gradientStart, COLORS.gradientMiddle, COLORS.gradientEnd]}
@@ -1655,8 +1740,8 @@ const KitchenScreen: React.FC = () => {
         )}
         scrollEventThrottle={16}
       >
-        {/* Enhanced Header Section - Scrolls with content */}
-        <Animated.View style={[styles.headerContainer, { height: headerHeight + 25 }]}>
+        {/* Enhanced Header Section */}
+        <Animated.View style={[styles.headerContainer]}>
           <LinearGradient
             colors={[COLORS.gradientStart, COLORS.gradientMiddle, COLORS.gradientEnd]}
             style={styles.headerGradient}
@@ -1687,7 +1772,7 @@ const KitchenScreen: React.FC = () => {
 
         {/* Main Content */}
         <View style={styles.mainContent}>
-          {/* Categories Section - MOVED TO BODY */}
+          {/* Categories Section */}
           {apiData?.data?.CategoryList && apiData.data.CategoryList.length > 0 && (
             <View style={styles.categoriesSection}>
               <FlatList
@@ -1702,7 +1787,7 @@ const KitchenScreen: React.FC = () => {
             </View>
           )}
 
-          {/* Quick Filters */}
+          {/* UPDATED: Quick Filters with white background and proper box visibility */}
           <View style={styles.sectionContainer}>
             <FlatList
               horizontal
@@ -1714,26 +1799,31 @@ const KitchenScreen: React.FC = () => {
             />
           </View>
 
-          {/* Featured Kitchens - Horizontal Side by Side Layout */}
+          {/* UPDATED: Featured Kitchens - Compact Horizontal Layout with 3 per screen */}
           {apiData?.data?.FeatureKitchenList?.length > 0 && (
             <View style={styles.featuredSectionContainer}>
-              <Text style={styles.sectionTitle}>RECOMMENDED FOR YOU</Text>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Recommended For You</Text>
+              </View>
               <FlatList
                 horizontal
                 data={apiData.data.FeatureKitchenList}
-                renderItem={renderSideBySideKitchenItem}
+                renderItem={renderCompactKitchenItem}
                 keyExtractor={(item) => item.restaurant_id}
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.recommendedListContainer}
-                snapToInterval={sideBySideCardWidth + scale(8)}
+                contentContainerStyle={styles.compactListContainer}
+                snapToInterval={compactCardWidth + scale(12)}
                 decelerationRate="fast"
+                pagingEnabled={false}
               />
             </View>
           )}
 
-          {/* All Kitchens - Detailed Layout (One below one) */}
-          <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>DISCOVER KITCHENS NEAR YOU</Text>
+          {/* UPDATED: All Kitchens - Detailed Layout with proper alignment and green rating background */}
+          <View style={styles.discoverSectionContainer}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Discover Kitchens Near You</Text>
+            </View>
             {filteredKitchens.length === 0 ? (
               <View style={styles.emptyResultContainer}>
                 <Icon name="restaurant-outline" size={moderateScale(60)} color={COLORS.textLight} />
@@ -1792,7 +1882,7 @@ const KitchenScreen: React.FC = () => {
   );
 };
 
-// Reorganized Styles following kitchen-home-screen pattern with responsive text
+// UPDATED: Enhanced Styles with all improvements
 const styles = StyleSheet.create({
   // Base container styles
   container: {
@@ -1817,13 +1907,13 @@ const styles = StyleSheet.create({
     marginTop: scale(16),
   },
   emptyText: {
-    fontSize: FONT.XL,
+    fontSize: moderateScale(18),
     fontFamily: FONTS.semiBold,
     color: COLORS.textDark,
     marginTop: scale(16),
   },
   emptySubText: {
-    fontSize: FONT.SM,
+    fontSize: moderateScale(14),
     fontFamily: FONTS.regular,
     color: COLORS.textLight,
     marginTop: scale(8),
@@ -1837,14 +1927,14 @@ const styles = StyleSheet.create({
   },
   retryButtonText: {
     color: '#fff',
-    fontSize: FONT.LG,
+    fontSize: moderateScale(16),
     fontFamily: FONTS.semiBold,
   },
 
-  // Sticky Search Styles
+  // Sticky Search Styles - FIXED: No extra gap
   stickySearchContainer: {
     position: 'absolute',
-    top: isAndroid ? scale(10) : scale(15),
+    top: isAndroid ? scale(10) : scale(10), // Reduced top spacing
     left: 0,
     right: 0,
     zIndex: 1000,
@@ -1869,7 +1959,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  // Header Styles
+  // Header Styles - FIXED: Reduced height to prevent extra gap
   headerContainer: {
     zIndex: 100,
     borderBottomLeftRadius: scale(16),
@@ -1898,13 +1988,48 @@ const styles = StyleSheet.create({
     paddingBottom: scale(100),
   },
 
+  // Section Styles
+  sectionContainer: {
+    marginTop: scale(20),
+    paddingHorizontal: scale(16),
+  },
+  featuredSectionContainer: {
+    marginTop: scale(20),
+    marginBottom: scale(10),
+  },
+  // UPDATED: Discover section with bottom gap
+  discoverSectionContainer: {
+    marginTop: scale(20),
+    paddingHorizontal: scale(16),
+    marginBottom: scale(30), // Added bottom gap
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: scale(20),
+    paddingHorizontal: scale(0),
+    marginLeft:15,
+  },
+  sectionTitle: {
+    fontSize: moderateScale(18),
+    fontFamily: FONTS.bold,
+    color: COLORS.textDark,
+  },
+  seeAllText: {
+    fontSize: moderateScale(14),
+    fontFamily: FONTS.medium,
+    color: COLORS.primary,
+  },
+
   // Categories Section Styles
   categoriesSection: {
     marginTop: scale(16),
     marginBottom: scale(8),
+    paddingHorizontal: scale(16),
   },
 
-  // Search Input Styles
+  // UPDATED: Search Input Styles with smaller text
   searchInputContainer: {
     width: '100%',
     shadowColor: '#000',
@@ -1936,7 +2061,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   searchPlaceholderText: {
-    fontSize: FONT.LG,
+    fontSize: moderateScale(14), // Smaller text
     fontFamily: FONTS.medium,
     color: COLORS.searchPlaceholder,
     letterSpacing: 0.3,
@@ -1958,7 +2083,7 @@ const styles = StyleSheet.create({
     transform: [{ skewX: '-20deg' }],
   },
 
-  // UPDATED: Category Styles with circular images
+  // Category Styles
   categoryCard: {
     width: scale(65),
     alignItems: 'center',
@@ -1979,7 +2104,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: scale(2),
-    borderRadius: scale(25), // Circular shape
+    borderRadius: scale(25),
     backgroundColor: COLORS.lightGray,
     overflow: 'hidden',
     borderWidth: 2,
@@ -1992,10 +2117,10 @@ const styles = StyleSheet.create({
   categoryImage: {
     width: scale(50),
     height: scale(50),
-    borderRadius: scale(15), // Circular image
+    borderRadius: scale(15),
   },
   categoryName: {
-    fontSize: 13,
+    fontSize: moderateScale(12),
     fontFamily: FONTS.medium,
     color: COLORS.textDark,
     textAlign: 'center',
@@ -2005,70 +2130,48 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.semiBold,
   },
 
-  // Section Styles
-  sectionContainer: {
-    marginTop: scale(16),
-    paddingHorizontal: scale(16),
-  },
-  featuredSectionContainer: {
-    marginTop: scale(20),
-    marginBottom: scale(10),
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontFamily: FONTS.bold,
-    color: COLORS.textDark,
-    marginBottom: scale(12),
-    paddingHorizontal: scale(16),
-  },
-
-  // Recommended Section - Horizontal Layout
-  recommendedListContainer: {
-    paddingHorizontal: scale(8),
-    paddingVertical: scale(4),
-  },
-
-  // Filter Styles
+  // UPDATED: Filter Styles with white background and proper box visibility
   filterList: {
     paddingHorizontal: scale(0),
   },
   filterCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.card,
-    borderRadius: scale(20),
-    paddingVertical: scale(8),
+    borderRadius: scale(12),
+    paddingVertical: scale(10),
     paddingHorizontal: scale(16),
     marginRight: scale(10),
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: COLORS.border,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 2,
+    elevation: 3,
+    minWidth: scale(100),
+    justifyContent: 'center',
   },
   activeFilterCard: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
+    transform: [{ scale: 1.05 }],
+    borderWidth: 0,
   },
   filterText: {
-    fontSize: FONT.SM,
-    fontFamily: FONTS.medium,
+    fontSize: moderateScale(12),
+    fontFamily: FONTS.semiBold,
     color: COLORS.textDark,
     marginLeft: scale(6),
   },
   activeFilterText: {
-    color: '#fff',
+    color: '#FFFFFF',
   },
 
-  // Kitchen List Styles
-  kitchenList: {
-    paddingHorizontal: scale(8),
-  },
-
-  // Kitchen Card Styles - Side by Side
-  kitchenCardSideBySide: {
+  // UPDATED: Compact Kitchen Card Styles with proper alignment
+  compactKitchenCard: {
     backgroundColor: COLORS.card,
     borderRadius: scale(12),
     overflow: 'hidden',
@@ -2077,9 +2180,89 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
-    marginHorizontal: scale(4),
+    marginHorizontal: scale(6),
     marginBottom: scale(8),
   },
+  compactKitchenTouchable: {
+    flex: 1,
+  },
+  compactImageContainer: {
+    height: scale(100),
+    position: 'relative',
+  },
+  compactKitchenImage: {
+    width: '100%',
+    height: '100%',
+  },
+  compactDiscountBadge: {
+    position: 'absolute',
+    top: scale(6),
+    left: scale(6),
+    backgroundColor: COLORS.discount,
+    paddingHorizontal: scale(6),
+    paddingVertical: scale(2),
+    borderRadius: scale(4),
+  },
+  compactDiscountText: {
+    fontSize: moderateScale(10),
+    fontFamily: FONTS.bold,
+    color: '#FFFFFF',
+  },
+  compactFavoriteButton: {
+    position: 'absolute',
+    top: scale(6),
+    right: scale(6),
+    backgroundColor: COLORS.darkOverlay,
+    width: scale(20),
+    height: scale(20),
+    borderRadius: scale(10),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  compactContent: {
+    padding: scale(8),
+  },
+  compactKitchenName: {
+    fontSize: moderateScale(12),
+    fontFamily: FONTS.semiBold,
+    color: COLORS.textDark,
+    marginBottom: scale(4),
+  },
+  compactInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  compactRatingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.success, // Green background for rating
+    paddingHorizontal: scale(6),
+    paddingVertical: scale(2),
+    borderRadius: scale(4),
+  },
+  compactRatingText: {
+    fontSize: moderateScale(10),
+    fontFamily: FONTS.semiBold,
+    color: '#FFFFFF', // White text for rating
+    marginLeft: scale(2),
+  },
+  compactDeliveryContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  compactDeliveryText: {
+    fontSize: moderateScale(10),
+    fontFamily: FONTS.regular,
+    color: COLORS.textMedium,
+    marginLeft: scale(2),
+  },
+  compactListContainer: {
+    paddingHorizontal: scale(10),
+    paddingVertical: scale(4),
+  },
+
+  // Detailed Kitchen Card Styles with proper alignment and green rating background
   kitchenCardDetailed: {
     marginHorizontal: scale(8),
     marginBottom: scale(16),
@@ -2095,17 +2278,9 @@ const styles = StyleSheet.create({
   kitchenCardTouchable: {
     flex: 1,
   },
-  kitchenImageContainerSideBySide: {
-    height: scale(100),
-    position: 'relative',
-  },
   kitchenImageContainerDetailed: {
     height: scale(180),
     position: 'relative',
-  },
-  kitchenImageSideBySide: {
-    width: '100%',
-    height: '100%',
   },
   kitchenImageDetailed: {
     width: '100%',
@@ -2127,13 +2302,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: scale(8),
     left: scale(8),
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  badgeContainerSideBySide: {
-    position: 'absolute',
-    top: scale(4),
-    left: scale(4),
     flexDirection: 'row',
     flexWrap: 'wrap',
   },
@@ -2159,21 +2327,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.discount,
   },
   badgeText: {
-    fontSize: FONT.S,
+    fontSize: moderateScale(10),
     fontFamily: FONTS.bold,
     color: '#FFFFFF',
     marginLeft: scale(2),
-  },
-  favoriteButtonSideBySide: {
-    position: 'absolute',
-    top: scale(4),
-    right: scale(4),
-    backgroundColor: COLORS.darkOverlay,
-    width: scale(24),
-    height: scale(24),
-    borderRadius: scale(12),
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   favoriteButtonDetailed: {
     position: 'absolute',
@@ -2186,9 +2343,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  kitchenContentSideBySide: {
-    padding: scale(8),
-  },
   kitchenContentDetailed: {
     padding: scale(16),
   },
@@ -2198,66 +2352,32 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: scale(6),
   },
-  kitchenNameSideBySide: {
-    fontSize: FONT.SM,
-    fontFamily: FONTS.semiBold,
-    color: COLORS.textDark,
-    marginBottom: scale(4),
-  },
   kitchenNameDetailed: {
-    fontSize: FONT.XL,
+    fontSize: moderateScale(15),
     fontFamily: FONTS.bold,
     color: COLORS.textDark,
     flex: 1,
     marginRight: scale(8),
   },
-  ratingContainerSideBySide: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: scale(4),
-  },
   ratingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.lightGray,
-    paddingHorizontal: scale(6),
-    paddingVertical: scale(2),
-    borderRadius: scale(4),
-  },
-  ratingTextSideBySide: {
-    fontSize: FONT.XS,
-    fontFamily: FONTS.semiBold,
-    color: COLORS.rating,
-    marginLeft: scale(2),
-    marginRight: scale(4),
+    backgroundColor: COLORS.success, // Green background for rating
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(4),
+    borderRadius: scale(6),
   },
   ratingTextDetailed: {
-    fontSize: FONT.XS,
+    fontSize: moderateScale(12),
     fontFamily: FONTS.semiBold,
-    color: COLORS.rating,
-    marginLeft: scale(2),
-  },
-  deliveryTimeSideBySide: {
-    fontSize: FONT.XS,
-    fontFamily: FONTS.regular,
-    color: COLORS.textMedium,
-  },
-  kitchenCuisineSideBySide: {
-    fontSize: FONT.XS,
-    fontFamily: FONTS.regular,
-    color: COLORS.textMedium,
-    marginBottom: scale(4),
+    color: '#FFFFFF', // White text for rating
+    marginLeft: scale(4),
   },
   kitchenCuisineDetailed: {
-    fontSize: FONT.SM,
+    fontSize: moderateScale(12),
     fontFamily: FONTS.regular,
     color: COLORS.textMedium,
     marginBottom: scale(8),
-  },
-  priceTextSideBySide: {
-    fontSize: 14,
-    fontFamily: FONTS.medium,
-    color: COLORS.textDark,
   },
   kitchenFooter: {
     flexDirection: 'row',
@@ -2269,7 +2389,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   deliveryText: {
-    fontSize: FONT.XS,
+    fontSize: moderateScale(12),
     fontFamily: FONTS.regular,
     color: COLORS.textMedium,
     marginLeft: scale(4),
@@ -2279,9 +2399,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   priceText: {
-    fontSize: FONT.XS,
+    fontSize: moderateScale(12),
     fontFamily: FONTS.medium,
     color: COLORS.textDark,
+  },
+  kitchenList: {
+    paddingHorizontal: scale(8),
   },
 
   // Active Orders Footer Styles
@@ -2324,7 +2447,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   activeOrderFooterKitchen: {
-    fontSize: FONT.SM,
+    fontSize: moderateScale(14),
     fontFamily: FONTS.medium,
     color: COLORS.textDark,
     marginBottom: scale(4),
@@ -2334,7 +2457,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   activeOrderFooterStatusText: {
-    fontSize: FONT.XS,
+    fontSize: moderateScale(12),
     fontFamily: FONTS.medium,
     marginLeft: scale(4),
   },
@@ -2347,12 +2470,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   activeOrderFooterTimeLabel: {
-    fontSize: FONT.XS,
+    fontSize: moderateScale(10),
     fontFamily: FONTS.regular,
     marginBottom: scale(2),
   },
   activeOrderFooterTimeText: {
-    fontSize: FONT.XS,
+    fontSize: moderateScale(10),
     fontFamily: FONTS.semiBold,
   },
   activeOrdersFooterSeeAll: {
@@ -2365,7 +2488,7 @@ const styles = StyleSheet.create({
     borderTopColor: COLORS.border,
   },
   activeOrdersFooterSeeAllText: {
-    fontSize: FONT.SM,
+    fontSize: moderateScale(14),
     fontFamily: FONTS.medium,
     color: COLORS.primary,
     marginRight: scale(4),
@@ -2404,7 +2527,7 @@ const styles = StyleSheet.create({
     marginRight: scale(12),
   },
   cartSummaryKitchenName: {
-    fontSize: 13,
+    fontSize: moderateScale(14),
     fontFamily: FONTS.semiBold,
     color: COLORS.textDark,
     marginBottom: scale(4),
@@ -2415,7 +2538,7 @@ const styles = StyleSheet.create({
   },
   cartSummaryViewMenuText: {
     color: COLORS.primary,
-    fontSize: 12,
+    fontSize: moderateScale(12),
     fontFamily: FONTS.medium,
   },
   cartSummaryMiniCartBtn: {
@@ -2433,7 +2556,7 @@ const styles = StyleSheet.create({
   },
   cartSummaryViewCartText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: moderateScale(12),
     fontFamily: FONTS.semiBold,
     marginRight: scale(8),
   },
@@ -2447,7 +2570,7 @@ const styles = StyleSheet.create({
   },
   cartSummaryMiniCartCount: {
     color: COLORS.primary,
-    fontSize: FONT.XS,
+    fontSize: moderateScale(10),
     fontFamily: FONTS.bold,
   },
 });
