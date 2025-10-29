@@ -14,11 +14,11 @@ import {
   Image,
   Modal,
   FlatList,
-  ScrollView,
   Dimensions,
-  Linking,
   SafeAreaView,
   StatusBar,
+  Linking,
+  ScrollView,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -26,104 +26,50 @@ import { AuthStackParamList } from '../../navigation/AuthNavigator';
 import { sendOTP } from '../../api/auth';
 import { Country, countries } from '../../auth/screens/home/countries';
 import Icon from 'react-native-vector-icons/Ionicons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width, height } = Dimensions.get('window');
 
-// Check if device is small screen
-const isSmallDevice = height < 700;
-
-// Modern color scheme
-const primaryColor = '#FF7E33'; // Vibrant orange
-const secondaryColor = '#FFFFFF';
-const accentColor = '#FFE8D9'; // Light orange for backgrounds
-const textColor = '#2D2D2D';
-const lightTextColor = '#7B7B7B';
-const borderColor = '#F0F0F0';
-const errorColor = '#FF4444';
+// Updated color scheme with #E65C00
+const primaryColor = '#E65C00';
+const backgroundColor = '#FFFFFF';
+const textColor = '#1C1C1C';
+const lightTextColor = '#666666';
+const borderColor = '#E8E8E8';
+const errorColor = '#D32F2F';
+const linkColor = '#E65C00';
 
 const LoginScreen = () => {
   const navigation = useNavigation<StackNavigationProp<AuthStackParamList, 'Login'>>();
   const [mobileNumber, setMobileNumber] = useState('');
   const [error, setError] = useState('');
-  const [isFocused, setIsFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedCountry, setSelectedCountry] = useState<Country>(countries.find(country => country.code === 'IN') || countries[0]);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const shakeAnimation = useRef(new Animated.Value(0)).current;
-  const fadeAnim = useRef(new Animated.Value(1)).current;
+  
   const inputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
 
   useEffect(() => {
-    // Clear AsyncStorage on component mount
-    const clearStorage = async () => {
-      try {
-        await AsyncStorage.clear();
-        console.log('AsyncStorage cleared');
-      } catch (error) {
-        console.log('Error clearing AsyncStorage:', error);
-      }
-    };
-    clearStorage();
-
-    // Keyboard event listeners
-    const keyboardDidShowListener = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      (e) => {
-        setKeyboardVisible(true);
-        const keyboardHeight = e.endCoordinates.height;
-        setKeyboardHeight(keyboardHeight);
-        
-        // Scroll to input when keyboard appears
-        setTimeout(() => {
-          scrollViewRef.current?.scrollTo({ y: 100, animated: true });
-        }, 100);
-      }
-    );
-    
-    const keyboardDidHideListener = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => {
-        setKeyboardVisible(false);
-        setKeyboardHeight(0);
-        // Scroll back to top when keyboard hides
-        scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-      }
-    );
-
-    return () => {
-      keyboardDidShowListener.remove();
-      keyboardDidHideListener.remove();
-    };
-  }, []);
-
-  // Reset fade animation when screen comes back into focus
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
+    Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 300,
+        duration: 600,
         useNativeDriver: true,
-      }).start();
-    });
-
-    return unsubscribe;
-  }, [navigation, fadeAnim]);
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 600,
+        useNativeDriver: true,
+      })
+    ]).start();
+  }, []);
 
   const handleContinue = async () => {
-    if (!mobileNumber) {
-      setError('Please enter mobile number');
-      shakeInput();
-      return;
-    }
-
-    if (mobileNumber.length < selectedCountry.minLength) {
-      setError(`Mobile number must be at least ${selectedCountry.minLength} digits`);
-      shakeInput();
+    if (!mobileNumber || mobileNumber.length < selectedCountry.minLength) {
+      setError(`Please enter a valid ${selectedCountry.name} number`);
       return;
     }
 
@@ -135,104 +81,27 @@ const LoginScreen = () => {
       const response = await sendOTP(fullNumber);
 
       if (response?.status == 200) {
-        // Success animation before navigation
-          navigation.navigate('OTP', { userInput: fullNumber });
+        navigation.navigate('OTP', { userInput: fullNumber });
       } else {
-        setError(response?.data?.message || 'Failed to send OTP. Please try again.');
-        shakeInput();
+        setError(response?.data?.message || 'Failed to send OTP');
       }
     } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Something went wrong. Try again.';
-      setError(msg);
-      shakeInput();
+      setError(err?.response?.data?.message || 'Something went wrong');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleInputChange = (text: string) => {
-    // Remove all non-digit characters and limit to maxLength
-    const numericText = text.replace(/[^0-9]/g, '');
-    
-    // Auto-detect and remove country code if it matches selected country
-    let processedText = numericText;
-    const countryDialCodeWithoutPlus = selectedCountry.dialCode.replace('+', '');
-    
-    // Check if input starts with country code and remove it
-    if (numericText.startsWith(countryDialCodeWithoutPlus)) {
-      processedText = numericText.slice(countryDialCodeWithoutPlus.length);
-    }
-    
-    // Also check for common country codes that might be auto-filled
-    const commonCountryCodes = ['91', '1', '44', '86', '81', '49', '33', '7', '39', '34'];
-    for (const code of commonCountryCodes) {
-      if (numericText.startsWith(code) && numericText.length > code.length) {
-        // Only remove if the remaining digits are valid phone number length
-        const remainingDigits = numericText.slice(code.length);
-        if (remainingDigits.length >= 7 && remainingDigits.length <= 15) {
-          processedText = remainingDigits;
-          break;
-        }
-      }
-    }
-    
-    setMobileNumber(processedText.slice(0, selectedCountry.maxLength));
-    setError('');
-  };
-
-  // Handle autofill specifically for contacts
-  const handleAutoFill = (text: string) => {
-    console.log('Autofill text:', text);
-    
-    // Remove all non-digit characters including +, spaces, hyphens
-    const cleanText = text.replace(/[^0-9]/g, '');
-    
-    if (!cleanText) {
-      setMobileNumber('');
-      return;
-    }
-
-    let finalNumber = cleanText;
-    
-    // Remove country code if present (for India +91)
-    if (cleanText.startsWith('91') && cleanText.length > 10) {
-      finalNumber = cleanText.slice(2);
-    }
-    
-    // Remove leading 0 if present (some countries use 0 after country code)
-    if (finalNumber.startsWith('0') && finalNumber.length > 10) {
-      finalNumber = finalNumber.slice(1);
-    }
-    
-    // Limit to 10 digits for Indian numbers
-    if (selectedCountry.code === 'IN') {
-      finalNumber = finalNumber.slice(0, 10);
-    } else {
-      finalNumber = finalNumber.slice(0, selectedCountry.maxLength);
-    }
-    
-    console.log('Processed number:', finalNumber);
-    setMobileNumber(finalNumber);
-    setError('');
-  };
-
-  const shakeInput = () => {
-    Animated.sequence([
-      Animated.timing(shakeAnimation, { toValue: 10, duration: 50, useNativeDriver: true }),
-      Animated.timing(shakeAnimation, { toValue: -10, duration: 50, useNativeDriver: true }),
-      Animated.timing(shakeAnimation, { toValue: 10, duration: 50, useNativeDriver: true }),
-      Animated.timing(shakeAnimation, { toValue: 0, duration: 50, useNativeDriver: true }),
-    ]).start();
+  const handleInputFocus = () => {
+    setTimeout(() => {
+      scrollViewRef.current?.scrollTo({ y: 120, animated: true });
+    }, 100);
   };
 
   const filteredCountries = countries.filter(country => 
     country.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     country.dialCode.includes(searchQuery)
   );
-
-  const animatedStyle = {
-    transform: [{ translateX: shakeAnimation }],
-  };
 
   const renderCountryItem = ({ item }: { item: Country }) => (
     <TouchableOpacity
@@ -241,15 +110,14 @@ const LoginScreen = () => {
         setSelectedCountry(item);
         setShowCountryPicker(false);
         setSearchQuery('');
-        inputRef.current?.focus();
       }}
     >
       <Text style={styles.countryFlag}>{item.flag}</Text>
-      <Text style={styles.countryName}>{item.name}</Text>
+      <View style={styles.countryInfo}>
+        <Text style={styles.countryName}>{item.name}</Text>
+        <Text style={styles.countryRegion}>{item.region}</Text>
+      </View>
       <Text style={styles.countryCode}>{item.dialCode}</Text>
-      {selectedCountry.code === item.code && (
-        <Icon name="checkmark" size={20} color={primaryColor} style={styles.selectedIcon} />
-      )}
     </TouchableOpacity>
   );
 
@@ -257,175 +125,201 @@ const LoginScreen = () => {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       
-      {/* Country Picker Modal - Positioned above everything */}
+      {/* Country Picker Modal */}
       <Modal
         visible={showCountryPicker}
         animationType="slide"
         transparent={false}
         onRequestClose={() => setShowCountryPicker(false)}
-        statusBarTranslucent={false}
       >
         <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Select Country</Text>
+            <View style={styles.modalTitleContainer}>
+              <Text style={styles.modalTitle}>Select Country</Text>
+              <Text style={styles.modalSubtitle}>Choose your country code</Text>
+            </View>
             <TouchableOpacity 
+              onPress={() => setShowCountryPicker(false)}
               style={styles.closeButton}
-              onPress={() => {
-                setShowCountryPicker(false);
-                setSearchQuery('');
-              }}
             >
               <Icon name="close" size={24} color={textColor} />
             </TouchableOpacity>
           </View>
           
           <View style={styles.searchContainer}>
-            <Icon name="search" size={20} color={lightTextColor} style={styles.searchIcon} />
+            <Icon name="search-outline" size={20} color={lightTextColor} style={styles.searchIcon} />
             <TextInput
-              placeholder="Search country"
+              placeholder="Search country or code..."
               style={styles.searchInput}
               placeholderTextColor={lightTextColor}
               value={searchQuery}
               onChangeText={setSearchQuery}
               autoFocus={true}
             />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Icon name="close-circle" size={20} color={lightTextColor} />
+              </TouchableOpacity>
+            )}
           </View>
           
           <FlatList
             data={filteredCountries}
             renderItem={renderCountryItem}
             keyExtractor={(item) => item.code}
-            keyboardShouldPersistTaps="always"
-            ItemSeparatorComponent={() => <View style={styles.separator} />}
-            contentContainerStyle={styles.modalContent}
+            showsVerticalScrollIndicator={true}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Icon name="flag-outline" size={48} color={lightTextColor} />
+                <Text style={styles.emptyText}>No countries found</Text>
+              </View>
+            }
           />
         </SafeAreaView>
       </Modal>
 
-      <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
+      <Animated.View style={[
+        styles.container, 
+        { 
+          opacity: fadeAnim,
+          transform: [{ translateY: slideAnim }]
+        }
+      ]}>
         <KeyboardAvoidingView
-          style={styles.container}
+          style={styles.keyboardAvoid}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         >
-          {/* Fixed Image Section - Always visible */}
-          <View style={[
-            styles.imageContainer,
-            keyboardVisible && styles.imageContainerWithKeyboard
-          ]}>
-            <Image
-              source={{ uri: 'https://eatoorprod.s3.amazonaws.com/uploads/7b4762adb1e841d6b248ecd5b8ff55c2.jpg' }}
-              style={styles.topImage}
-              resizeMode="cover"
-            />
-          </View>
-
-          {/* Scrollable Form Section */}
-          <ScrollView 
+          <ScrollView
             ref={scrollViewRef}
-            contentContainerStyle={[
-              styles.scrollContainer,
-              { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 20 : 40 }
-            ]}
-            keyboardShouldPersistTaps="handled"
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
             bounces={false}
-            scrollEventThrottle={16}
           >
-            {/* Card-like Form Section */}
-            <View style={[
-              styles.cardContainer,
-              keyboardVisible && styles.cardContainerWithKeyboard
-            ]}>
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
               <View style={styles.content}>
-                <View style={styles.titleContainer}>
-                  <Text style={styles.title}>Login or Signup</Text>
-                  <Text style={styles.subtitle}>Enter phone number to continue</Text>
-                </View>
+                
+                
 
-                <Animated.View style={[styles.inputContainer, animatedStyle]}>
-                  <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-                    <View style={[styles.phoneInputContainer, error ? styles.inputErrorContainer : null, isFocused && styles.inputFocusedContainer]}>
-                      <TouchableOpacity
-                        style={styles.countryPicker}
-                        onPress={() => setShowCountryPicker(true)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.countryFlag}>{selectedCountry.flag}</Text>
-                        <Text style={styles.dialCodeText}>{selectedCountry.dialCode}</Text>
-                        <Icon 
-                          name="chevron-down" 
-                          size={18} 
-                          color={isFocused ? primaryColor : lightTextColor} 
-                          style={styles.chevronIcon}
+                {/* Centered Main Content */}
+                <View style={styles.mainContent}>
+
+
+                  {/* Centered Header Section */}
+                <View style={styles.header}>
+                  <View style={styles.logoContainer}>
+                    <View style={styles.logoWrapper}>
+                      <View style={styles.logoImageContainer}>
+                        <Image 
+                          source={{ uri: 'https://eatoorprod.s3.amazonaws.com/uploads/80645c4afd0d47dea9c05b0091714778.jpg' }}
+                          style={styles.logoImage}
+                          resizeMode="contain"
                         />
-                      </TouchableOpacity>
-                      <TextInput
-                        ref={inputRef}
-                        placeholder="Enter phone number"
-                        style={styles.input}
-                        placeholderTextColor={lightTextColor}
-                        value={mobileNumber}
-                        onChangeText={handleAutoFill} // Use the improved autofill handler
-                        onFocus={() => setIsFocused(true)}
-                        onBlur={() => setIsFocused(false)}
-                        keyboardType="number-pad"
-                        autoComplete="tel"
-                        textContentType="telephoneNumber"
-                        returnKeyType="done"
-                        onSubmitEditing={handleContinue}
-                        textAlignVertical="center"
-                        maxLength={selectedCountry.maxLength}
-                        editable={!isLoading}
-                        autoFocus={false}
-                      />
+                      </View>
+                      <Text style={styles.logoText}>EATOOR</Text>
                     </View>
-                  </TouchableWithoutFeedback>
-                  {error ? (
-                    <View style={styles.errorContainer}>
-                      <Icon name="alert-circle" size={16} color={errorColor} />
-                      <Text style={styles.error}>{error}</Text>
+                    <View style={styles.badge}>
+                      <Text style={styles.badgeText}>Food Delivery</Text>
                     </View>
-                  ) : null}
-                </Animated.View>
+                  </View>
+                </View>
+                  
+                  {/* Login/Sign Up Heading with Side Lines */}
+                  <View style={styles.headingWithLines}>
+                    <View style={styles.line} />
+                    <Text style={styles.headingTitle}>Login or sign up</Text>
+                    <View style={styles.line} />
+                  </View>
 
-                <TouchableOpacity
-                  style={[
-                    styles.button,
-                    (mobileNumber.length < selectedCountry.minLength || isLoading) && styles.buttonDisabled,
-                  ]}
-                  onPress={handleContinue}
-                  disabled={mobileNumber.length < selectedCountry.minLength || isLoading}
-                  activeOpacity={0.8}
-                >
-                  {isLoading ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <View style={styles.buttonContent}>
-                      <Text style={styles.buttonText}>Continue</Text>
-                      <Icon name="arrow-forward" size={20} color="#fff" style={styles.buttonIcon} />
-                    </View>
-                  )}
-                </TouchableOpacity>
+                  {/* Centered Input Section */}
+                  <View style={styles.inputSection}>
+                    <View style={styles.inputContainer}>
+                      {/* Updated Input Label */}
+                      
+                      <View style={styles.inputWrapper}>
+                        <TouchableOpacity
+                          style={styles.countryPicker}
+                          onPress={() => setShowCountryPicker(true)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.countryFlag}>{selectedCountry.flag}</Text>
+                          <Text style={styles.dialCode}>{selectedCountry.dialCode}</Text>
+                          <Icon name="chevron-down" size={14} color={primaryColor} />
+                        </TouchableOpacity>
+                        
+                        <TextInput
+                          ref={inputRef}
+                          placeholder="Enter mobile number"
+                          style={styles.input}
+                          placeholderTextColor={lightTextColor}
+                          value={mobileNumber}
+                          onChangeText={(text) => {
+                            const numericText = text.replace(/[^0-9]/g, '');
+                            setMobileNumber(numericText);
+                            setError('');
+                          }}
+                          onFocus={handleInputFocus}
+                          keyboardType="number-pad"
+                          autoComplete="tel"
+                          textContentType="telephoneNumber"
+                          returnKeyType="done"
+                          onSubmitEditing={handleContinue}
+                          maxLength={selectedCountry.maxLength}
+                        />
+                      </View>
 
-                <Text style={styles.termsText}>
-                  Continue to agree {' '}
-                  <Text
-                    style={styles.highlightText}
-                    onPress={() => Linking.openURL('https://www.eatoor.com/terms-and-conditions')}
-                  >
-                    Terms of Service
-                  </Text>{' '}
-                  and{' '}
-                  <Text
-                    style={styles.highlightText}
-                    onPress={() => Linking.openURL('https://www.eatoor.com/privacy-policy')}
-                  >
-                    Privacy Policy
-                  </Text>
-                </Text>
+                      {error ? 
+                        <View style={styles.errorContainer}>
+                          <Icon name="warning-outline" size={16} color={errorColor} />
+                          <Text style={styles.errorText}>{error}</Text>
+                        </View>
+                      : null
+                      }
+                    </View>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.continueButton,
+                        (mobileNumber.length < selectedCountry.minLength || isLoading) && styles.buttonDisabled,
+                      ]}
+                      onPress={handleContinue}
+                      disabled={mobileNumber.length < selectedCountry.minLength || isLoading}
+                      activeOpacity={0.9}
+                    >
+                      {isLoading ? (
+                        <ActivityIndicator color="#fff" size="small" />
+                      ) : (
+                        <>
+                          <Text style={styles.buttonText}>Continue</Text>
+                          <Icon name="arrow-forward" size={18} color="#fff" style={styles.buttonIcon} />
+                        </>
+                      )}
+                    </TouchableOpacity>
+
+                    {/* Centered Terms and Conditions */}
+                    <View style={styles.termsContainer}>
+                      <Text style={styles.termsText}>
+                        By continuing, agree to{' '}
+                        <Text
+                          style={styles.linkText}
+                          onPress={() => Linking.openURL('https://www.eatoor.com/terms-and-conditions')}
+                        >
+                          Terms
+                        </Text>{' '}
+                        and{' '}
+                        <Text
+                          style={styles.linkText}
+                          onPress={() => Linking.openURL('https://www.eatoor.com/privacy-policy')}
+                        >
+                          Privacy
+                        </Text>
+                      </Text>
+                    </View>
+                  </View>
+                </View>
               </View>
-            </View>
+            </TouchableWithoutFeedback>
           </ScrollView>
         </KeyboardAvoidingView>
       </Animated.View>
@@ -442,252 +336,312 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-  scrollContainer: {
+  keyboardAvoid: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
     flexGrow: 1,
-    paddingTop: isSmallDevice ? height * 0.3 : height * 0.35,
-  },
-  imageContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    width: '100%',
-    height: isSmallDevice ? height * 0.3 : height * 0.35,
-    zIndex: 1,
-  },
-  imageContainerWithKeyboard: {
-    height: isSmallDevice ? height * 0.2 : height * 0.25,
-  },
-  topImage: {
-    width: '100%',
-    height: '100%',
-  },
-  cardContainer: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    paddingTop: 30,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: -4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 10,
-    minHeight: height * 0.65,
-  },
-  cardContainerWithKeyboard: {
-    minHeight: height * 0.5,
+    justifyContent: 'center',
   },
   content: {
-    paddingHorizontal: 25,
-    paddingBottom: 20,
+    flex: 1,
+    minHeight: height,
+    justifyContent: 'center',
+    paddingBottom: 20, // Reduced bottom padding
   },
-  titleContainer: {
-    marginBottom: isSmallDevice ? 24 : 30,
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: 10, // Reduced top padding
+    paddingBottom: 10, // Reduced bottom padding
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mainContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 0, // Removed extra top padding
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 30, // Reduced margin to remove extra space
+  },
+  logoWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6, // Reduced margin
+  },
+  logoImageContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 4,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  logoImage: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+  },
+  logoText: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#E65C00',
+    letterSpacing: -0.5,
+  },
+  badge: {
+    backgroundColor: '#FFF5E6',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FFE4C2',
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: primaryColor,
+  },
+  headingWithLines: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 35, // Adjusted margin for better spacing
+    width: '100%',
+    maxWidth: 300,
+  },
+  line: {
+    flex: 1,
+    height: 1,
+    backgroundColor: borderColor,
+  },
+  headingTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: textColor,
+    textAlign: 'center',
+    marginHorizontal: 15,
+  },
+  inputSection: {
+    width: '100%',
+    maxWidth: 400,
     alignItems: 'center',
   },
-  title: {
-    fontSize: isSmallDevice ? 22 : 24,
-    fontWeight: '700',
-    textAlign: 'center',
-    color: textColor,
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: isSmallDevice ? 14 : 16,
-    color: lightTextColor,
-    textAlign: 'center',
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
-  },
   inputContainer: {
-    marginBottom: 20,
+    marginBottom: 25,
+    width: '100%',
   },
-  phoneInputContainer: {
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: textColor,
+    marginBottom: 8,
+    paddingLeft: 4,
+  },
+  inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: borderColor,
-    borderRadius: 16,
-    backgroundColor: secondaryColor,
-    paddingHorizontal: 16,
-    height: isSmallDevice ? 56 : 60,
-  },
-  inputErrorContainer: {
-    borderColor: errorColor,
-  },
-  inputFocusedContainer: {
-    borderColor: primaryColor,
-    backgroundColor: '#fff',
-    shadowColor: primaryColor,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 4,
+    borderColor: '#E8E8E8',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    backgroundColor: '#FAFAFA',
+    height: 52,
+    width: '100%',
   },
   countryPicker: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
     paddingRight: 12,
-    borderRightWidth: 1,
-    borderRightColor: borderColor,
+    borderRightWidth: 1.5,
+    borderRightColor: '#E8E8E8',
     marginRight: 12,
+    minWidth: 85,
+    height: '100%',
   },
   countryFlag: {
-    fontSize: isSmallDevice ? 20 : 24,
-    marginRight: 8,
+    fontSize: 14,
+    marginRight: 6,
   },
-  chevronIcon: {
-    marginLeft: 4,
-  },
-  dialCodeText: {
-    fontSize: isSmallDevice ? 16 : 17,
+  dialCode: {
+    fontSize: 14,
     color: textColor,
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
     fontWeight: '500',
+    marginRight: 6,
   },
   input: {
     flex: 1,
-    fontSize: isSmallDevice ? 16 : 17,
+    fontSize: 16,
     color: textColor,
-    height: '100%',
-    includeFontPadding: false,
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
-    fontWeight: '500',
+    fontWeight: '400',
     paddingVertical: 0,
+    height: '100%',
+    backgroundColor: 'transparent',
   },
   errorContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 8,
-    marginLeft: 4,
+    paddingHorizontal: 4,
+    backgroundColor: '#FFF5F5',
+    paddingVertical: 8,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    width: '100%',
   },
-  error: {
+  errorText: {
     color: errorColor,
-    fontSize: isSmallDevice ? 12 : 14,
+    fontSize: 13,
     marginLeft: 6,
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
+    fontWeight: '500',
   },
-  button: {
+  continueButton: {
     backgroundColor: primaryColor,
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginTop: 10,
-    shadowColor: primaryColor,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
-    height: Platform.OS === 'ios' ? (isSmallDevice ? 52 : 56) : (isSmallDevice ? 54 : 58),
+    paddingVertical: 15,
+    borderRadius: 12,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-  },
-  buttonContent: {
+    marginBottom: 25,
     flexDirection: 'row',
-    alignItems: 'center',
+    shadowColor: primaryColor,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+    width: '100%',
+    maxWidth: 400,
   },
   buttonDisabled: {
-    opacity: 0.7,
+    opacity: 0.6,
+    shadowOpacity: 0.1,
   },
   buttonText: {
     color: '#fff',
+    fontSize: 16,
     fontWeight: '600',
-    fontSize: isSmallDevice ? 16 : 17,
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
   },
   buttonIcon: {
     marginLeft: 8,
   },
+  termsContainer: {
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    width: '100%',
+  },
   termsText: {
     color: lightTextColor,
-    fontSize: isSmallDevice ? 11 : 12,
+    fontSize: 12,
     textAlign: 'center',
-    marginTop: 24,
-    lineHeight: isSmallDevice ? 16 : 18,
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
+    lineHeight: 16,
   },
-  highlightText: {
-    color: primaryColor,
+  linkText: {
+    color: linkColor,
     fontWeight: '500',
+    textDecorationLine: 'none',
   },
-  // Country Picker Modal Styles - Ensure it appears above everything
+  // Modal styles
   modalContainer: {
     flex: 1,
     backgroundColor: '#fff',
-    zIndex: 1000,
-    elevation: 1000,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: isSmallDevice ? 20 : 24,
+    alignItems: 'flex-start',
+    padding: 20,
     borderBottomWidth: 1,
     borderBottomColor: borderColor,
-    paddingTop: Platform.OS === 'ios' ? 10 : 20,
+  },
+  modalTitleContainer: {
+    flex: 1,
   },
   modalTitle: {
-    fontSize: isSmallDevice ? 20 : 22,
+    fontSize: 22,
     fontWeight: '700',
     color: textColor,
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
+    marginBottom: 4,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: lightTextColor,
+  },
+  closeButton: {
+    padding: 4,
+    marginTop: 4,
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    margin: isSmallDevice ? 16 : 20,
-    marginBottom: 8,
+    margin: 16,
+    marginTop: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#F8F8F8',
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: borderColor,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    height: 50,
   },
   searchIcon: {
-    marginRight: 12,
+    marginRight: 10,
   },
   searchInput: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 15,
     color: textColor,
     paddingVertical: 0,
-  },
-  modalContent: {
-    paddingBottom: 20,
-  },
-  closeButton: {
-    padding: 4,
+    fontWeight: '400',
   },
   countryItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: isSmallDevice ? 14 : 16,
-    paddingHorizontal: isSmallDevice ? 20 : 24,
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: borderColor,
+  },
+  countryInfo: {
+    flex: 1,
+    marginLeft: 12,
   },
   countryName: {
-    flex: 1,
-    fontSize: isSmallDevice ? 16 : 17,
+    fontSize: 15,
     color: textColor,
-    marginLeft: 12,
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  countryRegion: {
+    fontSize: 12,
+    color: lightTextColor,
+    fontWeight: '400',
   },
   countryCode: {
-    fontSize: isSmallDevice ? 16 : 17,
+    fontSize: 15,
+    color: primaryColor,
+    fontWeight: '600',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+  },
+  emptyText: {
     color: lightTextColor,
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
-    marginRight: 10,
+    fontSize: 15,
     fontWeight: '500',
-  },
-  selectedIcon: {
-    marginLeft: 10,
-  },
-  separator: {
-    height: 1,
-    backgroundColor: borderColor,
-    marginLeft: isSmallDevice ? 20 : 24,
+    marginTop: 12,
   },
 });
 
