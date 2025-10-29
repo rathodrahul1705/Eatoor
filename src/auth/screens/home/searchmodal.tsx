@@ -491,11 +491,11 @@ const SearchModal: React.FC<SearchModalProps> = ({
         </Text>
         
         <View style={styles.searchModalSearchResultMeta}>
-          {item.price && (
+          {/* {item.price && (
             <View style={styles.searchModalPriceBadge}>
               <Text style={styles.searchModalPriceText}>{item.price}</Text>
             </View>
-          )}
+          )} */}
           
           {item.deliveryTime && (
             <View style={styles.searchModalTimeBadge}>
