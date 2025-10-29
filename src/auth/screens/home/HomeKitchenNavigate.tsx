@@ -94,7 +94,6 @@ const HomeKitchenNavigate = () => {
     veg: false,
     nonVeg: false,
     rated4Plus: false,
-    offers: false
   });
 
   // Initialize session ID
@@ -105,10 +104,8 @@ const HomeKitchenNavigate = () => {
   }, []);
 
   const loadPastKitchenDetails = async () => {
-    // Simulate loading past kitchen details from storage
-    // In real implementation, you would use AsyncStorage or similar
     try {
-      const savedDetails = null; // await AsyncStorage.getItem('pastKitchenDetails');
+      const savedDetails = null;
       if (savedDetails) {
         setPastKitchenDetails(JSON.parse(savedDetails));
       }
@@ -210,10 +207,22 @@ const HomeKitchenNavigate = () => {
     closeSearchModal();
   };
 
+  const calculateDiscountedPrice = (originalPrice, discountPercent) => {
+    if (!discountPercent || discountPercent <= 0) return null;
+    
+    const original = parseFloat(originalPrice);
+    const discounted = original * (1 - discountPercent / 100);
+    
+    return {
+      discounted: `₹${discounted.toFixed(2)}`,
+      original: `₹${original.toFixed(2)}`,
+      savings: `₹${(original - discounted).toFixed(2)}`,
+      percentage: `${discountPercent}%`
+    };
+  };
+
   const formatKitchenData = (restaurants) => {
     return restaurants.map((restaurant, index) => {
-      const discountValue = restaurant.discount || restaurant.offers?.[0]?.discount || '20% OFF';
-      
       return {
         id: restaurant.restaurant_id || `restaurant-${index}`,
         name: restaurant.restaurant_name,
@@ -222,7 +231,7 @@ const HomeKitchenNavigate = () => {
         image: restaurant.profile_image,
         featuredDish: restaurant.cuisines?.[0]?.cuisine_name || 'Special Dish',
         category: restaurant.cuisines?.map(c => c.cuisine_name).filter(Boolean).join(', ') || 'Multi-cuisine',
-        discount: discountValue,
+        discount: restaurant.discount || '20% OFF',
         promoted: false,
         distance: restaurant.distance || '1.5 km',
         isFavorite: false,
@@ -236,24 +245,41 @@ const HomeKitchenNavigate = () => {
     const dishes = [];
     menus.forEach(menu => {
       menu.items.forEach(item => {
-        const discountValue = item.discount || menu.discount || '10% OFF';
+        const discountPercent = item.discount_percent || 0;
+        const originalPrice = item.discount_price && item.discount_active ? 
+          item.discount_price / (1 - discountPercent / 100) : 
+          item.item_price;
+        
+        const priceData = calculateDiscountedPrice(originalPrice, discountPercent);
+        const finalPrice = item.discount_active && item.discount_price ? 
+          `₹${item.discount_price.toFixed(2)}` : 
+          `₹${item.item_price.toFixed(2)}`;
         
         dishes.push({
           id: item.id.toString(),
-          name: item.item_name || menu.menu_name,
+          name: item.item_name,
           kitchen: item.restaurant?.restaurant_name || 'Unknown Kitchen',
-          price: `₹${parseFloat(item.item_price).toFixed(2)}`,
+          originalPrice: `₹${originalPrice.toFixed(2)}`,
+          price: finalPrice,
           rating: 4.5,
           image: item.item_image || 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NXx8Zm9vZCUyMGRpc2h8ZW58MHx8MHx8fDA%3D&auto=format&fit=crop&w=500&q=60',
-          description: `${item.item_name} - Freshly prepared`,
+          description: `${item.item_name} - ${item.spice_level || 'Freshly prepared'}`,
           category: menu.menu_name,
           isVeg: item.food_type === 'Veg',
           bestSeller: Math.random() > 0.5,
           isFavorite: false,
           availability: item.availability,
-          discount: discountValue,
+          discount: discountPercent > 0 ? `${discountPercent}% OFF` : null,
+          discountPercent: discountPercent,
+          discountActive: item.discount_active,
+          discountPrice: item.discount_price,
+          priceData: priceData,
           originalData: item,
-          restaurant_id: item.restaurant?.restaurant_id || menu.restaurant_id
+          restaurant_id: item.restaurant?.restaurant_id,
+          spiceLevel: item.spice_level,
+          servingSize: item.serving_size,
+          preparationTime: item.preparation_time,
+          buyOneGetOneFree: item.buy_one_get_one_free
         });
       });
     });
@@ -271,7 +297,8 @@ const HomeKitchenNavigate = () => {
       setLoading(true);
       const response = await searchResult(query);
       
-      if (response) {
+      if (response && response.data) {
+        // Updated to match new API response structure
         const formattedKitchens = formatKitchenData(response.data.restaurants || []);
         setFilteredKitchens(formattedKitchens);
         
@@ -308,24 +335,34 @@ const HomeKitchenNavigate = () => {
         
         const transformedResults = [];
         
+        // Process menus and items
         response.data.menus?.forEach(menu => {
           menu.items?.forEach(item => {
+            const discountPercent = item.discount_percent || 0;
+            const finalPrice = item.discount_active && item.discount_price ? 
+              `₹${item.discount_price.toFixed(2)}` : 
+              `₹${item.item_price.toFixed(2)}`;
+            
             transformedResults.push({
               id: `menu-${item.id}`,
-              name: item.item_name || menu.menu_name,
+              name: item.item_name,
               image: item.item_image,
               type: 'food',
               category: menu.menu_name,
-              price: item.item_price,
+              price: finalPrice,
               foodType: item.food_type,
               restaurant: item.restaurant,
               originalData: item,
               rating: Math.random() * 2 + 3,
-              deliveryTime: `${Math.floor(Math.random() * 20) + 15}-${Math.floor(Math.random() * 20) + 35} min`
+              deliveryTime: `${item.preparation_time || Math.floor(Math.random() * 20) + 15} min`,
+              discountPercent: discountPercent,
+              discountActive: item.discount_active,
+              spiceLevel: item.spice_level
             });
           });
         });
         
+        // Process restaurants
         response.data.restaurants?.forEach(restaurant => {
           const cuisineNames = restaurant.cuisines
             ?.filter(cuisine => cuisine.cuisine_name)
@@ -345,6 +382,7 @@ const HomeKitchenNavigate = () => {
           });
         });
 
+        // Process trending items if available
         if (response.data.trending_items) {
           response.data.trending_items.forEach(item => {
             transformedResults.unshift({
@@ -476,7 +514,6 @@ const HomeKitchenNavigate = () => {
       veg: false,
       nonVeg: false,
       rated4Plus: false,
-      offers: false
     });
     setSelectedSort('Relevance');
   };
@@ -484,11 +521,6 @@ const HomeKitchenNavigate = () => {
   // Fetch cart data (simulated)
   const fetchCartData = useCallback(async () => {
     try {
-      // Simulate API call to get cart data
-      // const response = await getCart(sessionId);
-      // setCartItems(response.data.items || []);
-      
-      // Check if cart has items from different kitchen
       if (pastKitchenDetails && pastKitchenDetails.id) {
         const currentKitchenIds = [...new Set(dishes.map(dish => dish.restaurant_id))];
         setHasDifferentKitchenItems(
@@ -556,14 +588,11 @@ const HomeKitchenNavigate = () => {
         source: 'ITEMLIST',
         action,
         quantity: 1,
-        user_id: user.id // Replace with actual user ID from your auth system
+        user_id: user.id
       };
 
       const response = await updateCart(payload);
       
-      // console.log("response===",response.data)
-      // return true
-
       if (response.status == 200 ) {
         const currentItemCount = cartItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
         const newPastKitchenDetails = {
@@ -653,7 +682,7 @@ const HomeKitchenNavigate = () => {
         <View style={styles.kitchenHeader}>
           <Text style={styles.kitchenName} numberOfLines={1}>{item.name}</Text>
           <View style={styles.ratingContainer}>
-            <Icon name="star" size={isSmallDevice ? 12 : 14} color="#fff" />
+            <Icon name="star" size={12} color="#fff" />
             <Text style={styles.ratingText}>{item.rating}</Text>
           </View>
         </View>
@@ -685,6 +714,16 @@ const HomeKitchenNavigate = () => {
               <Text style={styles.discountText}>{item.discount}</Text>
             </View>
           )}
+          {item.bestSeller && (
+            <View style={styles.bestSellerBadge}>
+              <Text style={styles.bestSellerText}>🔥 Best Seller</Text>
+            </View>
+          )}
+          {item.buyOneGetOneFree && (
+            <View style={styles.bogoBadge}>
+              <Text style={styles.bogoText}>BOGO</Text>
+            </View>
+          )}
           {(!item.availability || !isKitchenOpen) && (
             <View style={styles.unavailableOverlay}>
               <Text style={styles.unavailableText}>
@@ -695,16 +734,47 @@ const HomeKitchenNavigate = () => {
         </View>
         <View style={styles.dishInfo}>
           <View style={styles.dishHeader}>
-            <Text style={styles.dishName} numberOfLines={1}>{item.name}</Text>
+            <View style={styles.dishTitleContainer}>
+              <Text style={styles.dishName} numberOfLines={1}>{item.name}</Text>
+              {item.isVeg && (
+                <View style={styles.vegIndicator}>
+                  <Text style={styles.vegText}>🟢</Text>
+                </View>
+              )}
+              {item.spiceLevel && (
+                <View style={styles.spiceIndicator}>
+                  <Text style={styles.spiceText}>🌶️ {item.spiceLevel}</Text>
+                </View>
+              )}
+            </View>
             <View style={styles.dishPriceContainer}>
-              <Text style={styles.dishPrice}>{item.price}</Text>
+              {item.priceData && item.discountActive ? (
+                <View style={styles.priceContainer}>
+                  <Text style={styles.dishPrice}>{item.price}</Text>
+                  <Text style={styles.originalPrice}>{item.originalPrice}</Text>
+                  <View style={styles.savingsBadge}>
+                    <Text style={styles.savingsText}>Save {item.priceData.savings}</Text>
+                  </View>
+                </View>
+              ) : (
+                <Text style={styles.dishPrice}>{item.price}</Text>
+              )}
             </View>
           </View>
           <Text style={styles.dishKitchen} numberOfLines={1}>{item.kitchen}</Text>
+          <View style={styles.dishDetailsRow}>
+            <Text style={styles.dishCategory}>{item.category}</Text>
+            {item.servingSize && (
+              <Text style={styles.servingSize}>• {item.servingSize}</Text>
+            )}
+            {item.preparationTime && (
+              <Text style={styles.preparationTime}>• {item.preparationTime} min</Text>
+            )}
+          </View>
           <Text style={styles.dishDescription} numberOfLines={2}>{item.description}</Text>
           <View style={styles.dishFooter}>
             <View style={styles.ratingContainerSmall}>
-              <Icon name="star" size={isSmallDevice ? 12 : 14} color="#fff" />
+              <Icon name="star" size={12} color="#fff" />
               <Text style={styles.ratingTextSmall}>{item.rating}</Text>
             </View>
             <TouchableOpacity 
@@ -720,7 +790,7 @@ const HomeKitchenNavigate = () => {
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Text style={styles.addButtonText}>
-                  {!isKitchenOpen ? 'KITCHEN CLOSED' : !item.availability ? 'UNAVAILABLE' : 'ADD TO CART'}
+                  {!isKitchenOpen ? 'CLOSED' : !item.availability ? 'UNAVAILABLE' : 'ADD +'}
                 </Text>
               )}
             </TouchableOpacity>
@@ -732,7 +802,7 @@ const HomeKitchenNavigate = () => {
 
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
-      <Icon name="search-outline" size={isSmallDevice ? 50 : 60} color="#E65C00" />
+      <Icon name="search-outline" size={50} color="#E65C00" />
       <Text style={styles.emptyTitle}>No results found</Text>
       <Text style={styles.emptyText}>
         Try searching for something else or check your spelling
@@ -761,7 +831,7 @@ const HomeKitchenNavigate = () => {
             <View style={styles.activeFilterChip}>
               <Text style={styles.activeFilterText} numberOfLines={1}>{activeFilters.sort}</Text>
               <TouchableOpacity onPress={() => handleFilterRemove('sort')}>
-                <Icon name="close-circle" size={16} color="#fff" />
+                <Icon name="close-circle" size={14} color="#fff" />
               </TouchableOpacity>
             </View>
           )}
@@ -770,7 +840,7 @@ const HomeKitchenNavigate = () => {
             <View style={styles.activeFilterChip}>
               <Text style={styles.activeFilterText}>Veg Only</Text>
               <TouchableOpacity onPress={() => handleFilterRemove('veg')}>
-                <Icon name="close-circle" size={16} color="#fff" />
+                <Icon name="close-circle" size={14} color="#fff" />
               </TouchableOpacity>
             </View>
           )}
@@ -779,7 +849,7 @@ const HomeKitchenNavigate = () => {
             <View style={styles.activeFilterChip}>
               <Text style={styles.activeFilterText}>Non-Veg Only</Text>
               <TouchableOpacity onPress={() => handleFilterRemove('nonVeg')}>
-                <Icon name="close-circle" size={16} color="#fff" />
+                <Icon name="close-circle" size={14} color="#fff" />
               </TouchableOpacity>
             </View>
           )}
@@ -788,16 +858,7 @@ const HomeKitchenNavigate = () => {
             <View style={styles.activeFilterChip}>
               <Text style={styles.activeFilterText}>Rating 4.0+</Text>
               <TouchableOpacity onPress={() => handleFilterRemove('rated4Plus')}>
-                <Icon name="close-circle" size={16} color="#fff" />
-              </TouchableOpacity>
-            </View>
-          )}
-          
-          {activeFilters.offers && (
-            <View style={styles.activeFilterChip}>
-              <Text style={styles.activeFilterText}>Offers</Text>
-              <TouchableOpacity onPress={() => handleFilterRemove('offers')}>
-                <Icon name="close-circle" size={16} color="#fff" />
+                <Icon name="close-circle" size={14} color="#fff" />
               </TouchableOpacity>
             </View>
           )}
@@ -826,7 +887,7 @@ const HomeKitchenNavigate = () => {
             style={styles.backButton}
             onPress={() => navigation.goBack()}
           >
-            <Icon name="arrow-back" size={24} color="#333" />
+            <Icon name="chevron-back" size={22} color="#333" />
           </TouchableOpacity>
           
           <TouchableOpacity 
@@ -834,13 +895,13 @@ const HomeKitchenNavigate = () => {
             onPress={openSearchModal}
             activeOpacity={0.8}
           >
-            <Icon name="search" size={20} color="#666" style={styles.searchIcon} />
+            <Icon name="search" size={18} color="#666" style={styles.searchIcon} />
             <Text style={styles.searchPlaceholder}>
               {searchQuery || "Search kitchens or dishes..."}
             </Text>
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={handleClearSearch}>
-                <Icon name="close-circle" size={18} color="#666" />
+                <Icon name="close-circle" size={16} color="#666" />
               </TouchableOpacity>
             )}
           </TouchableOpacity>
@@ -865,6 +926,8 @@ const HomeKitchenNavigate = () => {
           </Text>
         </TouchableOpacity>
       </View>
+
+      {renderActiveFilters()}
 
       {loading ? (
         renderLoading()
@@ -904,11 +967,14 @@ const HomeKitchenNavigate = () => {
       <Modal
         visible={showKitchenConflictModal}
         transparent={true}
-        animationType="slide"
+        animationType="fade"
         onRequestClose={handleKitchenConflictCancel}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.conflictModal}>
+            <View style={styles.modalIcon}>
+              <Icon name="warning" size={32} color="#E65C00" />
+            </View>
             <Text style={styles.conflictModalTitle}>Kitchen Conflict</Text>
             <Text style={styles.conflictModalText}>
               Your cart contains items from a different kitchen. Adding this item will clear your current cart and start a new order from this kitchen.
@@ -961,16 +1027,16 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: '#f0f0f0',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 3,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
       },
       android: {
-        elevation: 3,
+        elevation: 2,
       },
     }),
   },
@@ -981,28 +1047,28 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   backButton: {
-    padding: 8,
+    padding: 6,
     marginRight: 12,
     borderRadius: 20,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#f8f9fa',
   },
   searchInputContainer: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f8f9fa',
-    borderRadius: 25,
+    borderRadius: 20,
     paddingHorizontal: 16,
-    height: 50,
+    height: 44,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: '#e8e8e8',
   },
   searchIcon: {
-    marginRight: 12,
+    marginRight: 10,
   },
   searchPlaceholder: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 15,
     color: '#666',
     ...Platform.select({
       android: {
@@ -1018,15 +1084,15 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 12,
-    fontSize: 16,
+    fontSize: 14,
     color: '#666',
     fontWeight: '500',
   },
   activeFiltersContainer: {
     backgroundColor: '#fff',
-    paddingVertical: 12,
+    paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: '#f5f5f5',
   },
   activeFiltersScroll: {
     paddingHorizontal: 16,
@@ -1035,39 +1101,41 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#E65C00',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    marginRight: 10,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginRight: 8,
     shadowColor: '#E65C00',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 3,
+    shadowRadius: 2,
+    elevation: 2,
   },
   activeFilterText: {
     color: '#fff',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
-    marginRight: 6,
-    maxWidth: 120,
+    marginRight: 4,
+    maxWidth: 100,
   },
   tabContainer: {
     flexDirection: 'row',
     backgroundColor: '#fff',
-    marginHorizontal: 20,
+    marginHorizontal: 16,
     borderRadius: 12,
     overflow: 'hidden',
-    marginVertical: 16,
+    marginVertical: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
   },
   tab: {
     flex: 1,
-    paddingVertical: 14,
+    paddingVertical: 12,
     alignItems: 'center',
     backgroundColor: '#fff',
   },
@@ -1075,7 +1143,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#E65C00',
   },
   tabText: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
     color: '#666',
   },
@@ -1090,23 +1158,25 @@ const styles = StyleSheet.create({
   kitchenItem: {
     backgroundColor: '#fff',
     borderRadius: 16,
-    marginBottom: 16,
+    marginBottom: 12,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
     flexDirection: 'row',
-    height: isSmallDevice ? 100 : 120,
+    height: 110,
+    borderWidth: 1,
+    borderColor: '#f8f8f8',
   },
   selectedKitchen: {
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: '#E65C00',
   },
   kitchenImageContainer: {
     position: 'relative',
-    width: isSmallDevice ? 100 : 120,
+    width: 100,
   },
   kitchenImage: {
     width: '100%',
@@ -1115,30 +1185,44 @@ const styles = StyleSheet.create({
   },
   promotedBadge: {
     position: 'absolute',
-    top: 10,
-    left: 10,
+    top: 8,
+    left: 8,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
   },
   promotedText: {
     color: '#fff',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: 'bold',
   },
   discountBadge: {
     position: 'absolute',
-    bottom: 10,
-    left: 10,
+    bottom: 8,
+    left: 8,
     backgroundColor: '#E65C00',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
   },
   discountText: {
     color: 'white',
-    fontSize: 12,
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  bogoBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  bogoText: {
+    color: '#fff',
+    fontSize: 9,
     fontWeight: 'bold',
   },
   closedOverlay: {
@@ -1154,22 +1238,22 @@ const styles = StyleSheet.create({
   closedText: {
     color: '#fff',
     fontWeight: 'bold',
-    fontSize: 14,
+    fontSize: 12,
   },
   kitchenInfo: {
     flex: 1,
-    padding: 16,
+    padding: 12,
     justifyContent: 'center',
   },
   kitchenHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   kitchenName: {
-    fontSize: isSmallDevice ? 15 : 17,
-    fontWeight: 'bold',
+    fontSize: 14,
+    fontWeight: '700',
     color: '#333',
     flex: 1,
     marginRight: 8,
@@ -1178,98 +1262,118 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#3a9b38',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
+    minWidth: 40,
   },
   ratingText: {
     color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
-    marginLeft: 4,
+    fontSize: 11,
+    fontWeight: '700',
+    marginLeft: 2,
   },
   kitchenCategory: {
     color: '#666',
-    fontSize: isSmallDevice ? 13 : 14,
-    marginBottom: 6,
+    fontSize: 12,
+    marginBottom: 4,
   },
   kitchenDetails: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   deliveryTime: {
     color: '#333',
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '500',
   },
   dotSeparator: {
-    color: '#666',
-    marginHorizontal: 6,
+    color: '#999',
+    marginHorizontal: 4,
+    fontSize: 10,
   },
   distance: {
     color: '#666',
-    fontSize: 13,
+    fontSize: 11,
   },
   featuredDish: {
     color: '#666',
-    fontSize: isSmallDevice ? 13 : 14,
+    fontSize: 11,
     fontStyle: 'italic',
   },
   closedStatusText: {
     color: '#ff4444',
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '500',
-    marginTop: 4,
+    marginTop: 2,
   },
   selectedKitchenHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
-    padding: 16,
+    marginBottom: 12,
+    padding: 12,
     backgroundColor: '#fff',
     borderRadius: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+    elevation: 1,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
   },
   selectedKitchenText: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 14,
+    fontWeight: '700',
     color: '#333',
     flex: 1,
     marginRight: 12,
   },
   clearFilterText: {
     color: '#E65C00',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
   },
   dishItem: {
     flexDirection: 'row',
     backgroundColor: '#fff',
     borderRadius: 16,
-    marginBottom: 16,
-    padding: 16,
+    marginBottom: 12,
+    padding: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#f8f8f8',
   },
   dishImageContainer: {
     position: 'relative',
-    width: isSmallDevice ? 90 : 100,
-    marginRight: 16,
+    width: 90,
+    marginRight: 12,
   },
   dishImage: {
     width: '100%',
-    height: isSmallDevice ? 90 : 100,
+    height: 90,
     resizeMode: 'cover',
     borderRadius: 12,
+  },
+  bestSellerBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    backgroundColor: 'rgba(255, 107, 0, 0.95)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  bestSellerText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '700',
   },
   unavailableOverlay: {
     position: 'absolute',
@@ -1285,7 +1389,8 @@ const styles = StyleSheet.create({
   unavailableText: {
     color: '#fff',
     fontWeight: 'bold',
-    fontSize: 12,
+    fontSize: 10,
+    textAlign: 'center',
   },
   dishInfo: {
     flex: 1,
@@ -1294,39 +1399,98 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 8,
+    marginBottom: 6,
+  },
+  dishTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
   },
   dishName: {
-    fontSize: isSmallDevice ? 15 : 17,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
     color: '#333',
     flex: 1,
-    marginRight: 12,
+  },
+  vegIndicator: {
+    marginLeft: 4,
+  },
+  vegText: {
+    fontSize: 10,
+  },
+  spiceIndicator: {
+    marginLeft: 4,
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  spiceText: {
+    fontSize: 8,
+    color: '#E65100',
+    fontWeight: '600',
   },
   dishPriceContainer: {
-    backgroundColor: '#f8f9fa',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#f0f0f0',
+    alignItems: 'flex-end',
+  },
+  priceContainer: {
+    alignItems: 'flex-end',
   },
   dishPrice: {
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#333',
-    fontSize: 15,
+    fontSize: 14,
+  },
+  originalPrice: {
+    fontSize: 11,
+    color: '#999',
+    textDecorationLine: 'line-through',
+    marginTop: 1,
+  },
+  savingsBadge: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginTop: 2,
+  },
+  savingsText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '700',
   },
   dishKitchen: {
     color: '#666',
-    fontSize: isSmallDevice ? 13 : 14,
-    marginBottom: 8,
+    fontSize: 12,
+    marginBottom: 4,
     fontWeight: '500',
+  },
+  dishDetailsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  dishCategory: {
+    color: '#666',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  servingSize: {
+    color: '#666',
+    fontSize: 11,
+    marginLeft: 4,
+  },
+  preparationTime: {
+    color: '#666',
+    fontSize: 11,
+    marginLeft: 4,
   },
   dishDescription: {
     color: '#666',
-    marginBottom: 12,
-    fontSize: 13,
-    lineHeight: 18,
+    marginBottom: 8,
+    fontSize: 11,
+    lineHeight: 16,
   },
   dishFooter: {
     flexDirection: 'row',
@@ -1337,26 +1501,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#3a9b38',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
+    minWidth: 36,
   },
   ratingTextSmall: {
     color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
-    marginLeft: 4,
+    fontSize: 10,
+    fontWeight: '700',
+    marginLeft: 2,
   },
   addButton: {
     backgroundColor: '#E65C00',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 8,
     shadowColor: '#E65C00',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 3,
+    shadowRadius: 2,
+    elevation: 2,
+    minWidth: 80,
   },
   disabledButton: {
     backgroundColor: '#ccc',
@@ -1367,77 +1533,83 @@ const styles = StyleSheet.create({
   },
   addButtonText: {
     color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 13,
+    fontWeight: '700',
+    fontSize: 11,
+    textAlign: 'center',
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 60,
+    paddingVertical: 50,
   },
   emptyTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '700',
     color: '#333',
-    marginTop: 20,
-    marginBottom: 8,
+    marginTop: 16,
+    marginBottom: 6,
   },
   emptyText: {
-    fontSize: 15,
+    fontSize: 13,
     color: '#666',
     textAlign: 'center',
     paddingHorizontal: 40,
-    lineHeight: 22,
+    lineHeight: 18,
   },
   // Modal Styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
   },
   conflictModal: {
     backgroundColor: 'white',
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 24,
     width: '100%',
-    maxWidth: 400,
+    maxWidth: 340,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
     elevation: 5,
+    alignItems: 'center',
+  },
+  modalIcon: {
+    marginBottom: 12,
   },
   conflictModalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '700',
     color: '#333',
-    marginBottom: 12,
+    marginBottom: 8,
     textAlign: 'center',
   },
   conflictModalText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#666',
     textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 22,
+    marginBottom: 20,
+    lineHeight: 20,
   },
   conflictModalButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    width: '100%',
   },
   conflictModalButton: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: 10,
+    borderRadius: 10,
     marginHorizontal: 6,
   },
   cancelButton: {
     backgroundColor: '#f8f9fa',
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: '#e8e8e8',
   },
   confirmButton: {
     backgroundColor: '#E65C00',
@@ -1446,13 +1618,13 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     fontWeight: '600',
-    fontSize: 16,
+    fontSize: 14,
   },
   confirmButtonText: {
     color: '#fff',
     textAlign: 'center',
     fontWeight: '600',
-    fontSize: 16,
+    fontSize: 14,
   },
 });
 
