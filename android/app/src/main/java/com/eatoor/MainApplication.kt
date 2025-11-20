@@ -1,6 +1,9 @@
 package com.eatoor
 
 import android.app.Application
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.os.Build
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
@@ -16,8 +19,7 @@ class MainApplication : Application(), ReactApplication {
       object : DefaultReactNativeHost(this) {
         override fun getPackages(): List<ReactPackage> =
             PackageList(this).packages.apply {
-              // Packages that cannot be autolinked yet can be added manually here, for example:
-              // add(MyReactNativePackage())
+              // Add manual packages here if needed
             }
 
         override fun getJSMainModuleName(): String = "index"
@@ -33,6 +35,23 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
+
+    // -------------------------------------
+    // 🔔 CREATE NOTIFICATION CHANNEL (Android 8+)
+    // -------------------------------------
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      val channel = NotificationChannel(
+        "default",  // MUST match the channel id used in RN Firebase
+        "Default Channel",
+        NotificationManager.IMPORTANCE_HIGH
+      )
+      channel.description = "Default notification channel"
+
+      val manager = getSystemService(NotificationManager::class.java)
+      manager.createNotificationChannel(channel)
+    }
+
+    // Load React Native engine
     loadReactNative(this)
   }
 }

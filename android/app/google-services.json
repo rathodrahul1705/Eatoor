@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "325823373918",
+    "project_id": "eatoor-fe972",
+    "storage_bucket": "eatoor-fe972.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:325823373918:android:f7b9e58afb3bbe172c4acf",
+        "android_client_info": {
+          "package_name": "com.eatoor"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCdPEhs4EyNKgZml344NB5KUuVqEKuIj_Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
