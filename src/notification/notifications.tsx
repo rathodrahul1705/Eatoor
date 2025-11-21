@@ -1,6 +1,6 @@
 import { Platform, PermissionsAndroid } from 'react-native';
 import messaging from '@react-native-firebase/messaging';
-import notifee, { AndroidImportance } from '@notifee/react-native';
+import notifee, { AndroidImportance, AndroidStyle } from '@notifee/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // --------------------------------------------------------
@@ -99,12 +99,17 @@ export const setupTokenRefreshListener = () => {
 };
 
 // --------------------------------------------------------
-// 🔥 FOREGROUND NOTIFICATION HANDLER
+// 🔥 FOREGROUND NOTIFICATION HANDLER (WITH IMAGE)
 // --------------------------------------------------------
 export const setupForegroundNotificationHandler = () => {
   return messaging().onMessage(async (remoteMessage) => {
     console.log("🔥 FOREGROUND LISTENER TRIGGERED");
     console.log("📩 Foreground:", remoteMessage);
+
+    const imageUrl =
+      remoteMessage.notification?.android?.image ||
+      remoteMessage.notification?.image ||
+      remoteMessage.data?.image; // ⭐ ADDED
 
     try {
       await notifee.displayNotification({
@@ -113,6 +118,19 @@ export const setupForegroundNotificationHandler = () => {
         android: {
           channelId: 'default',
           importance: AndroidImportance.HIGH,
+          // ⭐ ADDED — Android Big Picture Notification
+          style: imageUrl
+            ? {
+                type: AndroidStyle.BIGPICTURE,
+                picture: imageUrl,
+              }
+            : undefined,
+        },
+        ios: {
+          // ⭐ ADDED — iOS image support
+          attachments: imageUrl
+            ? [{ url: imageUrl }]
+            : [],
         },
       });
     } catch (e) {
@@ -164,7 +182,7 @@ export const initializeNotifications = async () => {
   await requestUserPermission();
   await requestAndroidNotificationPermission();
   await createNotificationChannel();
-  await getFCMToken();       // Saves token to AsyncStorage
+  await getFCMToken();       
   setupTokenRefreshListener();
   setupBackgroundHandlers();
 };
