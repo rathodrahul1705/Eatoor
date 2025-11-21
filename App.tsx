@@ -1,63 +1,50 @@
 import React, { useEffect } from 'react';
-import { Platform, StatusBar, useColorScheme } from 'react-native';
+import { StatusBar, useColorScheme } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import {
-  requestUserPermission,
-  requestAndroidNotificationPermission,
-  createNotificationChannel,
-  getFCMToken,
-  setupForegroundNotificationHandler,
-  showTestNotification,
-  setupBackgroundHandlers,
-} from './src/notification/notifications.js';
-
 import AppNavigator from './src/navigation/AppNavigator';
 import { AuthProvider } from './src/context/AuthContext';
+
+// 🔔 Notification Service Imports
+import {
+  initializeNotifications,
+  setupForegroundNotificationHandler
+} from './src/notification/notifications';
 
 const App = () => {
   const isDarkMode = useColorScheme() === 'dark';
 
-  // INITIAL SETUP
   useEffect(() => {
-    requestUserPermission();
-    requestAndroidNotificationPermission();
-    createNotificationChannel();
-    getFCMToken();
-  }, []);
+    // 🔥 Initialize notification setup
+    initializeNotifications();
 
-  // FOREGROUND NOTIFICATION
-  useEffect(() => {
+    // 🔥 Foreground notification listener
     const unsubscribe = setupForegroundNotificationHandler();
-    return unsubscribe;
-  }, []);
 
-  // TEST POPUP
-  // useEffect(() => {
-  //   showTestNotification();
-  // }, []);
-
-  // BACKGROUND + QUIT HANDLERS
-  useEffect(() => {
-    setupBackgroundHandlers();
+    // Cleanup
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   return (
-    <SafeAreaProvider>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <AuthProvider>
-          <NavigationContainer>
-            <StatusBar
-              barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-              backgroundColor="#fff"
-            />
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <NavigationContainer>
+          <StatusBar
+            barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+            backgroundColor="transparent"
+            translucent
+          />
+
+          <AuthProvider>
             <AppNavigator />
-          </NavigationContainer>
-        </AuthProvider>
-      </GestureHandlerRootView>
-    </SafeAreaProvider>
+          </AuthProvider>
+        </NavigationContainer>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 };
 

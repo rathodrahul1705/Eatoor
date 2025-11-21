@@ -167,51 +167,66 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
   }, []);
 
   const handleVerify = useCallback(async () => {
-    if (isLoading) return;
-    
-    const otpCode = manualOtp.length === OTP_LENGTH ? manualOtp : otp.join('');
+  if (isLoading) return;
 
-    if (otpCode.length !== OTP_LENGTH) {
-      setError('Please enter a valid 6-digit OTP');
-      shakeInput();
-      return;
+  // Extract final OTP (manual OR auto)
+  const otpCode = manualOtp.length === OTP_LENGTH ? manualOtp : otp.join('');
+
+  if (otpCode.length !== OTP_LENGTH) {
+    setError('Please enter a valid 6-digit OTP');
+    shakeInput();
+    return;
+  }
+
+  setIsLoading(true);
+  Keyboard.dismiss();
+
+  try {
+    // 🔥 Get FCM token stored earlier
+    const deviceToken = await AsyncStorage.getItem('fcm_token');
+
+    // API CALL
+    const response = await verifyOTP({
+      contact_number: userInput,
+      otp: otpCode,
+      device_token: deviceToken || null, // safe fallback
+      platform: Platform.OS === 'ios' ? 'ios' : 'android',
+    });
+
+    // Store tokens + user object
+    await AsyncStorage.multiSet([
+      ['accessToken', response.data.tokens.access],
+      ['refreshToken', response.data.tokens.refresh],
+      ['user', JSON.stringify(response.data.user)],
+    ]);
+
+    // Auto-login if required
+    if (response.data.navigate_to === 'HomeTabs') {
+      login(response.data.tokens.access);
     }
 
-    setIsLoading(true);
-    Keyboard.dismiss();
+    // Fade out animation before navigating
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      navigation.navigate(response.data.navigate_to as never);
+    });
 
-    try {
-      const response = await verifyOTP({ contact_number: userInput, otp: otpCode });
-      await AsyncStorage.multiSet([
-        ['accessToken', response.data.tokens.access],
-        ['refreshToken', response.data.tokens.refresh],
-        ['user', JSON.stringify(response.data.user)]
-      ]);
-      
-      if(response.data.navigate_to == "HomeTabs"){
-        login(response.data.tokens.access);
-      }
-      
-      // Fade out animation before navigation
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start(() => {
-        navigation.navigate(response.data.navigate_to as never);
-      });
+  } catch (err: any) {
+    setError(err?.response?.data?.error || 'Invalid OTP. Please try again.');
+    shakeInput();
 
-    } catch (err: any) {
-      setError(err?.response?.data?.error || 'Invalid OTP. Please try again.');
-      shakeInput();
-      // Clear OTP on invalid verification
-      setOtp(Array(OTP_LENGTH).fill(''));
-      setManualOtp('');
-      manualInputRef.current?.focus();
-    } finally {
-      setIsLoading(false);
-    }
-  }, [otp, manualOtp, userInput, navigation, isLoading, fadeAnim, login]);
+    // Reset OTP fields
+    setOtp(Array(OTP_LENGTH).fill(''));
+    setManualOtp('');
+    manualInputRef.current?.focus();
+  } finally {
+    setIsLoading(false);
+  }
+}, [otp, manualOtp, userInput, navigation, isLoading, fadeAnim, login]);
+
 
   const handleResendOTP = async () => {
     if (countdown > 0) return;

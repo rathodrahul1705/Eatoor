@@ -26,6 +26,8 @@ import { AuthStackParamList } from '../../navigation/AuthNavigator';
 import { sendOTP } from '../../api/auth';
 import { Country, countries } from '../../auth/screens/home/countries';
 import Icon from 'react-native-vector-icons/Ionicons';
+import messaging from '@react-native-firebase/messaging';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width, height } = Dimensions.get('window');
 

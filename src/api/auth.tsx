@@ -4,8 +4,13 @@ import API from './httpClient';
 export const sendOTP = (contact_number: string) =>
   API.post('/login/send-otp/', { contact_number });
 
-export const verifyOTP = (payload: { contact_number: string; otp: string }) =>
-  API.post('/login/verify-otp/', payload);
+export const verifyOTP = (payload: {
+  contact_number: string;
+  otp: string;
+  device_token: string | null;
+  platform: 'ios' | 'android';
+}) => API.post('/login/verify-otp/', payload);
+
 
 export const resendOTP = (contact_number: string) =>
   API.post('/login/resend-otp/', contact_number);
