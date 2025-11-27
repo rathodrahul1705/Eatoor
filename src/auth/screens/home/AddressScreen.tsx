@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -66,42 +66,42 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
   const onAddressSelect = route?.params?.onAddressSelect;
   const navigateToCart = route?.params?.navigateToCart ?? false;
   
-  useEffect(() => {
-    fetchAddresses();
-  }, []);
-
-  useEffect(() => {
-    if (!loading) {
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 500,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [loading]);
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await fetchAddresses();
-    setRefreshing(false);
-  };
-
-  const fetchAddresses = async () => {
+  // Memoized fetch function to prevent unnecessary re-renders
+  const fetchAddresses = useCallback(async () => {
     try {
       setLoading(true);
-      fadeAnim.setValue(0);
+      setError(null);
       const response = await getAddressList();
       const formattedAddresses = formatAddresses(response.data);
       setSavedAddresses(formattedAddresses);
-      setError(null);
     } catch (err) {
       console.error('Failed to fetch addresses:', err);
       setError('Failed to load addresses. Please try again.');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchAddresses();
+  }, [fetchAddresses]);
+
+  useEffect(() => {
+    if (!loading && savedAddresses.length > 0) {
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [loading, savedAddresses.length]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchAddresses();
+    setRefreshing(false);
+  }, [fetchAddresses]);
 
   const formatAddresses = (apiAddresses: ApiAddress[]): Address[] => {
     return apiAddresses.map(apiAddress => ({
@@ -149,7 +149,7 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
     const params: MapLocationPickerParams = {
       prevLocation,
       onLocationConfirmed: (newAddress: Address) => {
-        setSavedAddresses([...savedAddresses, newAddress]);
+        setSavedAddresses(prev => [...prev, newAddress]);
       },
     };
     navigation.navigate('MapLocationPicker', params);
@@ -161,7 +161,7 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
       addressToEdit: address,
       prevLocation: prevLocation,
       onLocationConfirmed: (updatedAddress: Address) => {
-        setSavedAddresses(savedAddresses.map(addr => 
+        setSavedAddresses(prev => prev.map(addr => 
           addr.id === updatedAddress.id ? updatedAddress : addr
         ));
       },
@@ -181,7 +181,7 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
           onPress: async () => {
             try {
               await deleteUserAddress(id);
-              setSavedAddresses(savedAddresses.filter(addr => addr.id !== id));
+              setSavedAddresses(prev => prev.filter(addr => addr.id !== id));
             } catch (error) {
               console.error('Failed to delete address:', error);
               Alert.alert("Error", "Failed to delete address. Please try again.");
@@ -196,12 +196,10 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
     try {
       await updateUserStatusAddress(id, { is_default: true });
       
-      const updatedAddresses = savedAddresses.map(addr => ({
+      setSavedAddresses(prev => prev.map(addr => ({
         ...addr,
         isDefault: addr.id === id,
-      }));
-      
-      setSavedAddresses(updatedAddresses);
+      })));
     } catch (error) {
       console.error('Failed to update default address:', error);
       Alert.alert("Error", "Failed to update default address. Please try again.");
@@ -225,15 +223,19 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
 
   const handleAddressSelect = async (address: Address) => {
     if (!isSelectionMode) return;
+    
     setSelectedAddressId(address.id);
     await storeAddressToStorage(address);
+    
     if (onAddressSelect) {
       onAddressSelect(address);
     }
+    
     if (navigateToCart) {
       navigation.navigate('CartScreen');
     } else {
-      setTimeout(() => navigation.goBack(), 500);
+      // Use setTimeout to ensure smooth transition
+      setTimeout(() => navigation.goBack(), 300);
     }
   };
 
@@ -262,10 +264,117 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
     </View>
   );
 
+  const renderAddressCard = (address: Address, index: number) => (
+    <Animatable.View 
+      key={address.id}
+      animation="fadeInUp"
+      duration={400}
+      delay={index * 80}
+      useNativeDriver
+      style={[
+        styles.addressCard, 
+        address.isDefault && styles.defaultAddressCard,
+        isSelectionMode && selectedAddressId === address.id && styles.selectedAddressCard
+      ]}
+    >
+      <TouchableOpacity
+        onPress={() => handleAddressSelect(address)}
+        activeOpacity={0.7}
+        style={styles.addressCardTouchable}
+      >
+        <View style={styles.addressHeader}>
+          <View style={[
+            styles.addressIcon,
+            { 
+              backgroundColor: address.isDefault ? '#FF6B35' : 
+                (isSelectionMode && selectedAddressId === address.id) ? '#4CAF50' : '#F0F0F0'
+            }
+          ]}>
+            <Icon 
+              name={getIconName(address.type)} 
+              size={20} 
+              color={
+                address.isDefault ? '#FFF' : 
+                (isSelectionMode && selectedAddressId === address.id) ? '#FFF' : '#555'
+              } 
+            />
+          </View>
+          <View style={styles.addressTitleContainer}>
+            <Text style={styles.addressName}>
+              {address.name.charAt(0).toUpperCase() + address.name.slice(1)}
+            </Text>
+            <View style={styles.tagContainer}>
+              {address.isDefault && (
+                <View style={styles.defaultTag}>
+                  <Text style={styles.defaultTagText}>Default</Text>
+                </View>
+              )}
+              {isSelectionMode && selectedAddressId === address.id && (
+                <View style={styles.selectedTag}>
+                  <Text style={styles.selectedTagText}>Selected</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
+        
+        <Text style={styles.addressText}>{address.address}</Text>
+      </TouchableOpacity>
+        
+      <View style={styles.cardActions}>
+        <View style={styles.actionButtons}>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => handleEditAddress(address)}
+          >
+            <Icon name="create-outline" size={18} color="#666" />
+            <Text style={styles.actionButtonText}>Edit</Text>
+          </TouchableOpacity>
+          
+          {!address.isDefault && (
+            <TouchableOpacity 
+              style={styles.actionButton}
+              onPress={() => setAsDefaultAddress(address.id)}
+            >
+              <Icon name="star-outline" size={18} color="#666" />
+              <Text style={styles.actionButtonText}>Set Default</Text>
+            </TouchableOpacity>
+          )}
+          
+          {/* <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => handleDeleteAddress(address.id)}
+          >
+            <Icon name="trash-outline" size={18} color="#FF6B6B" />
+            <Text style={[styles.actionButtonText, { color: '#FF6B6B' }]}>Delete</Text>
+          </TouchableOpacity> */}
+        </View>
+        
+        {isSelectionMode && (
+          <TouchableOpacity
+            style={[
+              styles.selectButton,
+              selectedAddressId === address.id && styles.selectedButton
+            ]}
+            onPress={() => handleAddressSelect(address)}
+          >
+            <Text style={styles.selectButtonText}>
+              {selectedAddressId === address.id ? 'Selected' : 'Select'}
+            </Text>
+            {selectedAddressId === address.id && (
+              <Icon name="checkmark" size={14} color="#FFF" style={styles.selectButtonIcon} />
+            )}
+          </TouchableOpacity>
+        )}
+      </View>
+    </Animatable.View>
+  );
+
   const renderContent = () => (
     <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
       <ScrollView 
         contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -283,6 +392,7 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
             placeholderTextColor="#999"
             value={searchQuery}
             onChangeText={setSearchQuery}
+            returnKeyType="search"
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity 
@@ -297,6 +407,7 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
         <TouchableOpacity 
           style={styles.addButton}
           onPress={handleAddNewAddress}
+          activeOpacity={0.8}
         >
           <View style={styles.addButtonContent}>
             <View style={styles.addButtonIconContainer}>
@@ -306,134 +417,40 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
           </View>
         </TouchableOpacity>
 
-        <Text style={styles.sectionTitle}>
-          {isSelectionMode ? 'Select an Address' : 'Saved Addresses'}
-        </Text>
-        
         {filteredAddresses.length > 0 ? (
-          filteredAddresses.map((address, index) => (
-            <Animatable.View 
-              key={address.id}
-              animation="fadeInUp"
-              duration={500}
-              delay={index * 100}
-              style={[
-                styles.addressCard, 
-                address.isDefault && styles.defaultAddressCard,
-                isSelectionMode && selectedAddressId === address.id && styles.selectedAddressCard
-              ]}
-            >
-              <TouchableOpacity
-                onPress={() => handleAddressSelect(address)}
-                activeOpacity={0.7}
-                style={styles.addressCardTouchable}
-              >
-                <View style={styles.addressHeader}>
-                  <View style={[
-                    styles.addressIcon,
-                    { 
-                      backgroundColor: address.isDefault ? '#FF6B35' : 
-                        (isSelectionMode && selectedAddressId === address.id) ? '#4CAF50' : '#F0F0F0'
-                    }
-                  ]}>
-                    <Icon 
-                      name={getIconName(address.type)} 
-                      size={20} 
-                      color={
-                        address.isDefault ? '#FFF' : 
-                        (isSelectionMode && selectedAddressId === address.id) ? '#FFF' : '#555'
-                      } 
-                    />
-                  </View>
-                  <View style={styles.addressTitleContainer}>
-                    <Text style={styles.addressName}>
-                      {address.name.charAt(0).toUpperCase() + address.name.slice(1)}
-                    </Text>
-                    {address.isDefault && (
-                      <View style={styles.defaultTag}>
-                        <Text style={styles.defaultTagText}>Default</Text>
-                      </View>
-                    )}
-                    {isSelectionMode && selectedAddressId === address.id && (
-                      <View style={styles.selectedTag}>
-                        <Text style={styles.selectedTagText}>Selected</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-                
-                <Text style={styles.addressText}>{address.address}</Text>
-              </TouchableOpacity>
-                
-              <View style={styles.cardActions}>
-                <View style={styles.actionButtons}>
-                  {/* <TouchableOpacity 
-                    style={styles.actionButton}
-                    onPress={() => handleEditAddress(address)}
-                  >
-                    <Icon name="create-outline" size={18} color="#666" />
-                    <Text style={styles.actionButtonText}>Edit</Text>
-                  </TouchableOpacity> */}
-                  
-                  {!address.isDefault && (
-                    <TouchableOpacity 
-                      style={styles.actionButton}
-                      onPress={() => setAsDefaultAddress(address.id)}
-                    >
-                      <Icon name="star-outline" size={18} color="#666" />
-                      <Text style={styles.actionButtonText}>Set Default</Text>
-                    </TouchableOpacity>
-                  )}
-                  
-                  {/* <TouchableOpacity 
-                    style={styles.actionButton}
-                    onPress={() => handleDeleteAddress(address.id)}
-                  >
-                    <Icon name="trash-outline" size={18} color="#FF6B6B" />
-                    <Text style={[styles.actionButtonText, { color: '#FF6B6B' }]}>Delete</Text>
-                  </TouchableOpacity> */}
-                </View>
-                
-                {isSelectionMode && (
-                  <TouchableOpacity
-                    style={[
-                      styles.selectButton,
-                      selectedAddressId === address.id && styles.selectedButton
-                    ]}
-                    onPress={() => handleAddressSelect(address)}
-                  >
-                    <Text style={styles.selectButtonText}>
-                      {selectedAddressId === address.id ? 'Selected' : 'Select'}
-                    </Text>
-                    {selectedAddressId === address.id && (
-                      <Icon name="checkmark" size={14} color="#FFF" style={styles.selectButtonIcon} />
-                    )}
-                  </TouchableOpacity>
-                )}
-              </View>
-            </Animatable.View>
-          ))
+          filteredAddresses.map((address, index) => renderAddressCard(address, index))
         ) : (
           <View style={styles.emptyState}>
-            <Icon name="map-outline" size={60} color="#DDD" />
+            <Icon name="map-outline" size={72} color="#E0E0E0" />
             <Text style={styles.emptyStateTitle}>
               {searchQuery ? 'No addresses found' : 'No saved addresses'}
             </Text>
             <Text style={styles.emptyStateText}>
               {searchQuery ? 'Try a different search term' : 'Add your first address to get started'}
             </Text>
+            {!searchQuery && (
+              <TouchableOpacity 
+                style={styles.emptyStateButton}
+                onPress={handleAddNewAddress}
+              >
+                <Text style={styles.emptyStateButtonText}>Add Address</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
+        
+        {/* Add some bottom padding for better scrolling */}
+        <View style={styles.bottomSpacer} />
       </ScrollView>
     </Animated.View>
   );
 
   return (
-    <SafeAreaView style={[styles.safeArea]}>
+    <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
       
       {/* Custom Header */}
-      <View style={[styles.header]}>
+      <View style={styles.header}>
         <View style={styles.headerContent}>
           <TouchableOpacity 
             style={styles.backButton}
@@ -447,13 +464,14 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
           
           <View style={styles.titleContainer}>
             <Text style={styles.headerTitle} numberOfLines={1}>
-              {isSelectionMode ? 'Select Address' : 'My Addresses'}
+              {isSelectionMode ? 'Manage Addresses' : 'My Addresses'}
             </Text>
           </View>
           
           <TouchableOpacity 
             style={styles.addLocationButton}
             onPress={handleAddNewAddress}
+            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
           >
             <Icon name="add" size={22} color="#FF6B35" />
           </TouchableOpacity>
@@ -473,20 +491,19 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#FFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#EEE',
+    borderBottomColor: '#F0F0F0',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
-    shadowRadius: 3,
+    shadowRadius: 2,
     elevation: 2,
     zIndex: 10,
-    overflow: 'hidden',
   },
   headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    height: 56,
+    height: 60,
     paddingHorizontal: 16,
   },
   backButton: {
@@ -499,18 +516,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 20,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F8F9FA',
   },
   titleContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 12,
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#333',
+    color: '#1A1A1A',
     textAlign: 'center',
   },
   addLocationButton: {
@@ -520,7 +537,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 20,
     backgroundColor: '#FFF',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#FF6B35',
   },
   loadingContainer: {
@@ -528,34 +545,42 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#F8F9FA',
+    paddingBottom: 60,
   },
   loadingText: {
     marginTop: 16,
     fontSize: 16,
     color: '#666',
+    fontWeight: '500',
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: 32,
     backgroundColor: '#F8F9FA',
   },
   errorIcon: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   errorText: {
     fontSize: 16,
     color: '#FF6B6B',
     textAlign: 'center',
     marginBottom: 24,
-    lineHeight: 24,
+    lineHeight: 22,
+    fontWeight: '500',
   },
   retryButton: {
     backgroundColor: '#FF6B35',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   retryButtonText: {
     color: '#FFF',
@@ -566,44 +591,50 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     paddingTop: 8,
     backgroundColor: '#F8F9FA',
+    minHeight: '100%',
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFF',
-    borderRadius: 12,
+    borderRadius: 14,
     margin: 16,
     paddingHorizontal: 16,
     paddingVertical: Platform.OS === 'ios' ? 14 : 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
     elevation: 3,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
   },
   searchIcon: {
-    marginRight: 8,
+    marginRight: 10,
   },
   searchInput: {
     flex: 1,
     fontSize: 16,
     color: '#333',
+    fontWeight: '500',
+    padding: 0,
   },
   clearButton: {
     padding: 4,
+    marginLeft: 4,
   },
   addButton: {
     backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 14,
+    padding: 18,
     marginHorizontal: 16,
-    marginBottom: 24,
+    marginBottom: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    borderWidth: 1,
+    shadowRadius: 6,
+    elevation: 4,
+    borderWidth: 2,
     borderColor: '#FF6B35',
     borderStyle: 'dashed',
   },
@@ -613,118 +644,138 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addButtonIconContainer: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: '#FF6B35',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+    shadowColor: '#FF6B35',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 3,
   },
   addButtonText: {
     color: '#FF6B35',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  sectionTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
-    color: '#333',
+  },
+  sectionHeader: {
     marginHorizontal: 16,
     marginBottom: 16,
     marginTop: 8,
   },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    marginBottom: 4,
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: '#888',
+    fontWeight: '500',
+  },
   addressCard: {
     backgroundColor: '#FFF',
     borderRadius: 16,
-    padding: 16,
+    padding: 18,
     marginHorizontal: 16,
-    marginBottom: 16,
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
   },
   addressCardTouchable: {
-    marginBottom: 12,
+    marginBottom: 14,
   },
   defaultAddressCard: {
-    borderWidth: 1.5,
     borderColor: '#FF6B35',
     backgroundColor: '#FFF9F0',
   },
   selectedAddressCard: {
-    borderWidth: 1.5,
     borderColor: '#4CAF50',
-    backgroundColor: '#F5FFF5',
+    backgroundColor: '#F8FFF8',
   },
   addressHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 12,
   },
   addressIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 14,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowRadius: 3,
     elevation: 2,
   },
   addressTitleContainer: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
     flexWrap: 'wrap',
   },
   addressName: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
-    color: '#333',
+    color: '#1A1A1A',
+    marginRight: 8,
+  },
+  tagContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
   },
   defaultTag: {
     backgroundColor: '#FF6B35',
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    marginLeft: 8,
+    marginRight: 6,
   },
   defaultTagText: {
     color: '#FFF',
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
   },
   selectedTag: {
     backgroundColor: '#4CAF50',
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    marginLeft: 8,
   },
   selectedTagText: {
     color: '#FFF',
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
   },
   addressText: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#666',
-    lineHeight: 20,
-    marginLeft: 56, // Align with icon
+    lineHeight: 21,
+    marginLeft: 60, // Align with icon
+    paddingRight: 10,
   },
   cardActions: {
     borderTopWidth: 1,
-    borderTopColor: '#EEE',
-    paddingTop: 12,
+    borderTopColor: '#F0F0F0',
+    paddingTop: 14,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    flexWrap: 'wrap',
   },
   actionButtons: {
     flexDirection: 'row',
@@ -736,10 +787,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginRight: 16,
-    paddingVertical: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
   },
   actionButtonText: {
-    marginLeft: 4,
+    marginLeft: 5,
     fontSize: 14,
     color: '#666',
     fontWeight: '500',
@@ -749,40 +801,67 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#FF6B35',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
     borderRadius: 20,
-    minWidth: 80,
+    minWidth: 90,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
   },
   selectedButton: {
     backgroundColor: '#4CAF50',
   },
   selectButtonText: {
     color: '#FFF',
-    fontWeight: '600',
+    fontWeight: '700',
     fontSize: 14,
   },
   selectButtonIcon: {
-    marginLeft: 4,
+    marginLeft: 5,
   },
   emptyState: {
     justifyContent: 'center',
     alignItems: 'center',
     padding: 40,
-    marginTop: 20,
+    marginTop: 30,
+    marginHorizontal: 20,
   },
   emptyStateTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 19,
+    fontWeight: '700',
     color: '#666',
-    marginTop: 16,
+    marginTop: 20,
+    textAlign: 'center',
   },
   emptyStateText: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#999',
-    marginTop: 8,
+    marginTop: 10,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  emptyStateButton: {
+    backgroundColor: '#FF6B35',
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 4,
+  },
+  emptyStateButtonText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  bottomSpacer: {
+    height: 20,
   },
 });
 

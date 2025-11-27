@@ -38,14 +38,13 @@ const moderateScale = (size: number, factor = 0.5) => size + (scale(size) - size
 const normalize = (size: number) => Math.round(scale(size));
 
 const FONT = {
-  S: normalize(10),
   XS: normalize(10),
   SM: normalize(12),
   BASE: normalize(14),
   LG: normalize(16),
   XL: normalize(18),
   XXL: normalize(20),
-  XXXL: normalize(24),
+  XXXL: normalize(22),
 };
 
 // Minimum order value constant
@@ -720,7 +719,7 @@ const CartScreen = ({ route, navigation }) => {
     const discountPercent = safePrice(item.discount_percent);
 
     return (
-      <View style={styles.cartItemContainer}>
+      <View style={styles.cartItemCard}>
         <View style={styles.cartItemContent}>
           <View style={styles.itemTypeContainer}>
             <View style={[
@@ -958,15 +957,7 @@ const CartScreen = ({ route, navigation }) => {
         }
       >
         {/* Your Order Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Your Order</Text>
-            <View style={styles.itemCountBadge}>
-              <Text style={styles.itemCountText}>
-                {safeText(cartData?.cart_details.length, '0')} {cartData?.cart_details.length === 1 ? 'item' : 'items'}
-              </Text>
-            </View>
-          </View>
+        <View style={styles.sectionCard}>
           
           <View style={styles.cartItemsList}>
             <FlatList
@@ -978,9 +969,9 @@ const CartScreen = ({ route, navigation }) => {
           </View>
         </View>
         
-        {/* Add More Items Section - Single Row */}
+        {/* Add More Items Section */}
         {cartData?.suggestion_cart_items && cartData.suggestion_cart_items.length > 0 && (
-          <View style={styles.section}>
+          <View style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>
                 Add More Items
@@ -1000,7 +991,7 @@ const CartScreen = ({ route, navigation }) => {
         )}
         
         {/* Delivery Details Section */}
-        <View style={styles.section}>
+        <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Delivery Details</Text>
           
           <View style={styles.detailCard}>
@@ -1028,7 +1019,7 @@ const CartScreen = ({ route, navigation }) => {
                 <View style={styles.detailIconContainer}>
                   <Icon name="time-outline" size={scale(20)} color="#E65C00" />
                 </View>
-                <Text style={styles.detailText}>Deliver by {safeText(cartData.delivery_time.estimated_time)}</Text>
+                <Text style={styles.detailText}>Deliver in {safeText(cartData.delivery_time.estimated_time)}</Text>
               </View>
             )}
             
@@ -1061,14 +1052,14 @@ const CartScreen = ({ route, navigation }) => {
                 <View style={styles.detailIconContainer}>
                   <Icon name="call-outline" size={scale(20)} color="#E65C00" />
                 </View>
-                <Text style={styles.detailText}>Contact: {safeText(user.contact_number)}</Text>
+                <Text style={styles.detailText}>{safeText(user.full_name)}, {safeText(user.contact_number)}</Text>
               </View>
             )}
           </View>
         </View>
         
         {/* Bill Details Section */}
-        <View style={styles.section}>
+        <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Bill Details</Text>
           
           <View style={styles.billCard}>
@@ -1101,7 +1092,7 @@ const CartScreen = ({ route, navigation }) => {
             ) : null}
             
             <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Grand Total</Text>
+              <Text style={styles.totalLabel}>Total Bill</Text>
               <Text style={styles.totalValue}>
                 ₹{safePrice(cartData?.billing_details.total).toFixed(2)}
               </Text>
@@ -1170,8 +1161,8 @@ const CartScreen = ({ route, navigation }) => {
               activeOpacity={0.8}
               disabled={showBlurOverlay}
             >
-              <Icon name="location" size={scale(14)} color="#fff" style={styles.addAddressIcon} />
-              <Text style={styles.addAddressButtonText}>Select Delivery Location</Text>
+              <Icon name="location" size={scale(18)} color="#fff" style={styles.addAddressIcon} />
+              <Text style={styles.addAddressButtonText}>Select Location</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -1408,7 +1399,6 @@ const CartScreen = ({ route, navigation }) => {
                 style={styles.headerAddressContainer}
                 disabled={showBlurOverlay}
               >
-                <Icon name="location-outline" size={scale(16)} color="#E65C00" />
                 <Text style={styles.headerAddressText} numberOfLines={1}>
                   {safeText(shortAddress, 'Select Address')}
                 </Text>
@@ -1430,7 +1420,7 @@ const CartScreen = ({ route, navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f8f8',
+    backgroundColor: '#f8f9fa',
   },
   loadingContainer: {
     flex: 1,
@@ -1449,19 +1439,21 @@ const styles = StyleSheet.create({
   },
   scrollContentContainer: {
     paddingBottom: verticalScale(120),
+    paddingHorizontal: scale(16),
   },
   downArrowIcon: {
     marginLeft: scale(4),
   },
-  // Updated Header Styles - Simple and Clean
+  // Updated Header Styles - Clean and Modern
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingTop: Platform.OS === 'android' ? verticalScale(30) : verticalScale(20),
     backgroundColor: '#fff',
-    paddingHorizontal: scale(20),
+    paddingHorizontal: scale(16),
     paddingBottom: verticalScale(16),
-    // Removed border and shadow for simple look
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
   backButton: {
     padding: scale(8),
@@ -1473,10 +1465,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   restaurantName: {
-    fontSize: FONT.XL,
+    fontSize: 18,
     fontWeight: '700',
     color: '#1a1a1a',
-    marginBottom: verticalScale(6),
+    marginBottom: verticalScale(4),
   },
   headerAddressContainer: {
     flexDirection: 'row',
@@ -1484,13 +1476,27 @@ const styles = StyleSheet.create({
   },
   headerAddressText: {
     fontSize: FONT.SM,
-    marginLeft: scale(6),
     fontWeight: '500',
+    color: '#666',
   },
-  // Updated Section Styles with more spacing
-  section: {
-    marginTop: verticalScale(24), // Increased spacing between sections
-    paddingHorizontal: scale(20),
+  // Section Cards - All content in cards like Zomato
+  sectionCard: {
+    backgroundColor: '#fff',
+    borderRadius: scale(16),
+    padding: scale(16),
+    marginBottom: verticalScale(16),
+    marginTop: verticalScale(10),
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -1499,7 +1505,7 @@ const styles = StyleSheet.create({
     marginBottom: verticalScale(16),
   },
   sectionTitle: {
-    fontSize: FONT.XXL,
+    fontSize: FONT.XL,
     fontWeight: '700',
     color: '#1a1a1a',
   },
@@ -1514,37 +1520,26 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
-  // Updated Cart Item Styles
-  cartItemContainer: {
+  // Cart Item Styles - Compact and Clean
+  cartItemCard: {
     backgroundColor: '#fff',
-    borderRadius: scale(16),
-    padding: scale(16),
-    marginBottom: verticalScale(12),
+    borderRadius: scale(12),
+    padding: scale(12),
+    marginBottom: verticalScale(8),
     borderWidth: 1,
     borderColor: '#f0f0f0',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
-        shadowRadius: 6,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
   },
   cartItemContent: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   itemTypeContainer: {
-    marginRight: scale(16),
+    marginRight: scale(12),
   },
   itemTypeBadge: {
-    width: scale(24),
-    height: scale(24),
-    borderRadius: scale(6),
+    width: scale(20),
+    height: scale(20),
+    borderRadius: scale(4),
     borderWidth: 1.5,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1558,9 +1553,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(230, 92, 0, 0.1)',
   },
   itemTypeIndicator: {
-    width: scale(12),
-    height: scale(12),
-    borderRadius: scale(6),
+    width: scale(10),
+    height: scale(10),
+    borderRadius: scale(5),
   },
   vegIndicator: {
     backgroundColor: '#4CAF50',
@@ -1570,24 +1565,24 @@ const styles = StyleSheet.create({
   },
   itemDetails: {
     flex: 1,
-    marginRight: scale(12), // Reduced margin to make space for quantity controls
+    marginRight: scale(12),
   },
   itemName: {
     fontSize: FONT.BASE,
     fontWeight: '600',
     color: '#1a1a1a',
-    marginBottom: verticalScale(6),
+    marginBottom: verticalScale(4),
   },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: verticalScale(4),
+    marginBottom: verticalScale(2),
   },
   originalPrice: {
     fontSize: FONT.SM,
     color: '#999',
     textDecorationLine: 'line-through',
-    marginRight: scale(8),
+    marginRight: scale(6),
     fontWeight: '500',
   },
   discountText: {
@@ -1606,36 +1601,36 @@ const styles = StyleSheet.create({
   },
   bogoBadge: {
     backgroundColor: '#FFEB3B',
-    paddingHorizontal: scale(8),
-    paddingVertical: verticalScale(4),
-    borderRadius: scale(6),
+    paddingHorizontal: scale(6),
+    paddingVertical: verticalScale(2),
+    borderRadius: scale(4),
     alignSelf: 'flex-start',
-    marginTop: verticalScale(6),
+    marginTop: verticalScale(4),
     borderWidth: 1,
     borderColor: '#FFC107',
   },
   bogoText: {
-    fontSize: FONT.SM,
+    fontSize: FONT.XS,
     fontWeight: 'bold',
     color: '#FF9800',
   },
-  // Updated Quantity Container - More Compact
+  // Quantity Container - Compact Design
   quantityContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff5f5',
     borderRadius: scale(20),
-    paddingHorizontal: scale(6), // Reduced padding
-    paddingVertical: verticalScale(4),   // Reduced padding
+    paddingHorizontal: scale(6),
+    paddingVertical: verticalScale(4),
     borderWidth: 1.5,
     borderColor: '#ffd6d6',
   },
   quantityButton: {
-    padding: scale(4), // Reduced padding
+    padding: scale(4),
     borderRadius: scale(12),
     backgroundColor: '#fff',
-    width: scale(28), // Fixed width
-    height: scale(28), // Fixed height
+    width: scale(24),
+    height: scale(24),
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1643,25 +1638,25 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   quantityText: {
-    fontSize: FONT.BASE, // Slightly smaller
+    fontSize: FONT.SM,
     fontWeight: '700',
     color: '#E65C00',
-    marginHorizontal: scale(8), // Reduced margin
+    marginHorizontal: scale(6),
     minWidth: scale(20),
     textAlign: 'center',
   },
-  // Updated Suggested Items Styles - Single Row Layout
+  // Suggested Items - Horizontal Scroll
   suggestedItemsRowContainer: {
     marginTop: verticalScale(8),
   },
   suggestedItemsHorizontalContainer: {
     paddingHorizontal: scale(4),
-    paddingBottom: verticalScale(8),
+    paddingBottom: verticalScale(4),
   },
   suggestedItemCard: {
-    width: scale(160),
+    width: scale(140),
     backgroundColor: '#fff',
-    borderRadius: scale(16),
+    borderRadius: scale(12),
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#f0f0f0',
@@ -1669,50 +1664,50 @@ const styles = StyleSheet.create({
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.08,
-        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
       },
       android: {
-        elevation: 4,
+        elevation: 3,
       },
     }),
   },
   suggestedItemImage: {
     width: '100%',
-    height: verticalScale(120), // Reduced height for compact design
+    height: verticalScale(100),
     backgroundColor: '#f8f8f8',
   },
   suggestedItemContent: {
-    padding: scale(12), // Reduced padding
+    padding: scale(10),
   },
   suggestedItemHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: verticalScale(8),
+    marginBottom: verticalScale(6),
   },
   suggestedItemTypeBadge: {
-    width: scale(16), // Smaller badge
-    height: scale(16), // Smaller badge
-    borderRadius: scale(4),
+    width: scale(14),
+    height: scale(14),
+    borderRadius: scale(3),
     borderWidth: 1.5,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: scale(6),
+    marginRight: scale(4),
   },
   suggestedItemTypeIndicator: {
-    width: scale(8),
-    height: scale(8),
-    borderRadius: scale(4),
+    width: scale(6),
+    height: scale(6),
+    borderRadius: scale(3),
   },
   suggestedItemName: {
-    fontSize: FONT.BASE, // Smaller font
+    fontSize: FONT.SM,
     fontWeight: '600',
     color: '#1a1a1a',
     flex: 1,
   },
   suggestedItemDetails: {
-    marginBottom: verticalScale(8),
+    marginBottom: verticalScale(6),
   },
   suggestedItemFooter: {
     flexDirection: 'row',
@@ -1721,23 +1716,12 @@ const styles = StyleSheet.create({
   },
   addItemButton: {
     backgroundColor: '#E65C00',
-    paddingHorizontal: scale(16),
+    paddingHorizontal: scale(12),
     paddingVertical: verticalScale(6),
-    borderRadius: scale(8),
-    minWidth: scale(60),
+    borderRadius: scale(6),
+    minWidth: scale(50),
     alignItems: 'center',
     justifyContent: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#E65C00',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
   },
   addItemButtonDisabled: {
     opacity: 0.7,
@@ -1747,38 +1731,26 @@ const styles = StyleSheet.create({
     fontSize: FONT.SM,
     fontWeight: '700',
   },
+  // Detail Card inside Section
   detailCard: {
-    backgroundColor: '#fff',
-    borderRadius: scale(16),
-    padding: scale(20),
-    borderWidth: 1,
-    borderColor: '#f0f0f0',
+    backgroundColor: '#f8f9fa',
+    borderRadius: scale(12),
+    padding: scale(16),
     marginTop: verticalScale(8),
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
-        shadowRadius: 6,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
   },
   detailRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: verticalScale(16),
+    marginBottom: verticalScale(12),
   },
   detailIconContainer: {
-    width: scale(36),
-    height: scale(36),
-    borderRadius: scale(18),
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
     backgroundColor: '#fff8f0',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: scale(14),
+    marginRight: scale(12),
     borderWidth: 1,
     borderColor: '#ffe0cc',
   },
@@ -1798,9 +1770,9 @@ const styles = StyleSheet.create({
   },
   changeAddressButton: {
     paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(6),
+    paddingVertical: verticalScale(4),
     backgroundColor: '#fff0e6',
-    borderRadius: scale(8),
+    borderRadius: scale(6),
     borderWidth: 1,
     borderColor: '#ffd1b3',
   },
@@ -1809,32 +1781,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: FONT.SM,
   },
+  // Bill Card inside Section
   billCard: {
-    backgroundColor: '#fff',
-    borderRadius: scale(16),
-    padding: scale(20),
-    borderWidth: 1,
-    borderColor: '#f0f0f0',
+    backgroundColor: '#f8f9fa',
+    borderRadius: scale(12),
+    padding: scale(16),
     marginTop: verticalScale(8),
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
-        shadowRadius: 6,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
   },
   billRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: verticalScale(14),
-    paddingBottom: verticalScale(14),
+    marginBottom: verticalScale(12),
+    paddingBottom: verticalScale(12),
     borderBottomWidth: 1,
-    borderBottomColor: '#f5f5f5',
+    borderBottomColor: '#e8e8e8',
   },
   billLabel: {
     fontSize: FONT.BASE,
@@ -1850,28 +1810,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: verticalScale(8),
-    paddingTop: verticalScale(16),
+    paddingTop: verticalScale(12),
     borderTopWidth: 1.5,
-    borderTopColor: '#eee',
+    borderTopColor: '#e8e8e8',
   },
   totalLabel: {
-    fontSize: FONT.XL,
+    fontSize: FONT.LG,
     fontWeight: '700',
     color: '#1a1a1a',
   },
   totalValue: {
-    fontSize: FONT.XL,
+    fontSize: FONT.LG,
     fontWeight: '800',
     color: '#E65C00',
   },
+  // Note Card
   noteCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff8e1',
     borderRadius: scale(12),
     padding: scale(16),
-    marginHorizontal: scale(20),
-    marginTop: verticalScale(20),
+    marginTop: verticalScale(8),
     borderWidth: 1,
     borderColor: '#ffeaa7',
   },
@@ -1885,6 +1845,14 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     lineHeight: verticalScale(18),
   },
+  // Cart Items List
+  cartItemsList: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: scale(12),
+    padding: scale(12),
+    marginTop: verticalScale(8),
+  },
+  // Empty State Styles
   emptyContainer: {
     flex: 1,
     backgroundColor: '#fff',
@@ -1893,12 +1861,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: scale(20),
+    padding: scale(16),
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
   emptyHeaderTitle: {
-    fontSize: FONT.XXL,
+    fontSize: FONT.XL,
     fontWeight: '700',
     color: '#1a1a1a',
   },
@@ -1909,13 +1877,13 @@ const styles = StyleSheet.create({
     padding: scale(24),
   },
   emptyIllustration: {
-    width: scale(140),
-    height: scale(140),
-    borderRadius: scale(70),
+    width: scale(120),
+    height: scale(120),
+    borderRadius: scale(60),
     backgroundColor: '#f8f8f8',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: verticalScale(32),
+    marginBottom: verticalScale(24),
     position: 'relative',
   },
   emptyIconOverlay: {
@@ -1928,84 +1896,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyTitle: {
-    fontSize: FONT.XXXL,
+    fontSize: FONT.XXL,
     fontWeight: '700',
     color: '#1a1a1a',
-    marginBottom: verticalScale(12),
+    marginBottom: verticalScale(8),
     textAlign: 'center',
   },
   emptyDescription: {
-    fontSize: FONT.LG,
+    fontSize: FONT.BASE,
     color: '#666',
     textAlign: 'center',
-    marginBottom: verticalScale(32),
-    lineHeight: verticalScale(24),
+    marginBottom: verticalScale(24),
+    lineHeight: verticalScale(20),
     paddingHorizontal: scale(20),
     fontWeight: '500',
   },
   suggestionTitle: {
-    fontSize: FONT.XL,
+    fontSize: FONT.LG,
     fontWeight: '700',
     color: '#1a1a1a',
-    marginTop: verticalScale(24),
-    marginBottom: verticalScale(16),
-    paddingHorizontal: scale(20),
+    marginTop: verticalScale(16),
+    marginBottom: verticalScale(12),
+    paddingHorizontal: scale(16),
   },
   exploreButton: {
     backgroundColor: '#E65C00',
-    paddingHorizontal: scale(36),
-    paddingVertical: verticalScale(16),
-    borderRadius: scale(30),
+    paddingHorizontal: scale(32),
+    paddingVertical: verticalScale(14),
+    borderRadius: scale(25),
     flexDirection: 'row',
     alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#E65C00',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.4,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 6,
-      },
-    }),
-    marginTop: verticalScale(24),
-  },
-  exploreButtonText: {
-    color: '#fff',
-    fontSize: FONT.LG,
-    fontWeight: '700',
-    marginRight: scale(8),
-  },
-  errorContainer: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  errorContent: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: scale(24),
-  },
-  errorIcon: {
-    marginBottom: verticalScale(24),
-  },
-  errorText: {
-    fontSize: FONT.LG,
-    color: '#E65C00',
-    marginBottom: verticalScale(32),
-    textAlign: 'center',
-    fontWeight: '600',
-    lineHeight: verticalScale(24),
-  },
-  primaryButton: {
-    backgroundColor: '#E65C00',
-    paddingHorizontal: scale(32),
-    paddingVertical: verticalScale(16),
-    borderRadius: scale(30),
-    width: '80%',
-    alignItems: 'center',
-    marginBottom: verticalScale(16),
     ...Platform.select({
       ios: {
         shadowColor: '#E65C00',
@@ -2018,6 +1938,46 @@ const styles = StyleSheet.create({
       },
     }),
   },
+  exploreButtonText: {
+    color: '#fff',
+    fontSize: FONT.LG,
+    fontWeight: '700',
+    marginRight: scale(8),
+  },
+  emptySuggestionsContainer: {
+    marginBottom: verticalScale(20),
+  },
+  // Error State Styles
+  errorContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  errorContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: scale(24),
+  },
+  errorIcon: {
+    marginBottom: verticalScale(16),
+  },
+  errorText: {
+    fontSize: FONT.LG,
+    color: '#E65C00',
+    marginBottom: verticalScale(24),
+    textAlign: 'center',
+    fontWeight: '600',
+    lineHeight: verticalScale(20),
+  },
+  primaryButton: {
+    backgroundColor: '#E65C00',
+    paddingHorizontal: scale(32),
+    paddingVertical: verticalScale(14),
+    borderRadius: scale(25),
+    width: '80%',
+    alignItems: 'center',
+    marginBottom: verticalScale(12),
+  },
   primaryButtonText: {
     color: '#fff',
     fontSize: FONT.LG,
@@ -2025,8 +1985,8 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     paddingHorizontal: scale(32),
-    paddingVertical: verticalScale(16),
-    borderRadius: scale(30),
+    paddingVertical: verticalScale(14),
+    borderRadius: scale(25),
     width: '80%',
     alignItems: 'center',
     borderWidth: 2,
@@ -2038,6 +1998,7 @@ const styles = StyleSheet.create({
     fontSize: FONT.LG,
     fontWeight: '600',
   },
+  // Payment Footer
   paymentFooter: {
     position: 'absolute',
     bottom: 0,
@@ -2046,7 +2007,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderTopLeftRadius: scale(20),
     borderTopRightRadius: scale(20),
-    padding: scale(20),
+    padding: scale(16),
     borderTopWidth: 1,
     borderColor: '#f0f0f0',
     ...Platform.select({
@@ -2073,95 +2034,65 @@ const styles = StyleSheet.create({
     fontSize: FONT.SM,
     color: '#666',
     fontWeight: '500',
-    marginBottom: verticalScale(4),
+    marginBottom: verticalScale(2),
   },
   totalAmountValue: {
-    fontSize: FONT.XXL,
+    fontSize: FONT.XL,
     fontWeight: '800',
     color: '#E65C00',
   },
   payButton: {
     backgroundColor: '#E65C00',
-    borderRadius: scale(30),
-    paddingVertical: verticalScale(16),
-    paddingHorizontal: scale(28),
+    borderRadius: scale(25),
+    paddingVertical: verticalScale(14),
+    paddingHorizontal: scale(24),
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: scale(160),
-    ...Platform.select({
-      ios: {
-        shadowColor: '#E65C00',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.4,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 6,
-      },
-    }),
+    minWidth: scale(140),
   },
   payButtonText: {
     color: '#fff',
     fontSize: FONT.LG,
     fontWeight: '700',
-    marginRight: scale(8),
+    marginRight: scale(6),
   },
   payButtonIcon: {
-    marginLeft: scale(4),
+    marginLeft: scale(2),
   },
   addAddressButton: {
     backgroundColor: '#E65C00',
-    borderRadius: scale(30),
-    paddingVertical: verticalScale(16),
-    paddingHorizontal: scale(24),
+    borderRadius: scale(25),
+    paddingVertical: verticalScale(14),
+    paddingHorizontal: scale(20),
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#E65C00',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.4,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 6,
-      },
-    }),
   },
   addAddressButtonText: {
     color: '#fff',
-    fontSize: FONT.SM,
+    fontSize: FONT.LG,
     fontWeight: '700',
-    marginLeft: scale(8),
+    marginLeft: scale(6),
   },
   addAddressIcon: {
     marginRight: scale(4),
   },
-  cartItemsList: {
-    backgroundColor: '#fff',
-    borderRadius: scale(16),
-    padding: scale(16),
-    borderWidth: 1,
-    borderColor: '#f0f0f0',
+  // Verification Container
+  verificationContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: scale(20),
+  },
+  verificationText: {
+    fontSize: FONT.LG,
+    color: '#333',
     marginTop: verticalScale(8),
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
-        shadowRadius: 6,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
+    textAlign: 'center',
+    fontWeight: '600',
   },
-  emptySuggestionsContainer: {
-    marginBottom: verticalScale(20),
-  },
+  // Modal Styles
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -2190,7 +2121,7 @@ const styles = StyleSheet.create({
     zIndex: 1001,
   },
   blurLoadingText: {
-    marginTop: verticalScale(16),
+    marginTop: verticalScale(12),
     fontSize: FONT.LG,
     color: '#333',
     fontWeight: '600',
@@ -2205,19 +2136,19 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     width: width * 0.8,
-    borderRadius: scale(24),
-    padding: scale(32),
+    borderRadius: scale(20),
+    padding: scale(24),
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.4,
-        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
       },
       android: {
-        elevation: 12,
+        elevation: 8,
       },
     }),
     overflow: 'hidden',
@@ -2239,61 +2170,46 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: '100%',
   },
-  modalIcon: {
-    marginBottom: verticalScale(20),
-  },
   modalText: {
     color: '#fff',
     fontSize: FONT.LG,
     fontWeight: '600',
     textAlign: 'center',
-    marginTop: verticalScale(20),
-    marginBottom: verticalScale(20),
-    lineHeight: verticalScale(24),
+    marginTop: verticalScale(16),
+    marginBottom: verticalScale(16),
+    lineHeight: verticalScale(20),
   },
   loadingIcon: {
-    marginBottom: verticalScale(20),
+    marginBottom: verticalScale(16),
   },
   successAnimation: {
-    width: scale(90),
-    height: scale(90),
+    width: scale(80),
+    height: scale(80),
     backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: scale(45),
+    borderRadius: scale(40),
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: verticalScale(20),
-    borderWidth: 3,
+    marginBottom: verticalScale(16),
+    borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.3)',
   },
-  verificationContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: scale(24),
-  },
-  verificationText: {
-    fontSize: FONT.LG,
-    color: '#333',
-    marginTop: verticalScale(12),
-    textAlign: 'center',
-    fontWeight: '600',
-  },
   verificationLoader: {
-    marginTop: verticalScale(12),
-    marginBottom: verticalScale(12),
+    marginTop: verticalScale(8),
+    marginBottom: verticalScale(8),
   },
   modalCloseButton: {
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    paddingHorizontal: scale(28),
-    paddingVertical: verticalScale(14),
-    borderRadius: scale(25),
-    marginTop: verticalScale(16),
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.4)',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: scale(24),
+    paddingVertical: verticalScale(10),
+    borderRadius: scale(20),
+    marginTop: verticalScale(12),
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.3)',
   },
   modalCloseButtonText: {
     color: '#fff',
     fontWeight: '700',
-    fontSize: FONT.LG,
+    fontSize: FONT.BASE,
   },
 });
 

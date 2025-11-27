@@ -55,18 +55,23 @@ const LoginScreen = () => {
   const slideAnim = useRef(new Animated.Value(30)).current;
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 600,
-        useNativeDriver: true,
-      })
-    ]).start();
+    // Start animations after component mounts to prevent blinking
+    const animationTimer = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 600,
+          useNativeDriver: true,
+        })
+      ]).start();
+    }, 50);
+
+    return () => clearTimeout(animationTimer);
   }, []);
 
   const handleContinue = async () => {
@@ -180,13 +185,7 @@ const LoginScreen = () => {
         </SafeAreaView>
       </Modal>
 
-      <Animated.View style={[
-        styles.container, 
-        { 
-          opacity: fadeAnim,
-          transform: [{ translateY: slideAnim }]
-        }
-      ]}>
+      <View style={styles.container}>
         <KeyboardAvoidingView
           style={styles.keyboardAvoid}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -201,44 +200,49 @@ const LoginScreen = () => {
           >
             <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
               <View style={styles.content}>
-                
-                
-
                 {/* Centered Main Content */}
                 <View style={styles.mainContent}>
-
-
                   {/* Centered Header Section */}
-                <View style={styles.header}>
-                  <View style={styles.logoContainer}>
-                    <View style={styles.logoWrapper}>
-                      <View style={styles.logoImageContainer}>
-                        <Image 
-                          source={{ uri: 'https://eatoorprod.s3.amazonaws.com/uploads/80645c4afd0d47dea9c05b0091714778.jpg' }}
-                          style={styles.logoImage}
-                          resizeMode="contain"
-                        />
+                  <View style={styles.header}>
+                    <View style={styles.logoContainer}>
+                      <View style={styles.logoWrapper}>
+                        <View style={styles.logoImageContainer}>
+                          <Image 
+                            source={{ uri: 'https://eatoorprod.s3.amazonaws.com/eatoor-logo/fwdeatoorlogofiles/5.png' }}
+                            style={styles.logoImage}
+                            resizeMode="contain"
+                            onError={() => console.log('Image failed to load')}
+                          />
+                        </View>
                       </View>
-                      <Text style={styles.logoText}>EATOOR</Text>
-                    </View>
-                    <View style={styles.badge}>
-                      <Text style={styles.badgeText}>Food Delivery</Text>
+                      <View style={styles.badge}>
+                        <Text style={styles.badgeText}>Food Delivery</Text>
+                      </View>
                     </View>
                   </View>
-                </View>
                   
                   {/* Login/Sign Up Heading with Side Lines */}
-                  <View style={styles.headingWithLines}>
+                  <Animated.View style={[
+                    styles.headingWithLines,
+                    { 
+                      opacity: fadeAnim,
+                      transform: [{ translateY: slideAnim }]
+                    }
+                  ]}>
                     <View style={styles.line} />
                     <Text style={styles.headingTitle}>Login or sign up</Text>
                     <View style={styles.line} />
-                  </View>
+                  </Animated.View>
 
                   {/* Centered Input Section */}
-                  <View style={styles.inputSection}>
+                  <Animated.View style={[
+                    styles.inputSection,
+                    { 
+                      opacity: fadeAnim,
+                      transform: [{ translateY: slideAnim }]
+                    }
+                  ]}>
                     <View style={styles.inputContainer}>
-                      {/* Updated Input Label */}
-                      
                       <View style={styles.inputWrapper}>
                         <TouchableOpacity
                           style={styles.countryPicker}
@@ -318,13 +322,13 @@ const LoginScreen = () => {
                         </Text>
                       </Text>
                     </View>
-                  </View>
+                  </Animated.View>
                 </View>
               </View>
             </TouchableWithoutFeedback>
           </ScrollView>
         </KeyboardAvoidingView>
-      </Animated.View>
+      </View>
     </SafeAreaView>
   );
 };
@@ -352,12 +356,12 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: height,
     justifyContent: 'center',
-    paddingBottom: 20, // Reduced bottom padding
+    paddingBottom: 20,
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 10, // Reduced top padding
-    paddingBottom: 10, // Reduced bottom padding
+    paddingTop: 10,
+    paddingBottom: 10,
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
@@ -367,62 +371,53 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 0, // Removed extra top padding
+    paddingTop: 0,
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 30, // Reduced margin to remove extra space
+    marginBottom: 30,
   },
   logoWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6, // Reduced margin
+    marginBottom: 6,
   },
   logoImageContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
+    width: 100,
+    height: 100,
+    borderRadius: 20,
     backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 6,
-    elevation: 4,
-    overflow: 'hidden',
-    borderWidth: 1,
     borderColor: '#f0f0f0',
   },
   logoImage: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-  },
-  logoText: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#E65C00',
-    letterSpacing: -0.5,
+    width: 72,
+    height: 72,
+    borderRadius: 16,
   },
   badge: {
     backgroundColor: '#FFF5E6',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#FFE4C2',
+    marginTop: 8,
   },
   badgeText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
     color: primaryColor,
   },
   headingWithLines: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 35, // Adjusted margin for better spacing
+    marginBottom: 35,
     width: '100%',
     maxWidth: 300,
   },

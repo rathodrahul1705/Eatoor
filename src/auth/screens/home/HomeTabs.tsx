@@ -71,7 +71,7 @@ const COLORS = {
   textLight: '#666666',
   border: '#EEEEEE',
   inactive: '#999999',
-  error: '#FF3B30',
+  error: '#FFFFFF', // Changed to white for error messages
   success: '#34C759',
   warning: '#FF9500',
   info: '#5AC8FA',
@@ -150,6 +150,7 @@ const AddressHeaderLeft = () => {
   const handleAppStateChange = useCallback((nextAppState: AppStateStatus) => {
     if (appState.match(/inactive|background/) && nextAppState === 'active') {
       // App has come to the foreground, refresh location
+      console.log('App came to foreground, refreshing location...');
       getCurrentLocation();
     }
     setAppState(nextAppState);
@@ -360,6 +361,7 @@ const AddressHeaderLeft = () => {
       // First, check if we have saved address details in local storage
       const savedDetails = await getSavedAddressDetails();
       if (savedDetails.address && savedDetails.coords) {
+        console.log('Using saved address details');
         updateLocationState(
           savedDetails.address,
           savedDetails.coords,
@@ -371,10 +373,13 @@ const AddressHeaderLeft = () => {
         return;
       }
 
+      console.log('No saved address found, detecting location...');
+
       // If no saved details, proceed with location detection
       // Check if location services are enabled
       const locationEnabled = await checkLocationEnabled();
       if (!locationEnabled) {
+        console.log('Location services disabled');
         updateLocationState(
           'Location services disabled',
           null,
@@ -383,9 +388,12 @@ const AddressHeaderLeft = () => {
         return;
       }
 
+      console.log('Location services enabled, checking permission...');
+
       // Check and request permission
       const hasPermission = await requestLocationPermission();
       if (!hasPermission) {
+        console.log('Location permission denied');
         updateLocationState(
           'Location permission required',
           null,
@@ -393,6 +401,8 @@ const AddressHeaderLeft = () => {
         );
         return;
       }
+
+      console.log('Location permission granted, getting current position...');
 
       // Get current position
       const position = await new Promise<Geolocation.GeoPosition>((resolve, reject) => {
@@ -429,7 +439,9 @@ const AddressHeaderLeft = () => {
       });
 
       const { latitude, longitude } = position.coords;
+      console.log('Location obtained:', latitude, longitude);
       
+      // Only save to AsyncStorage if we have permission and valid location
       // Send coordinates to API to get address information
       await checkLocationInDatabase(latitude, longitude);
       
@@ -445,6 +457,20 @@ const AddressHeaderLeft = () => {
       } else if (error.code === 1) {
         errorMessage = 'Location permission denied';
         promptForPermission = true;
+        
+        // Clear any previously saved address if permission is denied
+        try {
+          await AsyncStorage.multiRemove([
+            STORAGE_KEYS.ADDRESS_ID,
+            STORAGE_KEYS.STREET_ADDRESS,
+            STORAGE_KEYS.HOME_TYPE,
+            STORAGE_KEYS.LATITUDE,
+            STORAGE_KEYS.LONGITUDE,
+          ]);
+          console.log('Cleared saved address due to permission denial');
+        } catch (storageError) {
+          console.error('Error clearing saved address:', storageError);
+        }
       } else if (error.message?.includes('disabled')) {
         errorMessage = 'Location services disabled';
         promptForEnable = true;
@@ -509,6 +535,7 @@ const AddressHeaderLeft = () => {
             setLocation(prev => ({ ...prev, showPermissionPrompt: false }));
             const granted = await requestLocationPermission();
             if (granted) {
+              console.log('Permission granted, getting location...');
               getCurrentLocation();
             } else {
               Alert.alert(
@@ -540,8 +567,51 @@ const AddressHeaderLeft = () => {
     );
   }, []);
 
+  // Handle location permission changes and auto-load when enabled
+  useEffect(() => {
+    const checkAndLoadLocation = async () => {
+      // If location was previously disabled and now might be enabled
+      if (location.error && (location.error.includes('disabled') || location.error.includes('permission'))) {
+        const locationEnabled = await checkLocationEnabled();
+        const hasPermission = await requestLocationPermission();
+        
+        if (locationEnabled && hasPermission) {
+          console.log('Location services and permission now available, auto-loading location...');
+          getCurrentLocation();
+        }
+      }
+    };
+
+    checkAndLoadLocation();
+  }, [location.error]);
+
+  // Handle auto-load when user enables location from settings
+  useEffect(() => {
+    if (location.showEnableLocationPrompt || location.showPermissionPrompt) {
+      // Set up a listener to check for location availability when user returns from settings
+      const interval = setInterval(async () => {
+        const locationEnabled = await checkLocationEnabled();
+        const hasPermission = await requestLocationPermission();
+        
+        if (locationEnabled && hasPermission) {
+          console.log('Location enabled by user, auto-loading...');
+          clearInterval(interval);
+          getCurrentLocation();
+        }
+      }, 1000); // Check every second
+
+      // Clear interval after 30 seconds to prevent infinite checking
+      setTimeout(() => {
+        clearInterval(interval);
+      }, 30000);
+
+      return () => clearInterval(interval);
+    }
+  }, [location.showEnableLocationPrompt, location.showPermissionPrompt]);
+
   useFocusEffect(
     useCallback(() => {
+      console.log('Home screen focused, loading location...');
       getCurrentLocation();
       return () => {};
     }, [getCurrentLocation])
@@ -549,12 +619,14 @@ const AddressHeaderLeft = () => {
 
   useEffect(() => {
     if (location.showEnableLocationPrompt) {
+      console.log('Showing location enable prompt');
       showLocationSettingsAlert();
     }
   }, [location.showEnableLocationPrompt, showLocationSettingsAlert]);
 
   useEffect(() => {
     if (location.showPermissionPrompt) {
+      console.log('Showing permission prompt');
       showPermissionAlert();
     }
   }, [location.showPermissionPrompt, showPermissionAlert]);
@@ -590,20 +662,22 @@ const AddressHeaderLeft = () => {
           }
         );
 
-        // Save address details
-        (async () => {
-          try {
-            await saveAddressDetails({
-              id: String(raw.id),
-              full_address: raw.full_address,
-              home_type: raw.home_type || 'Delivering to',
-              latitude: raw.latitude,
-              longitude: raw.longitude,
-            });
-          } catch (error) {
-            console.error('Error saving selected address:', error);
-          }
-        })();
+        // Save address details only if we have valid data
+        if (raw.full_address && raw.latitude && raw.longitude) {
+          (async () => {
+            try {
+              await saveAddressDetails({
+                id: String(raw.id),
+                full_address: raw.full_address,
+                home_type: raw.home_type || 'Delivering to',
+                latitude: raw.latitude,
+                longitude: raw.longitude,
+              });
+            } catch (error) {
+              console.error('Error saving selected address:', error);
+            }
+          })();
+        }
       }
     } as never);
   }, [navigation, location.coords, location.address]);
@@ -616,11 +690,11 @@ const AddressHeaderLeft = () => {
       hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
     >
       <View style={styles.addressLine}>
-         <Icon
-            name={"navigate"} 
-            size={14} 
-            color={location.error ? COLORS.error : COLORS.background} 
-          />
+        <Icon
+          name={"navigate"} 
+          size={14} 
+          color={location.error ? COLORS.error : COLORS.background} 
+        />
         <Text style={[styles.addressLabel, { color: COLORS.background }]}>
           {location.homeType}
         </Text>
@@ -640,7 +714,11 @@ const AddressHeaderLeft = () => {
         {location.loading ? (
           <ActivityIndicator size={14} color={COLORS.background} />
         ) : (
-          <Icon name={location.error ? "warning-outline" : "location-outline"}  size={15} color={COLORS.background} />
+          <Icon 
+            name={location.error ? "warning-outline" : "location-outline"}  
+            size={15} 
+            color={location.error ? COLORS.error : COLORS.background} 
+          />
         )}
         
         <Text 
@@ -675,7 +753,7 @@ const AddressHeaderLeft = () => {
               <Icon 
                 name="reload-outline" 
                 size={14} 
-                color={COLORS.background} 
+                color={location.error ? COLORS.error : COLORS.background} 
               />
             </Animatable.View>
           </TouchableOpacity>
@@ -813,7 +891,6 @@ const HomeTabs = () => {
 const styles = StyleSheet.create({
   sceneContainer: {
     flex: 1,
-    paddingBottom: isSmallDevice ? 10 : 20,
   },
   header: {
     elevation: 0,
