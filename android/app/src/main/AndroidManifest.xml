@@ -5,6 +5,11 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    
+    <!-- ADD THESE FOR OTP AUTOFILL -->
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
     <application
         android:name=".MainApplication"
@@ -29,11 +34,20 @@
             </intent-filter>
         </activity>
 
-        <!-- ADD THIS: Razorpay conflict resolution -->
+        <!-- Razorpay conflict resolution -->
         <activity
             android:name="com.razorpay.CheckoutActivity"
             android:exported="true"
             tools:replace="android:exported" />
+
+        <!-- ADD THIS FOR OTP AUTOFILL -->
+        <activity
+            android:name="com.facebook.react.common.otp.OtpRetrieverBroadcastReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.auth.api.phone.SMS_RETRIEVED" />
+            </intent-filter>
+        </activity>
 
         <meta-data
             android:name="com.google.android.geo.API_KEY"
