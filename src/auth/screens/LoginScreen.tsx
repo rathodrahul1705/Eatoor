@@ -19,6 +19,7 @@ import {
   StatusBar,
   Linking,
   ScrollView,
+  NativeModules
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -28,6 +29,8 @@ import { Country, countries } from '../../auth/screens/home/countries';
 import Icon from 'react-native-vector-icons/Ionicons';
 import messaging from '@react-native-firebase/messaging';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const { AppHash } = NativeModules;
 
 const { width, height } = Dimensions.get('window');
 
@@ -48,12 +51,15 @@ const LoginScreen = () => {
   const [selectedCountry, setSelectedCountry] = useState<Country>(countries.find(country => country.code === 'IN') || countries[0]);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [appHash, setAppHash] = useState<string>('');
   
   const inputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
+  console.log("appHash===",appHash)
+  
   useEffect(() => {
     // Start animations after component mounts to prevent blinking
     const animationTimer = setTimeout(() => {
@@ -71,8 +77,23 @@ const LoginScreen = () => {
       ]).start();
     }, 50);
 
+    // Get app hash for Android OTP autofill
+    if (Platform.OS === 'android') {
+      getAppHash();
+    }
+
     return () => clearTimeout(animationTimer);
   }, []);
+
+  const getAppHash = async () => {
+    try {
+      const hash = await AppHash.getAppHash();
+      console.log("App Hash generated:", hash);
+      setAppHash(hash);
+    } catch (error) {
+      console.log('Error getting app hash:', error);
+    }
+  };
 
   const handleContinue = async () => {
     if (!mobileNumber || mobileNumber.length < selectedCountry.minLength) {
@@ -84,16 +105,33 @@ const LoginScreen = () => {
     setIsLoading(true);
 
     try {
-      const fullNumber = mobileNumber;
-      const response = await sendOTP(fullNumber);
+      const fullNumber = `${selectedCountry.dialCode.replace('+', '')}${mobileNumber}`;
+      
+      const requestData = {
+        contact_number: fullNumber,
+        platform: Platform.OS === 'ios' ? 'ios' : 'android',
+      };
 
-      if (response?.status == 200) {
-        navigation.navigate('OTP', { userInput: fullNumber });
+      // Add app_hash only for Android
+      if (Platform.OS === 'android' && appHash) {
+        (requestData as any).app_hash = appHash;
+      }
+
+      console.log("Sending OTP request with data:", requestData);
+      
+      const response = await sendOTP(requestData);
+
+      if (response?.status === 200) {
+        navigation.navigate('OTP', { 
+          userInput: fullNumber,
+          appHash: Platform.OS === 'android' ? appHash : undefined 
+        });
       } else {
         setError(response?.data?.message || 'Failed to send OTP');
       }
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Something went wrong');
+      console.log('OTP send error:', err);
+      setError(err?.response?.data?.message || 'Something went wrong. Please try again.');
     } finally {
       setIsLoading(false);
     }

@@ -12,15 +12,18 @@ import com.facebook.react.ReactNativeHost
 import com.facebook.react.ReactPackage
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.facebook.react.defaults.DefaultReactNativeHost
+import com.eatoor.apphash.AppHashPackage
+
+
 
 class MainApplication : Application(), ReactApplication {
 
   override val reactNativeHost: ReactNativeHost =
       object : DefaultReactNativeHost(this) {
         override fun getPackages(): List<ReactPackage> =
-            PackageList(this).packages.apply {
-              // Add manual packages here if needed
-            }
+          PackageList(this).packages.apply {
+              add(AppHashPackage())
+        }
 
         override fun getJSMainModuleName(): String = "index"
 
