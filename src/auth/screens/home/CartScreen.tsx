@@ -120,7 +120,7 @@ type CartApiResponse = {
 
 type UserData = {
   id: string;
-  name: string;
+  full_name: string;
   email: string;
   contact_number: string;
 };
@@ -617,16 +617,16 @@ const CartScreen = ({ route, navigation }) => {
 
       const options = {
         description: `Order from ${cartData.restaurant_name}`,
-        image: 'https://www.eatoor.com/eatoormob.svg',
+        image: 'https://eatoorprod.s3.amazonaws.com/eatoor-logo/fwdeatoorlogofiles/5.png',
         currency: 'INR',
         key: RAZORPAY_API_KEY,
         amount: cartData.billing_details.total * 100, // Amount in paise
-        name: user.name,
+        name: user.full_name,
         order_id: orderId,
         prefill: {
           email: user.email,
           contact: user.contact_number,
-          name: user.name
+          name: user.full_name
         },
         theme: { color: '#E65C00' }
       };
@@ -1154,7 +1154,7 @@ const CartScreen = ({ route, navigation }) => {
                   <Icon name="call-outline" size={scale(20)} color="#E65C00" />
                 </View>
                 <Text style={styles.detailText}>
-                  {safeText(user?.name)}, {safeText(user?.contact_number)}
+                  {safeText(user?.full_name)}, {safeText(user?.contact_number)}
                 </Text>
               </View>
             )}
@@ -1978,7 +1978,7 @@ const styles = StyleSheet.create({
     marginRight: scale(12),
   },
   noteText: {
-    fontSize: FONT.SM,
+    fontSize: FONT.XS,
     color: '#666',
     flex: 1,
     fontWeight: '500',
