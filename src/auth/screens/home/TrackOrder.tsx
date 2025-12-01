@@ -13,28 +13,36 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
-  RefreshControl
+  RefreshControl,
+  StatusBar,
+  Easing,
+  Vibration
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Circle } from 'react-native-maps';
 import { getOrderDetails, getLiveTrackingDetails } from '../../../api/profile';
 import moment from 'moment';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Optional: Install react-native-haptic-feedback for better haptics
+// npm install react-native-haptic-feedback
+import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 
 // Constants
 const { width, height } = Dimensions.get('window');
 const ASPECT_RATIO = width / height;
 const LATITUDE_DELTA = 0.0922;
 const LONGITUDE_DELTA = LATITUDE_DELTA * ASPECT_RATIO;
-const SMALL_MAP_HEIGHT = 220;
-const EXPANDED_MAP_HEIGHT = height * 0.75;
+const SMALL_MAP_HEIGHT = 240;
+const EXPANDED_MAP_HEIGHT = height * 0.8;
 const CARD_WIDTH = width - 32;
-const HEADER_HEIGHT = 60;
+const HEADER_HEIGHT = 90;
+const CARD_PADDING = 20;
 
-// Responsive font sizes based on screen width
-const getResponsiveFontSize = (baseSize) => {
-  const scale = width / 375; // 375 is standard iPhone width
+// Responsive font sizes
+const getResponsiveFontSize = (baseSize: number) => {
+  const scale = width / 375;
   const newSize = baseSize * scale;
   return Math.round(newSize);
 };
@@ -48,10 +56,17 @@ const DELIVERY_STATUS = {
 };
 
 const STATUS_COLORS = {
-  [DELIVERY_STATUS.ORDERED]: '#FF7A33',
-  [DELIVERY_STATUS.PREPARING]: '#FF7A33',
-  [DELIVERY_STATUS.ON_THE_WAY]: '#FF7A33',
-  [DELIVERY_STATUS.DELIVERED]: '#4CAF50'
+  [DELIVERY_STATUS.ORDERED]: '#FF6B35',
+  [DELIVERY_STATUS.PREPARING]: '#FFA726',
+  [DELIVERY_STATUS.ON_THE_WAY]: '#4A90E2',
+  [DELIVERY_STATUS.DELIVERED]: '#2ECC71'
+};
+
+const STATUS_GRADIENTS = {
+  [DELIVERY_STATUS.ORDERED]: ['#FF6B35', '#FF8A65'],
+  [DELIVERY_STATUS.PREPARING]: ['#FFA726', '#FFB74D'],
+  [DELIVERY_STATUS.ON_THE_WAY]: ['#4A90E2', '#64B5F6'],
+  [DELIVERY_STATUS.DELIVERED]: ['#2ECC71', '#4CD964']
 };
 
 interface LiveTrackingData {
@@ -72,6 +87,34 @@ interface LiveTrackingData {
   porter_tracking_details: any | null;
 }
 
+// Haptic feedback helper function
+const triggerHaptic = (type: 'light' | 'medium' | 'heavy' = 'medium') => {
+  try {
+    // If react-native-haptic-feedback is installed
+    if (ReactNativeHapticFeedback) {
+      const hapticTypes = {
+        light: 'impactLight',
+        medium: 'impactMedium',
+        heavy: 'impactHeavy'
+      };
+      ReactNativeHapticFeedback.trigger(hapticTypes[type], {
+        enableVibrateFallback: true,
+        ignoreAndroidSystemSettings: false
+      });
+    } else {
+      // Fallback to Vibration API
+      const vibrationPatterns = {
+        light: 50,
+        medium: 100,
+        heavy: 150
+      };
+      Vibration.vibrate(vibrationPatterns[type]);
+    }
+  } catch (error) {
+    console.log('Haptic feedback not available');
+  }
+};
+
 const TrackOrder = () => {
   const navigation = useNavigation();
   const route = useRoute();
@@ -84,6 +127,8 @@ const TrackOrder = () => {
   const [mapAnimation] = useState(new Animated.Value(0));
   const [isMapExpanded, setIsMapExpanded] = useState(false);
   const [deliveryAnim] = useState(new Animated.Value(0));
+  const [fadeAnim] = useState(new Animated.Value(0));
+  const [scaleAnim] = useState(new Animated.Value(0.9));
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [order, setOrder] = useState(null);
@@ -101,6 +146,7 @@ const TrackOrder = () => {
   const [trackingInterval, setTrackingInterval] = useState<NodeJS.Timeout | null>(null);
   const [lastUpdated, setLastUpdated] = useState(moment());
   const [rotationAngleValue, setRotationAngleValue] = useState(0);
+  const [pulseAnim] = useState(new Animated.Value(1));
   
   const ANIMATION_DURATION = 2000;
   
@@ -110,23 +156,57 @@ const TrackOrder = () => {
     phone: '+918108662484',
     vehicle: 'Bike',
     rating: 4.5,
-    image: 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png'
+    image: 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
+    deliveries: 1240
   });
 
-  // Update rotation angle when animation changes
+  // Pulse animation for live tracking
   useEffect(() => {
-    const listener = deliveryAnim.addListener(({ value }) => {
-      setRotationAngleValue(value * 90);
-    });
-    
-    return () => {
-      deliveryAnim.removeListener(listener);
-    };
-  }, [deliveryAnim]);
+    if (deliveryStatus === DELIVERY_STATUS.ON_THE_WAY) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.1,
+            duration: 800,
+            easing: Easing.ease,
+            useNativeDriver: true
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 800,
+            easing: Easing.ease,
+            useNativeDriver: true
+          })
+        ])
+      ).start();
+    } else {
+      pulseAnim.setValue(1); // Reset pulse when not on the way
+    }
+  }, [deliveryStatus]);
 
-  // Calculate distance between two coordinates (Haversine formula)
+  // Initial fade in animation
+  useEffect(() => {
+    if (!loading) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.cubic)
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.cubic)
+        })
+      ]).start();
+    }
+  }, [loading]);
+
+  // Calculate distance between two coordinates
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371; // Radius of the earth in km
+    const R = 6371;
     const dLat = deg2rad(lat2 - lat1);
     const dLon = deg2rad(lon2 - lon1);
     const a = 
@@ -134,12 +214,10 @@ const TrackOrder = () => {
       Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
       Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c; // Distance in km
+    return R * c;
   };
 
-  const deg2rad = (deg: number) => {
-    return deg * (Math.PI/180);
-  };
+  const deg2rad = (deg: number) => deg * (Math.PI/180);
 
   // Fetch live tracking data
   const fetchLiveTrackingData = useCallback(async (showLoader = false) => {
@@ -156,7 +234,6 @@ const TrackOrder = () => {
         const data = response.data;
         setLiveTrackingData(data);
         
-        // Update coordinates if we have all required data
         if (data.user_destination && data.restaurant_location) {
           const newCoordinates = {
             restaurant: {
@@ -171,7 +248,6 @@ const TrackOrder = () => {
             }
           };
           
-          // Add agent location if available
           if (data.deliver_agent_location?.lat && data.deliver_agent_location?.lng) {
             newCoordinates.agent = {
               latitude: data.deliver_agent_location.lat,
@@ -184,7 +260,6 @@ const TrackOrder = () => {
           
           setCoordinates(newCoordinates);
           
-          // Calculate distance
           if (data.user_destination && data.restaurant_location) {
             const dist = calculateDistance(
               data.restaurant_location.lat,
@@ -195,33 +270,30 @@ const TrackOrder = () => {
             setDistance(`${dist.toFixed(1)} km`);
           }
           
-          // Update ETA if available
           if (data.estimated_time_minutes) {
             setEta(`${data.estimated_time_minutes} mins`);
           }
           
-          // Update delivery status based on agent assignment
           if (data.porter_agent_assign_status === 'assigned') {
             setDeliveryStatus(DELIVERY_STATUS.ON_THE_WAY);
           } else if (data.porter_agent_assign_status === 'delivered') {
             setDeliveryStatus(DELIVERY_STATUS.DELIVERED);
           }
           
-          // Update delivery partner details if available
           if (data.porter_tracking_details) {
             setDeliveryPartner(prev => ({
               ...prev,
               name: data.porter_tracking_details.delivery_person_name || prev.name,
               phone: data.porter_tracking_details.delivery_person_contact || prev.phone,
               vehicle: data.porter_tracking_details.vehicle_type || prev.vehicle,
-              rating: data.porter_tracking_details.rating || prev.rating
+              rating: data.porter_tracking_details.rating || prev.rating,
+              deliveries: data.porter_tracking_details.total_deliveries || prev.deliveries
             }));
           }
         }
       }
     } catch (err) {
       console.error('Error fetching live tracking data:', err);
-      // Don't show alert during auto-refresh to avoid annoying the user
       if (showLoader) {
         Alert.alert('Error', 'Failed to fetch tracking data');
       }
@@ -265,7 +337,7 @@ const TrackOrder = () => {
       }
     } catch (err) {
       console.error('Error fetching order details:', err);
-      if (!order) { // Only set error if we don't have any order data
+      if (!order) {
         setError(err.message);
       }
     }
@@ -276,9 +348,9 @@ const TrackOrder = () => {
     try {
       if (showLoader) {
         setRefreshing(true);
+        triggerHaptic('light');
       }
 
-      // Fetch both order details and live tracking data simultaneously
       await Promise.all([
         fetchOrderDetails(),
         fetchLiveTrackingData(showLoader)
@@ -305,29 +377,29 @@ const TrackOrder = () => {
 
   // Initial data fetch and auto-refresh setup
   useEffect(() => {
-    // Initial data fetch
     fetchAllData(true);
 
-    // Set up interval for auto-refresh every 30 seconds
     const interval = setInterval(() => {
       fetchAllData(false);
-    }, 30000); // 30 seconds
+    }, 30000);
 
     setTrackingInterval(interval);
 
-    // Cleanup function
     return () => {
       if (interval) {
         clearInterval(interval);
       }
     };
-  }, [order_number]); // Only depend on order_number
+  }, [order_number]);
 
-  // Map animation
+  // Map animation with haptic feedback
   const toggleMap = useCallback(() => {
+    triggerHaptic('medium');
+    
     Animated.timing(mapAnimation, {
       toValue: isMapExpanded ? 0 : 1,
-      duration: 300,
+      duration: 400,
+      easing: Easing.bezier(0.4, 0.0, 0.2, 1),
       useNativeDriver: false
     }).start(() => {
       setIsMapExpanded(!isMapExpanded);
@@ -342,7 +414,7 @@ const TrackOrder = () => {
           }
           
           mapRef.current?.fitToCoordinates(coordsToFit, {
-            edgePadding: { top: 50, right: 50, bottom: 100, left: 50 },
+            edgePadding: { top: 100, right: 50, bottom: 150, left: 50 },
             animated: true
           });
         }, 350);
@@ -358,49 +430,18 @@ const TrackOrder = () => {
 
   const mapBorderRadius = mapAnimation.interpolate({
     inputRange: [0, 1],
-    outputRange: [16, 0]
+    outputRange: [24, 0]
   });
 
   const infoOpacity = mapAnimation.interpolate({
     inputRange: [0, 0.8, 1],
-    outputRange: [1, 0.5, 0]
+    outputRange: [1, 0.2, 0]
   });
-
-  // Delivery simulation - only if we don't have live tracking data
-  useEffect(() => {
-    if (liveTrackingData || !order || deliveryStatus === DELIVERY_STATUS.DELIVERED || !coordinates) return;
-
-    const timers = [
-      setTimeout(() => {
-        setDeliveryStatus(DELIVERY_STATUS.PREPARING);
-        setEta('20-30 mins');
-        animateDelivery(0.3);
-      }, 5000),
-      setTimeout(() => {
-        setDeliveryStatus(DELIVERY_STATUS.ON_THE_WAY);
-        setEta('10-15 mins');
-        animateDelivery(0.7);
-      }, 10000),
-      setTimeout(() => {
-        setDeliveryStatus(DELIVERY_STATUS.DELIVERED);
-        setEta('Delivered');
-        animateDelivery(1);
-      }, 15000)
-    ];
-
-    return () => timers.forEach(timer => clearTimeout(timer));
-  }, [order, deliveryStatus, coordinates, liveTrackingData]);
-
-  const animateDelivery = (toValue: number) => {
-    Animated.timing(deliveryAnim, {
-      toValue,
-      duration: ANIMATION_DURATION,
-      useNativeDriver: false
-    }).start();
-  };
 
   // Status details
   const getStatusDetails = () => {
+    const currentGradient = STATUS_GRADIENTS[deliveryStatus] || ['#666', '#999'];
+    
     switch(deliveryStatus) {
       case DELIVERY_STATUS.ORDERED:
         return {
@@ -408,7 +449,8 @@ const TrackOrder = () => {
           subtitle: 'Your order has been received',
           icon: 'receipt-outline',
           step: 1,
-          color: STATUS_COLORS[DELIVERY_STATUS.ORDERED]
+          color: STATUS_COLORS[DELIVERY_STATUS.ORDERED],
+          gradient: currentGradient
         };
       case DELIVERY_STATUS.PREPARING:
         return {
@@ -416,7 +458,8 @@ const TrackOrder = () => {
           subtitle: order ? `At ${order.restaurant_name}` : 'Being prepared',
           icon: 'restaurant-outline',
           step: 2,
-          color: STATUS_COLORS[DELIVERY_STATUS.PREPARING]
+          color: STATUS_COLORS[DELIVERY_STATUS.PREPARING],
+          gradient: currentGradient
         };
       case DELIVERY_STATUS.ON_THE_WAY:
         return {
@@ -424,7 +467,8 @@ const TrackOrder = () => {
           subtitle: `With ${deliveryPartner.name}`,
           icon: 'bicycle-outline',
           step: 3,
-          color: STATUS_COLORS[DELIVERY_STATUS.ON_THE_WAY]
+          color: STATUS_COLORS[DELIVERY_STATUS.ON_THE_WAY],
+          gradient: currentGradient
         };
       case DELIVERY_STATUS.DELIVERED:
         return {
@@ -432,7 +476,8 @@ const TrackOrder = () => {
           subtitle: 'Your order has arrived',
           icon: 'checkmark-done-outline',
           step: 4,
-          color: STATUS_COLORS[DELIVERY_STATUS.DELIVERED]
+          color: STATUS_COLORS[DELIVERY_STATUS.DELIVERED],
+          gradient: currentGradient
         };
       default:
         return {
@@ -440,15 +485,18 @@ const TrackOrder = () => {
           subtitle: 'Your order has been received',
           icon: 'time-outline',
           step: 0,
-          color: '#9E9E9E'
+          color: '#9E9E9E',
+          gradient: ['#666', '#999']
         };
     }
   };
 
   const statusDetails = getStatusDetails();
 
-  // Handle calls
+  // Handle calls with haptic feedback
   const handleCall = (number: string) => {
+    triggerHaptic('medium');
+    
     if (!number) {
       Alert.alert('Error', 'Contact number not available');
       return;
@@ -464,6 +512,28 @@ const TrackOrder = () => {
       .catch(() => Alert.alert('Error', 'Failed to make call'));
   };
 
+  // Handle navigation
+  const handleNavigate = () => {
+    triggerHaptic('light');
+    if (coordinates?.delivery) {
+      const url = Platform.select({
+        ios: `maps://?daddr=${coordinates.delivery.latitude},${coordinates.delivery.longitude}`,
+        android: `google.navigation:q=${coordinates.delivery.latitude},${coordinates.delivery.longitude}`
+      });
+      
+      Linking.canOpenURL(url)
+        .then(supported => {
+          if (supported) {
+            Linking.openURL(url);
+          } else {
+            const fallbackUrl = `https://www.google.com/maps/dir/?api=1&destination=${coordinates.delivery.latitude},${coordinates.delivery.longitude}`;
+            Linking.openURL(fallbackUrl);
+          }
+        })
+        .catch(err => console.error('Error opening maps:', err));
+    }
+  };
+
   // Format time
   const placedTime = moment(order?.placed_on).format('h:mm A');
   const estimatedTime = order?.estimated_delivery ? 
@@ -473,16 +543,14 @@ const TrackOrder = () => {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Icon name="arrow-back" size={24} color="#333" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Track Order</Text>
-          <View style={styles.headerRight} />
-        </View>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#FF7A33" />
-          <Text style={styles.loadingText}>Loading order details...</Text>
+          <Animated.View style={styles.loadingAnimation}>
+            <Icon name="bicycle" size={60} color="#FF6B35" />
+            <ActivityIndicator size="large" color="#FF6B35" style={styles.loadingSpinner} />
+          </Animated.View>
+          <Text style={styles.loadingTitle}>Tracking Your Order</Text>
+          <Text style={styles.loadingSubtitle}>Fetching real-time updates...</Text>
         </View>
       </SafeAreaView>
     );
@@ -492,18 +560,30 @@ const TrackOrder = () => {
   if (error || !order) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Icon name="arrow-back" size={24} color="#333" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Track Order</Text>
-          <View style={styles.headerRight} />
-        </View>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
         <View style={styles.errorContainer}>
-          <Icon name="warning-outline" size={48} color="#FF7A33" />
-          <Text style={styles.errorText}>{error || 'No order data'}</Text>
-          <Text style={styles.errorSubtext}>Check your order history</Text>
-          <TouchableOpacity style={styles.goBackButton} onPress={() => navigation.goBack()}>
+          <Animated.View style={styles.errorAnimation}>
+            <Icon name="sad-outline" size={80} color="#FF6B35" />
+          </Animated.View>
+          <Text style={styles.errorTitle}>Oops!</Text>
+          <Text style={styles.errorText}>{error || 'We couldn\'t find your order'}</Text>
+          <Text style={styles.errorSubtext}>Please check your order history</Text>
+          <TouchableOpacity 
+            style={styles.retryButton} 
+            onPress={() => fetchAllData(true)}
+            activeOpacity={0.8}
+          >
+            <Icon name="refresh" size={18} color="#FFFFFF" />
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.goBackButton} 
+            onPress={() => {
+              triggerHaptic('light');
+              navigation.goBack();
+            }}
+            activeOpacity={0.8}
+          >
             <Text style={styles.goBackButtonText}>Go Back</Text>
           </TouchableOpacity>
         </View>
@@ -513,10 +593,22 @@ const TrackOrder = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      
+      {/* Floating Header */}
+      <Animated.View style={[
+        styles.header,
+        { 
+          opacity: fadeAnim,
+          transform: [{ translateY: fadeAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [-20, 0]
+          })}]
+        }
+      ]}>
         <TouchableOpacity 
           onPress={() => {
+            triggerHaptic('light');
             if (prev_location) {
               navigation.navigate(prev_location);
             } else {
@@ -524,12 +616,22 @@ const TrackOrder = () => {
             }
           }} 
           style={styles.backButton}
+          activeOpacity={0.7}
         >
-          <Icon name="arrow-back" size={24} color="#333" />
+          <Icon name="chevron-back" size={26} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Track Order</Text>
-        <View style={styles.headerRight} />
-      </View>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>Track Order</Text>
+          <Text style={styles.headerOrderNumber}>#{order_number}</Text>
+        </View>
+        <TouchableOpacity 
+          style={styles.headerRight} 
+          activeOpacity={0.7}
+          onPress={() => triggerHaptic('light')}
+        >
+          <Icon name="ellipsis-vertical" size={22} color="#333" />
+        </TouchableOpacity>
+      </Animated.View>
 
       <ScrollView 
         ref={scrollViewRef}
@@ -538,11 +640,13 @@ const TrackOrder = () => {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={['#FF7A33']}
-            tintColor="#FF7A33"
+            colors={['#FF6B35']}
+            tintColor="#FF6B35"
+            progressBackgroundColor="#FFFFFF"
           />
         }
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
       >
         {/* Map Section */}
         <Animated.View style={[
@@ -550,8 +654,11 @@ const TrackOrder = () => {
           { 
             height: mapHeight,
             borderRadius: mapBorderRadius,
-            marginHorizontal: isMapExpanded ? 0 : 16,
+            marginHorizontal: isMapExpanded ? 0 : CARD_PADDING,
+            marginTop: isMapExpanded ? 0 : 10,
             marginBottom: isMapExpanded ? 0 : 16,
+            opacity: fadeAnim,
+            transform: [{ scale: scaleAnim }]
           }
         ]}>
           {coordinates ? (
@@ -565,6 +672,7 @@ const TrackOrder = () => {
                 latitudeDelta: LATITUDE_DELTA,
                 longitudeDelta: LONGITUDE_DELTA
               }}
+              customMapStyle={mapStyle}
               scrollEnabled={isMapExpanded}
               zoomEnabled={isMapExpanded}
               rotateEnabled={isMapExpanded}
@@ -574,15 +682,31 @@ const TrackOrder = () => {
               showsCompass={false}
               showsScale={false}
               showsTraffic={false}
-              showsBuildings={false}
+              showsBuildings={true}
               showsIndoors={false}
             >
-              {/* Polyline connecting restaurant and delivery location */}
+              {/* Pulse effect for delivery partner */}
+              {coordinates.agent && deliveryStatus === DELIVERY_STATUS.ON_THE_WAY && (
+                <Circle
+                  center={{
+                    latitude: coordinates.agent.latitude,
+                    longitude: coordinates.agent.longitude
+                  }}
+                  radius={100}
+                  strokeWidth={1}
+                  strokeColor="rgba(74, 144, 226, 0.2)"
+                  fillColor="rgba(74, 144, 226, 0.1)"
+                />
+              )}
+              
+              {/* Polyline with gradient effect */}
               <Polyline
                 coordinates={[coordinates.restaurant, coordinates.delivery]}
-                strokeColor="#FF7A33"
-                strokeWidth={3}
-                lineDashPattern={[5, 5]}
+                strokeColor="#FF6B35"
+                strokeWidth={4}
+                lineDashPattern={[8, 4]}
+                lineCap="round"
+                lineJoin="round"
               />
               
               {/* Restaurant Marker */}
@@ -590,14 +714,18 @@ const TrackOrder = () => {
                 coordinate={coordinates.restaurant}
                 title={coordinates.restaurant.title}
                 description="Restaurant"
+                tracksViewChanges={false}
               >
                 <Animated.View style={[
-                  styles.restaurantMarker, 
-                  { 
-                    backgroundColor: statusDetails.color,
+                  styles.restaurantMarker,
+                  {
+                    transform: [{ scale: pulseAnim }]
                   }
                 ]}>
-                  <Icon name="restaurant" size={20} color="#fff" />
+                  <View style={[styles.markerInner, { backgroundColor: statusDetails.color }]}>
+                    <Icon name="restaurant" size={20} color="#fff" />
+                  </View>
+                  <View style={styles.markerPulse} />
                 </Animated.View>
               </Marker>
               
@@ -606,18 +734,21 @@ const TrackOrder = () => {
                 coordinate={coordinates.delivery}
                 title={coordinates.delivery.title}
                 description="Your Location"
+                tracksViewChanges={false}
               >
                 <Animated.View style={[
                   styles.deliveryMarker,
                   {
-                    backgroundColor: statusDetails.color,
+                    transform: [{ scale: pulseAnim }]
                   }
                 ]}>
-                  <Icon name="home" size={20} color="#fff" />
+                  <View style={[styles.markerInner, { backgroundColor: statusDetails.color }]}>
+                    <Icon name="home" size={20} color="#fff" />
+                  </View>
                 </Animated.View>
               </Marker>
               
-              {/* Delivery Partner Marker (if available) */}
+              {/* Delivery Partner Marker */}
               {coordinates.agent && (
                 <Marker
                   coordinate={{
@@ -626,64 +757,70 @@ const TrackOrder = () => {
                   }}
                   title={coordinates.agent.title}
                   description="Delivery Partner"
+                  tracksViewChanges={false}
                 >
                   <Animated.View 
                     style={[
                       styles.deliveryPartnerMarker, 
                       { 
-                        backgroundColor: statusDetails.color,
-                        transform: [{ rotate: `${rotationAngleValue}deg` }]
+                        transform: [
+                          { rotate: `${rotationAngleValue}deg` },
+                          { scale: pulseAnim }
+                        ]
                       }
                     ]}
                   >
-                    <Icon name="bicycle" size={24} color="#fff" />
+                    <View style={[styles.markerInner, { backgroundColor: statusDetails.color }]}>
+                      <Icon name="bicycle" size={24} color="#fff" />
+                    </View>
                   </Animated.View>
                 </Marker>
               )}
             </MapView>
           ) : (
             <View style={styles.mapPlaceholder}>
-              <ActivityIndicator size="large" color="#FF7A33" />
-              <Text style={styles.mapPlaceholderText}>Loading map...</Text>
+              <ActivityIndicator size="large" color="#FF6B35" />
+              <Text style={styles.mapPlaceholderText}>Loading live location...</Text>
             </View>
           )}
 
-          {/* Order Info Overlay - Only visible when map is small */}
+          {/* Order Info Overlay */}
           <Animated.View style={[styles.orderInfoOverlay, { opacity: infoOpacity }]}>
-            <View style={styles.kitchenHeader}>
-              <View style={styles.kitchenInfo}>
+            <View style={styles.orderInfoContent}>
+              <View style={styles.restaurantInfo}>
                 <Image 
                   source={{ uri: order.restaurant_image }} 
-                  style={styles.kitchenImage}
+                  style={styles.restaurantImage}
                 />
-                <View style={styles.kitchenText}>
-                  <View style={styles.kitchenNameRow}>
-                    <Text style={styles.kitchenName} numberOfLines={1}>
-                      {order.restaurant_name}
-                    </Text>
-                  </View>
-                  <Text style={styles.kitchenStatus} numberOfLines={1}>
-                    <Icon name={statusDetails.icon} size={14} color={statusDetails.color} /> 
-                    {' '}{statusDetails.title}
+                <View style={styles.restaurantDetails}>
+                  <Text style={styles.restaurantName} numberOfLines={1}>
+                    {order.restaurant_name}
                   </Text>
+                  <View style={styles.statusIndicator}>
+                    <View style={[styles.statusDot, { backgroundColor: statusDetails.color }]} />
+                    <Text style={styles.statusText}>{statusDetails.title}</Text>
+                  </View>
                 </View>
               </View>
-            </View>
-            
-            <View style={styles.deliveryInfo}>
-              <View style={styles.deliveryInfoItem}>
-                <Icon name="location-outline" size={14} color="#FF7A33" />
-                <Text style={styles.deliveryText}>{distance || 'Calculating...'}</Text>
-              </View>
-              <View style={styles.deliveryInfoItem}>
-                <Icon name="time-outline" size={14} color="#FF7A33" />
-                <Text style={styles.deliveryEta}>{eta}</Text>
-              </View>
-              <View style={styles.deliveryInfoItem}>
-                <Icon name="time-outline" size={12} color="#888" />
-                <Text style={styles.lastUpdatedText}>
-                  Updated {lastUpdated.fromNow()}
-                </Text>
+              
+              <View style={styles.deliveryStats}>
+                <View style={styles.statItem}>
+                  <Icon name="navigate" size={14} color="#FF6B35" />
+                  <Text style={styles.statValue}>{distance || 'Calculating...'}</Text>
+                  <Text style={styles.statLabel}>Distance</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Icon name="time" size={14} color="#FF6B35" />
+                  <Text style={styles.statValue}>{eta}</Text>
+                  <Text style={styles.statLabel}>ETA</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Icon name="refresh" size={12} color="#888" />
+                  <Text style={styles.statValue}>{lastUpdated.format('h:mm')}</Text>
+                  <Text style={styles.statLabel}>Updated</Text>
+                </View>
               </View>
             </View>
           </Animated.View>
@@ -695,167 +832,259 @@ const TrackOrder = () => {
               isMapExpanded ? styles.collapseButton : styles.expandButton
             ]}
             onPress={toggleMap}
+            activeOpacity={0.8}
           >
             <Icon 
               name={isMapExpanded ? "chevron-down" : "expand"} 
-              size={18} 
+              size={20} 
               color="#333" 
             />
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Status Timeline */}
-        <View style={styles.statusCard}>
-          <View style={styles.statusHeader}>
-            <Text style={styles.sectionTitle}>Order Status</Text>
-            <View style={styles.statusBadge}>
+        {/* Status Progress Card */}
+        <Animated.View style={[
+          styles.progressCard,
+          {
+            opacity: fadeAnim,
+            transform: [
+              { scale: scaleAnim },
+              { translateY: fadeAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [20, 0]
+              })}
+            ]
+          }
+        ]}>
+          <View style={styles.progressHeader}>
+            <Text style={styles.sectionTitle}>Delivery Progress</Text>
+            <View style={[styles.statusBadge, { backgroundColor: `${statusDetails.color}15` }]}>
               <Text style={[styles.statusBadgeText, { color: statusDetails.color }]}>
                 {deliveryStatus}
               </Text>
             </View>
           </View>
           
-          <View style={styles.statusTimeline}>
-            {[
-              { step: 1, label: 'Ordered', icon: 'receipt-outline' },
-              { step: 2, label: 'Preparing', icon: 'restaurant-outline' },
-              { step: 3, label: 'On the way', icon: 'bicycle-outline' },
-              { step: 4, label: 'Delivered', icon: 'checkmark-done-outline' }
-            ].map((item) => (
-              <View key={item.step} style={styles.timelineStep}>
-                <View style={[
-                  styles.stepIcon,
-                  statusDetails.step >= item.step && { backgroundColor: statusDetails.color }
-                ]}>
-                  {statusDetails.step >= item.step ? (
-                    <Icon name="checkmark" size={14} color="#fff" />
-                  ) : (
-                    <Icon name={item.icon} size={14} color="#999" />
-                  )}
-                </View>
-                <Text style={[
-                  styles.stepText,
-                  statusDetails.step >= item.step && { color: '#333', fontWeight: '600' }
-                ]}>
-                  {item.label}
-                </Text>
-                {item.step < 4 && (
+          <View style={styles.progressBarContainer}>
+            <View style={styles.progressBar}>
+              <Animated.View 
+                style={[
+                  styles.progressFill, 
+                  { 
+                    width: `${(statusDetails.step / 4) * 100}%`,
+                    backgroundColor: statusDetails.color 
+                  }
+                ]} 
+              />
+            </View>
+            <View style={styles.progressSteps}>
+              {[1, 2, 3, 4].map((step) => (
+                <View key={step} style={styles.progressStep}>
                   <View style={[
-                    styles.stepConnector,
-                    statusDetails.step > item.step && { backgroundColor: statusDetails.color }
-                  ]} />
-                )}
-              </View>
-            ))}
+                    styles.progressStepIcon,
+                    statusDetails.step >= step && { backgroundColor: statusDetails.color }
+                  ]}>
+                    {statusDetails.step >= step ? (
+                      <Icon name="checkmark" size={12} color="#fff" />
+                    ) : (
+                      <Icon name={step === 1 ? 'receipt' : step === 2 ? 'restaurant' : step === 3 ? 'bicycle' : 'checkmark-circle'} 
+                        size={12} color="#999" />
+                    )}
+                  </View>
+                  <Text style={[
+                    styles.progressStepLabel,
+                    statusDetails.step >= step && { color: '#333', fontWeight: '600' }
+                  ]}>
+                    {step === 1 ? 'Ordered' : step === 2 ? 'Preparing' : step === 3 ? 'On Way' : 'Delivered'}
+                  </Text>
+                </View>
+              ))}
+            </View>
           </View>
-        </View>
+        </Animated.View>
 
-        {/* Delivery Partner */}
+        {/* Delivery Partner Card */}
         {[DELIVERY_STATUS.ON_THE_WAY, DELIVERY_STATUS.DELIVERED].includes(deliveryStatus) && (
-          <View style={styles.deliveryPartnerCard}>
+          <Animated.View style={[
+            styles.deliveryPartnerCard,
+            {
+              opacity: fadeAnim,
+              transform: [
+                { scale: scaleAnim },
+                { translateY: fadeAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [20, 0]
+                })}
+              ]
+            }
+          ]}>
             <View style={styles.deliveryPartnerHeader}>
-              <Text style={styles.sectionTitle}>Delivery Partner</Text>
-              <View style={styles.ratingContainer}>
+              <Text style={styles.sectionTitle}>Your Delivery Partner</Text>
+              <View style={styles.ratingBadge}>
                 <Icon name="star" size={12} color="#FFC107" />
                 <Text style={styles.ratingText}>{deliveryPartner.rating}</Text>
+                <Text style={styles.ratingCount}>({deliveryPartner.deliveries}+)</Text>
               </View>
             </View>
             
             <View style={styles.deliveryPartnerContent}>
-              <Image source={{ uri: deliveryPartner.image }} style={styles.deliveryPartnerImage} />
+              <View style={styles.deliveryPartnerImageContainer}>
+                <Image source={{ uri: deliveryPartner.image }} style={styles.deliveryPartnerImage} />
+                <View style={styles.onlineIndicator} />
+              </View>
               <View style={styles.deliveryPartnerInfo}>
                 <Text style={styles.deliveryPartnerName}>{deliveryPartner.name}</Text>
                 <View style={styles.deliveryPartnerMeta}>
-                  <Text style={styles.deliveryPartnerVehicle}>
-                    <Icon name="bicycle" size={12} color="#666" /> {deliveryPartner.vehicle}
-                  </Text>
+                  <View style={styles.metaItem}>
+                    <Icon name="bicycle" size={12} color="#666" />
+                    <Text style={styles.metaText}>{deliveryPartner.vehicle}</Text>
+                  </View>
+                  <View style={styles.metaItem}>
+                    <Icon name="call" size={12} color="#666" />
+                    <Text style={styles.metaText}>{deliveryPartner.phone}</Text>
+                  </View>
                 </View>
-                <Text style={styles.contactText}>Contact Delivery Partner</Text>
               </View>
               <TouchableOpacity 
                 style={[styles.callButton, { backgroundColor: statusDetails.color }]}
                 onPress={() => handleCall(deliveryPartner.phone)}
+                activeOpacity={0.8}
               >
-                <Icon name="call" size={18} color="#fff" />
+                <Icon name="call-outline" size={22} color="#fff" />
               </TouchableOpacity>
             </View>
-          </View>
+          </Animated.View>
         )}
 
-        {/* Order Details */}
-        <View style={styles.orderDetailsCard}>
-          <Text style={styles.sectionTitle}>Order Details</Text>
+        {/* Order Summary Card */}
+        <Animated.View style={[
+          styles.orderSummaryCard,
+          {
+            opacity: fadeAnim,
+            transform: [
+              { scale: scaleAnim },
+              { translateY: fadeAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [20, 0]
+              })}
+            ]
+          }
+        ]}>
+          <Text style={styles.sectionTitle}>Order Summary</Text>
           
-          {order.items && order.items.map((item, index) => (
-            <View key={index} style={styles.orderItem}>
-              <View style={styles.itemImagePlaceholder}>
-                <Icon name="fast-food-outline" size={18} color="#666" />
+          <View style={styles.orderItems}>
+            {order.items && order.items.map((item, index) => (
+              <View key={index} style={styles.orderItem}>
+                <View style={styles.itemImageContainer}>
+                  {item.image ? (
+                    <Image source={{ uri: item.image }} style={styles.itemImage} />
+                  ) : (
+                    <View style={styles.itemImagePlaceholder}>
+                      <Icon name="fast-food-outline" size={20} color="#666" />
+                    </View>
+                  )}
+                  {item.buy_one_get_one_free && (
+                    <View style={styles.bogoBadge}>
+                      <Text style={styles.bogoText}>BOGO</Text>
+                    </View>
+                  )}
+                </View>
+                <View style={styles.itemDetails}>
+                  <Text style={styles.itemName}>{item.item_name}</Text>
+                  {item.description && (
+                    <Text style={styles.itemDescription} numberOfLines={2}>
+                      {item.description}
+                    </Text>
+                  )}
+                </View>
+                <View style={styles.itemPriceContainer}>
+                  <Text style={styles.itemQuantity}>x{item.quantity}</Text>
+                  <Text style={styles.itemPrice}>₹{item.unit_price * item.quantity}</Text>
+                </View>
               </View>
-              <View style={styles.itemDetails}>
-                <Text style={styles.itemName}>{item.item_name}</Text>
-                {item.buy_one_get_one_free && (
-                  <View style={styles.bogoTag}>
-                    <Text style={styles.bogoText}>BOGO</Text>
-                  </View>
-                )}
-                <Text style={styles.itemPrice}>₹{item.unit_price}</Text>
-              </View>
-              <Text style={styles.itemQuantity}>x{item.quantity}</Text>
-            </View>
-          ))}
+            ))}
+          </View>
           
-          <View style={styles.orderSummary}>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Subtotal</Text>
-              <Text style={styles.summaryValue}>₹{order.subtotal}</Text>
+          <View style={styles.orderTotal}>
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Subtotal</Text>
+              <Text style={styles.totalValue}>₹{order.subtotal}</Text>
             </View>
             
             {order.coupon_discount > 0 && (
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>{order.coupon_code_text || 'Discount'}</Text>
-                <Text style={[styles.summaryValue, { color: '#4CAF50' }]}>-₹{order.coupon_discount}</Text>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>{order.coupon_code_text || 'Discount'}</Text>
+                <Text style={[styles.totalValue, styles.discountValue]}>-₹{order.coupon_discount}</Text>
               </View>
             )}
             
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Delivery Fee</Text>
-              <Text style={styles.summaryValue}>₹{order.delivery_fee}</Text>
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Delivery Fee</Text>
+              <Text style={styles.totalValue}>₹{order.delivery_fee}</Text>
             </View>
             
-            <View style={styles.divider} />
+            <View style={styles.totalDivider} />
             
-            <View style={styles.summaryRow}>
+            <View style={styles.totalRow}>
               <Text style={styles.grandTotalLabel}>Total Paid</Text>
               <Text style={styles.grandTotalValue}>₹{order.total}</Text>
             </View>
             
             <View style={styles.paymentMethod}>
-              <Icon name="card-outline" size={14} color="#666" />
+              <Icon name="card-outline" size={16} color="#666" />
               <Text style={styles.paymentMethodText}>{order.payment_method}</Text>
             </View>
           </View>
-        </View>
+        </Animated.View>
 
-        {/* Delivery Address */}
-        <View style={styles.deliveryAddressCard}>
+        {/* Delivery Address Card */}
+        <Animated.View style={[
+          styles.addressCard,
+          {
+            opacity: fadeAnim,
+            transform: [
+              { scale: scaleAnim },
+              { translateY: fadeAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [20, 0]
+              })}
+            ]
+          }
+        ]}>
           <Text style={styles.sectionTitle}>Delivery Address</Text>
           <View style={styles.addressContent}>
-            <Icon name="location-outline" size={18} color="#FF7A33" />
-            <View style={styles.addressTextContainer}>
-              <Text style={styles.addressType}>{order.delivery_address?.home_type || 'Home'}</Text>
+            <View style={styles.addressIcon}>
+              <Icon name="location" size={20} color="#FF6B35" />
+            </View>
+            <View style={styles.addressDetails}>
+              <View style={styles.addressHeader}>
+                <Text style={styles.addressType}>{order.delivery_address?.home_type || 'Home'}</Text>
+                <TouchableOpacity 
+                  style={styles.navigateButton} 
+                  onPress={handleNavigate}
+                  activeOpacity={0.7}
+                >
+                  <Icon name="navigate-outline" size={16} color="#FF6B35" />
+                  <Text style={styles.navigateText}>Navigate</Text>
+                </TouchableOpacity>
+              </View>
               <Text style={styles.addressText}>{order.delivery_address?.address}</Text>
               {order.delivery_address?.landmark && (
-                <Text style={styles.addressLandmark}>Landmark: {order.delivery_address.landmark}</Text>
+                <Text style={styles.addressLandmark}>
+                  <Icon name="flag-outline" size={12} color="#888" /> {order.delivery_address.landmark}
+                </Text>
               )}
-              <Text style={styles.addressPhone}>
-                <Icon name="call-outline" size={12} color="#666" /> {order.delivery_address?.phone_number}
-              </Text>
+              <View style={styles.addressContact}>
+                <Icon name="call-outline" size={14} color="#666" />
+                <Text style={styles.addressPhone}>{order.delivery_address?.phone_number}</Text>
+              </View>
             </View>
           </View>
-        </View>
+        </Animated.View>
 
         {/* Last Updated Footer */}
         <View style={styles.footer}>
+          <Icon name="time-outline" size={14} color="#888" />
           <Text style={styles.footerText}>
             Last updated {lastUpdated.format('h:mm A')} • Auto-refreshes every 30 seconds
           </Text>
@@ -865,55 +1094,148 @@ const TrackOrder = () => {
   );
 };
 
+// Custom Map Style
+const mapStyle = [
+  {
+    "elementType": "geometry",
+    "stylers": [
+      {
+        "color": "#f5f5f5"
+      }
+    ]
+  },
+  {
+    "elementType": "labels.icon",
+    "stylers": [
+      {
+        "visibility": "off"
+      }
+    ]
+  },
+  {
+    "elementType": "labels.text.fill",
+    "stylers": [
+      {
+        "color": "#616161"
+      }
+    ]
+  },
+  {
+    "elementType": "labels.text.stroke",
+    "stylers": [
+      {
+        "color": "#f5f5f5"
+      }
+    ]
+  },
+  {
+    "featureType": "administrative.land_parcel",
+    "elementType": "labels.text.fill",
+    "stylers": [
+      {
+        "color": "#bdbdbd"
+      }
+    ]
+  },
+  {
+    "featureType": "poi",
+    "elementType": "geometry",
+    "stylers": [
+      {
+        "color": "#eeeeee"
+      }
+    ]
+  },
+  {
+    "featureType": "poi",
+    "elementType": "labels.text.fill",
+    "stylers": [
+      {
+        "color": "#757575"
+      }
+    ]
+  },
+  {
+    "featureType": "road",
+    "elementType": "geometry",
+    "stylers": [
+      {
+        "color": "#ffffff"
+      }
+    ]
+  }
+];
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f8f8'
+    backgroundColor: '#F8FAFD'
   },
   header: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     height: HEADER_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    backgroundColor: '#fff',
+    paddingHorizontal: CARD_PADDING,
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    ...Platform.select({
-      ios: {
-        paddingTop: 10
-      }
-    })
+    borderBottomColor: '#F0F0F0',
+    zIndex: 100,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 5,
+    paddingTop: Platform.OS === 'ios' ? 15 : 10
+  },
+  headerCenter: {
+    alignItems: 'center',
+    flex: 1
   },
   headerTitle: {
     fontSize: getResponsiveFontSize(18),
     fontWeight: '700',
-    color: '#333'
+    color: '#1A1A1A',
+    letterSpacing: -0.5
+  },
+  headerOrderNumber: {
+    fontSize: getResponsiveFontSize(12),
+    color: '#666',
+    marginTop: 2
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f0f0f0'
+    backgroundColor: '#F5F5F5'
   },
   headerRight: {
-    width: 40
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5'
   },
   scrollContainer: {
-    paddingBottom: 20
+    paddingTop: HEADER_HEIGHT + 10,
+    paddingBottom: 30
   },
   mapContainer: {
     width: '100%',
     overflow: 'hidden',
-    backgroundColor: '#eee',
+    backgroundColor: '#FFFFFF',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-    position: 'relative',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 10
   },
   map: {
     width: '100%',
@@ -923,502 +1245,635 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f0f0f0'
+    backgroundColor: '#F5F5F5'
   },
   mapPlaceholderText: {
-    marginTop: 10,
+    marginTop: 12,
     fontSize: getResponsiveFontSize(14),
-    color: '#666'
+    color: '#666',
+    fontWeight: '500'
   },
   orderInfoOverlay: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    padding: 12,
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
+    shadowOffset: { width: 0, height: -5 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowRadius: 10,
+    elevation: 5,
+    paddingVertical: 16,
+    paddingHorizontal: 20
   },
-  kitchenHeader: {
+  orderInfoContent: {
+    alignItems: 'center'
+  },
+  restaurantInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10
+    width: '100%',
+    marginBottom: 16
   },
-  kitchenInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  restaurantImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#F0F0F0',
+    marginRight: 12
+  },
+  restaurantDetails: {
     flex: 1
   },
-  kitchenImage: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
-    marginRight: 10,
-    backgroundColor: '#f0f0f0'
-  },
-  kitchenText: {
-    flex: 1
-  },
-  kitchenNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  restaurantName: {
+    fontSize: getResponsiveFontSize(16),
+    fontWeight: '700',
+    color: '#1A1A1A',
     marginBottom: 4
   },
-  kitchenName: {
-    fontSize: getResponsiveFontSize(15),
-    fontWeight: '700',
-    color: '#333',
-    flex: 1,
+  statusIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     marginRight: 8
   },
-  kitchenStatus: {
+  statusText: {
     fontSize: getResponsiveFontSize(13),
-    color: '#666'
-  },
-  deliveryInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center'
-  },
-  deliveryInfoItem: {
-    flexDirection: 'row',
-    alignItems: 'center'
-  },
-  deliveryText: {
-    fontSize: getResponsiveFontSize(13),
-    color: '#333',
-    marginLeft: 4,
+    color: '#666',
     fontWeight: '500'
   },
-  deliveryEta: {
-    fontSize: getResponsiveFontSize(13),
-    color: '#333',
-    fontWeight: '600',
-    marginLeft: 4
+  deliveryStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    width: '100%',
+    backgroundColor: '#F8FAFD',
+    borderRadius: 16,
+    paddingVertical: 14
   },
-  lastUpdatedText: {
+  statItem: {
+    alignItems: 'center',
+    flex: 1
+  },
+  statDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: '#E8E8E8'
+  },
+  statValue: {
+    fontSize: getResponsiveFontSize(15),
+    fontWeight: '700',
+    color: '#1A1A1A',
+    marginTop: 4,
+    marginBottom: 2
+  },
+  statLabel: {
     fontSize: getResponsiveFontSize(11),
     color: '#888',
-    marginLeft: 4
+    fontWeight: '500'
   },
   restaurantMarker: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FF7A33',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-    borderWidth: 2,
-    borderColor: '#fff'
+    justifyContent: 'center'
   },
   deliveryMarker: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FF7A33',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-    borderWidth: 2,
-    borderColor: '#fff'
+    justifyContent: 'center'
   },
   deliveryPartnerMarker: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  markerInner: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FF7A33',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-    borderWidth: 2,
-    borderColor: '#fff'
+    shadowRadius: 8,
+    elevation: 6,
+    borderWidth: 3,
+    borderColor: '#FFFFFF'
+  },
+  markerPulse: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 107, 53, 0.2)',
+    zIndex: -1
   },
   mapToggleButton: {
     position: 'absolute',
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8
   },
   expandButton: {
-    bottom: 70,
-    right: 12,
+    bottom: 80,
+    right: 20
   },
   collapseButton: {
-    top: 12,
-    right: 12,
+    top: 20,
+    right: 20
   },
-  statusCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 14,
-    marginHorizontal: 16,
-    marginBottom: 14,
+  progressCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: CARD_PADDING,
+    marginHorizontal: CARD_PADDING,
+    marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 15,
+    elevation: 5
   },
-  statusHeader: {
+  progressHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14
+    marginBottom: 20
+  },
+  sectionTitle: {
+    fontSize: getResponsiveFontSize(17),
+    fontWeight: '700',
+    color: '#1A1A1A',
+    letterSpacing: -0.3
   },
   statusBadge: {
-    backgroundColor: 'rgba(255, 122, 51, 0.1)',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 10
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12
   },
   statusBadgeText: {
-    fontSize: getResponsiveFontSize(11),
-    fontWeight: '600'
+    fontSize: getResponsiveFontSize(12),
+    fontWeight: '700'
   },
-  statusTimeline: {
+  progressBarContainer: {
+    marginTop: 8
+  },
+  progressBar: {
+    height: 6,
+    backgroundColor: '#F0F0F0',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 24
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 3
+  },
+  progressSteps: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-between'
   },
-  timelineStep: {
+  progressStep: {
     alignItems: 'center',
-    width: 65,
-    position: 'relative'
+    width: 70
   },
-  stepIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#eee',
+  progressStepIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F0F0F0',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
     borderWidth: 2,
-    borderColor: '#fff'
+    borderColor: '#FFFFFF'
   },
-  stepText: {
-    fontSize: getResponsiveFontSize(11),
+  progressStepLabel: {
+    fontSize: getResponsiveFontSize(12),
     color: '#888',
-    textAlign: 'center',
-    fontWeight: '500'
-  },
-  stepConnector: {
-    position: 'absolute',
-    top: 14,
-    left: '50%',
-    width: 65,
-    height: 2,
-    backgroundColor: '#eee',
-    zIndex: -1
+    fontWeight: '500',
+    textAlign: 'center'
   },
   deliveryPartnerCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 14,
-    marginHorizontal: 16,
-    marginBottom: 14,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: CARD_PADDING,
+    marginHorizontal: CARD_PADDING,
+    marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 15,
+    elevation: 5
   },
   deliveryPartnerHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14
+    marginBottom: 20
   },
-  ratingContainer: {
+  ratingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 193, 7, 0.1)',
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 6
+    backgroundColor: '#FFF9E6',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12
   },
   ratingText: {
+    fontSize: getResponsiveFontSize(13),
+    fontWeight: '700',
+    color: '#1A1A1A',
+    marginLeft: 4,
+    marginRight: 2
+  },
+  ratingCount: {
     fontSize: getResponsiveFontSize(11),
-    color: '#666',
-    marginLeft: 2,
-    fontWeight: '600'
+    color: '#888'
   },
   deliveryPartnerContent: {
     flexDirection: 'row',
     alignItems: 'center'
   },
+  deliveryPartnerImageContainer: {
+    position: 'relative',
+    marginRight: 16
+  },
   deliveryPartnerImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginRight: 12,
-    backgroundColor: '#f0f0f0'
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#F0F0F0'
+  },
+  onlineIndicator: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#2ECC71',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    bottom: 2,
+    right: 2
   },
   deliveryPartnerInfo: {
     flex: 1
   },
   deliveryPartnerName: {
-    fontSize: getResponsiveFontSize(15),
+    fontSize: getResponsiveFontSize(16),
     fontWeight: '700',
-    color: '#333',
-    marginBottom: 3
+    color: '#1A1A1A',
+    marginBottom: 6
   },
   deliveryPartnerMeta: {
     flexDirection: 'row',
-    marginBottom: 3
+    flexWrap: 'wrap',
+    gap: 8
   },
-  deliveryPartnerVehicle: {
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFD',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12
+  },
+  metaText: {
     fontSize: getResponsiveFontSize(12),
     color: '#666',
-    marginRight: 10
-  },
-  contactText: {
-    fontSize: getResponsiveFontSize(11),
-    color: '#888'
+    marginLeft: 4
   },
   callButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3
+    shadowRadius: 8,
+    elevation: 5
   },
-  orderDetailsCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 14,
-    marginHorizontal: 16,
-    marginBottom: 14,
+  orderSummaryCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: CARD_PADDING,
+    marginHorizontal: CARD_PADDING,
+    marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 15,
+    elevation: 5
   },
-  sectionTitle: {
-    fontSize: getResponsiveFontSize(16),
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 14
+  orderItems: {
+    marginBottom: 20
   },
   orderItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
-    paddingBottom: 12,
+    marginBottom: 16,
+    paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0'
+    borderBottomColor: '#F0F0F0'
+  },
+  itemImageContainer: {
+    position: 'relative',
+    marginRight: 12
+  },
+  itemImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: '#F0F0F0'
   },
   itemImagePlaceholder: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: '#f0f0f0',
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFD',
     justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10
+    alignItems: 'center'
   },
-  itemDetails: {
-    flex: 1
-  },
-  itemName: {
-    fontSize: getResponsiveFontSize(14),
-    color: '#333',
-    marginBottom: 3,
-    fontWeight: '500'
-  },
-  bogoTag: {
+  bogoBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
     backgroundColor: '#FFEB3B',
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 3,
-    alignSelf: 'flex-start',
-    marginTop: 1,
-    marginBottom: 3
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF'
   },
   bogoText: {
     fontSize: getResponsiveFontSize(9),
-    color: '#333',
-    fontWeight: 'bold'
+    color: '#1A1A1A',
+    fontWeight: '800'
   },
-  itemPrice: {
-    fontSize: getResponsiveFontSize(13),
-    color: '#666'
+  itemDetails: {
+    flex: 1,
+    marginRight: 12
+  },
+  itemName: {
+    fontSize: getResponsiveFontSize(15),
+    fontWeight: '600',
+    color: '#1A1A1A',
+    marginBottom: 4
+  },
+  itemDescription: {
+    fontSize: getResponsiveFontSize(12),
+    color: '#888',
+    lineHeight: 16
+  },
+  itemPriceContainer: {
+    alignItems: 'flex-end'
   },
   itemQuantity: {
-    fontSize: getResponsiveFontSize(14),
-    color: '#333',
-    fontWeight: '600'
-  },
-  orderSummary: {
-    marginTop: 10
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 6
-  },
-  summaryLabel: {
     fontSize: getResponsiveFontSize(13),
-    color: '#666'
+    color: '#888',
+    marginBottom: 4
   },
-  summaryValue: {
-    fontSize: getResponsiveFontSize(13),
-    color: '#333',
-    fontWeight: '500'
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#eee',
-    marginVertical: 10
-  },
-  grandTotalLabel: {
+  itemPrice: {
     fontSize: getResponsiveFontSize(15),
     fontWeight: '700',
-    color: '#333'
+    color: '#1A1A1A'
+  },
+  orderTotal: {
+    backgroundColor: '#F8FAFD',
+    borderRadius: 16,
+    padding: 16
+  },
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8
+  },
+  totalLabel: {
+    fontSize: getResponsiveFontSize(14),
+    color: '#666'
+  },
+  totalValue: {
+    fontSize: getResponsiveFontSize(14),
+    fontWeight: '600',
+    color: '#1A1A1A'
+  },
+  discountValue: {
+    color: '#2ECC71'
+  },
+  totalDivider: {
+    height: 1,
+    backgroundColor: '#E8E8E8',
+    marginVertical: 12
+  },
+  grandTotalLabel: {
+    fontSize: getResponsiveFontSize(16),
+    fontWeight: '700',
+    color: '#1A1A1A'
   },
   grandTotalValue: {
-    fontSize: getResponsiveFontSize(15),
+    fontSize: getResponsiveFontSize(16),
     fontWeight: '800',
-    color: '#333'
+    color: '#1A1A1A'
   },
   paymentMethod: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 6,
-    paddingTop: 6,
+    marginTop: 12,
+    paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0'
+    borderTopColor: '#E8E8E8'
   },
   paymentMethodText: {
     fontSize: getResponsiveFontSize(13),
     color: '#666',
-    marginLeft: 6
+    marginLeft: 8
   },
-  deliveryAddressCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 14,
-    marginHorizontal: 16,
-    marginBottom: 14,
+  addressCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: CARD_PADDING,
+    marginHorizontal: CARD_PADDING,
+    marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 15,
+    elevation: 5
   },
   addressContent: {
     flexDirection: 'row'
   },
-  addressTextContainer: {
-    flex: 1,
-    marginLeft: 10
+  addressIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#FFF5F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12
+  },
+  addressDetails: {
+    flex: 1
+  },
+  addressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8
   },
   addressType: {
-    fontSize: getResponsiveFontSize(14),
+    fontSize: getResponsiveFontSize(15),
+    fontWeight: '700',
+    color: '#1A1A1A'
+  },
+  navigateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF5F0',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12
+  },
+  navigateText: {
+    fontSize: getResponsiveFontSize(12),
+    color: '#FF6B35',
     fontWeight: '600',
-    color: '#333',
-    marginBottom: 3
+    marginLeft: 4
   },
   addressText: {
-    fontSize: getResponsiveFontSize(13),
+    fontSize: getResponsiveFontSize(14),
     color: '#666',
-    marginBottom: 3,
-    lineHeight: 18
+    lineHeight: 20,
+    marginBottom: 6
   },
   addressLandmark: {
-    fontSize: getResponsiveFontSize(12),
+    fontSize: getResponsiveFontSize(13),
     color: '#888',
-    marginBottom: 3
+    marginBottom: 8
+  },
+  addressContact: {
+    flexDirection: 'row',
+    alignItems: 'center'
   },
   addressPhone: {
     fontSize: getResponsiveFontSize(13),
-    color: '#666'
+    color: '#666',
+    marginLeft: 6
   },
   footer: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    alignItems: 'center'
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: CARD_PADDING,
+    paddingVertical: 12
   },
   footerText: {
-    fontSize: getResponsiveFontSize(11),
+    fontSize: getResponsiveFontSize(12),
     color: '#888',
-    textAlign: 'center'
+    marginLeft: 6
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20
+    backgroundColor: '#FFFFFF'
   },
-  loadingText: {
-    marginTop: 16,
-    fontSize: getResponsiveFontSize(15),
-    color: '#666'
+  loadingAnimation: {
+    position: 'relative',
+    marginBottom: 24
+  },
+  loadingSpinner: {
+    position: 'absolute',
+    top: -10,
+    left: -10,
+    right: -10,
+    bottom: -10
+  },
+  loadingTitle: {
+    fontSize: getResponsiveFontSize(20),
+    fontWeight: '700',
+    color: '#1A1A1A',
+    marginBottom: 8
+  },
+  loadingSubtitle: {
+    fontSize: getResponsiveFontSize(14),
+    color: '#666',
+    textAlign: 'center',
+    paddingHorizontal: 40
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20
+    backgroundColor: '#FFFFFF',
+    padding: 40
+  },
+  errorAnimation: {
+    marginBottom: 24
+  },
+  errorTitle: {
+    fontSize: getResponsiveFontSize(24),
+    fontWeight: '700',
+    color: '#1A1A1A',
+    marginBottom: 8
   },
   errorText: {
     fontSize: getResponsiveFontSize(16),
-    color: '#FF7A33',
+    color: '#FF6B35',
     fontWeight: '600',
-    marginTop: 16
-  },
-  errorSubtext: {
-    fontSize: getResponsiveFontSize(13),
-    color: '#666',
-    marginTop: 6,
-    marginBottom: 20,
+    marginBottom: 4,
     textAlign: 'center'
   },
-  goBackButton: {
-    backgroundColor: '#FF7A33',
+  errorSubtext: {
+    fontSize: getResponsiveFontSize(14),
+    color: '#666',
+    marginBottom: 32,
+    textAlign: 'center'
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF6B35',
     paddingHorizontal: 28,
-    paddingVertical: 10,
-    borderRadius: 20
+    paddingVertical: 14,
+    borderRadius: 16,
+    marginBottom: 16,
+    width: '100%',
+    justifyContent: 'center'
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: getResponsiveFontSize(15),
+    marginLeft: 8
+  },
+  goBackButton: {
+    paddingVertical: 14,
+    borderRadius: 16,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center'
   },
   goBackButtonText: {
-    color: '#fff',
+    color: '#666',
     fontWeight: '600',
-    fontSize: getResponsiveFontSize(14)
-  },
+    fontSize: getResponsiveFontSize(15)
+  }
 });
 
 export default TrackOrder;
