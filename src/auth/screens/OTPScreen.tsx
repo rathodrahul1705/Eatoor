@@ -1,27 +1,43 @@
 import React, { useState, useEffect, useRef, useCallback, useContext } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Keyboard,
-  TouchableWithoutFeedback, Animated, Platform, StatusBar, 
-  ActivityIndicator, TextInput, Dimensions, ScrollView,
-  KeyboardAvoidingView
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Keyboard,
+  TouchableWithoutFeedback,
+  Animated,
+  Platform,
+  StatusBar,
+  ActivityIndicator,
+  TextInput,
+  Dimensions,
+  ScrollView,
+  KeyboardAvoidingView,
+  AppState,
 } from 'react-native';
-import { useNavigation, StackActions, useFocusEffect } from '@react-navigation/native';
+
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
+
 import { OTPScreenProps } from '../../types/navigation.d';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { verifyOTP, resendOTP } from '../../api/auth';
-import Clipboard from '@react-native-clipboard/clipboard';
 import { AuthContext } from '../../context/AuthContext';
+
+import RNOtpVerify from 'react-native-otp-verify';
 
 const { width, height } = Dimensions.get('window');
 const isSmallDevice = height < 700;
 const isVerySmallDevice = height < 600;
+
 const OTP_LENGTH = 6;
 const RESEND_COUNTDOWN = 30;
 
 const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
   const navigation = useNavigation();
-  const { userInput } = route.params;
+  const { userInput, appHash } = route.params;
+
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(''));
   const [manualOtp, setManualOtp] = useState('');
   const [error, setError] = useState('');
@@ -29,86 +45,137 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [activeInput, setActiveInput] = useState(0);
   const [shouldVerify, setShouldVerify] = useState(false);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const shakeAnimation = useRef(new Animated.Value(0)).current;
+
+  const [isListeningSMS, setIsListeningSMS] = useState(false);
+
+  // Refs
   const inputRefs = useRef<Array<TextInput | null>>([]);
   const manualInputRef = useRef<TextInput>(null);
-  const { login } = useContext(AuthContext);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // Calculate responsive sizes for OTP boxes
-  const MAX_CONTAINER_WIDTH = width * 0.85;
-  const DIGIT_BOX_SIZE = Math.min(
-    isVerySmallDevice ? width * 0.14 : width * 0.16,
-    (MAX_CONTAINER_WIDTH - (OTP_LENGTH * 8)) / OTP_LENGTH
-  );
-  const DIGIT_BOX_MARGIN = Math.min(width * 0.015, 6);
+  const appState = useRef(AppState.currentState);
 
-  // Keyboard visibility handler
+  const shakeAnimation = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+
+  const { login } = useContext(AuthContext);
+
+  /** *****************************************************************
+   *            NEW OTP LISTENER USING react-native-otp-verify
+   ***************************************************************** */
+  const startOtpListener = async () => {
+    if (Platform.OS !== 'android') return;
+
+    try {
+      console.log('Starting OTP listener...');
+      setIsListeningSMS(true);
+
+      const started = await RNOtpVerify.getOtp();
+      console.log('getOtp started:', started);
+
+      if (started) {
+        RNOtpVerify.addListener(handleOTPMessage);
+      }
+    } catch (e) {
+      console.log('OTP Listener error:', e);
+      setIsListeningSMS(false);
+    }
+  };
+
+  const stopOtpListener = () => {
+    try {
+      RNOtpVerify.removeListener();
+    } catch (e) {
+      console.log('removeListener error', e);
+    }
+    setIsListeningSMS(false);
+  };
+
+  /** Extract OTP from SMS */
+  const handleOTPMessage = (message: string) => {
+    console.log('Received SMS Message:', message);
+
+    const match = message.match(/(\d{6})/);
+    if (match) {
+      const code = match[1];
+      console.log('OTP Auto-Extracted:', code);
+      autoFillOTP(code);
+      stopOtpListener();
+    }
+  };
+
+  /** Fill UI boxes with OTP */
+  const autoFillOTP = (code: string) => {
+    setManualOtp(code);
+
+    const arr = code.split('');
+    setOtp(arr);
+
+    setActiveInput(OTP_LENGTH - 1);
+    Keyboard.dismiss();
+
+    setShouldVerify(true);
+  };
+
+  /** *****************************************************************
+   *            APP STATE LISTENER (FOREGROUND / BACKGROUND)
+   ***************************************************************** */
   useEffect(() => {
-    const keyboardDidShowListener = Keyboard.addListener(
-      'keyboardDidShow',
-      () => {
-        setKeyboardVisible(true);
-        setTimeout(() => {
-          scrollViewRef.current?.scrollTo({ y: 50, animated: true });
-        }, 100);
+    if (Platform.OS === 'android') startOtpListener();
+
+    const stateSub = AppState.addEventListener('change', nextState => {
+      if (appState.current.match(/inactive|background/) && nextState === 'active') {
+        if (Platform.OS === 'android') startOtpListener();
       }
-    );
-    const keyboardDidHideListener = Keyboard.addListener(
-      'keyboardDidHide',
-      () => {
-        setKeyboardVisible(false);
+      if (nextState.match(/inactive|background/)) {
+        if (Platform.OS === 'android') stopOtpListener();
       }
-    );
+      appState.current = nextState;
+    });
 
     return () => {
-      keyboardDidShowListener.remove();
-      keyboardDidHideListener.remove();
+      stateSub.remove();
+      stopOtpListener();
     };
   }, []);
 
-  // Reset fade animation when screen comes back into focus and focus first input
+  /** *****************************************************************
+   *            COUNTDOWN TIMER FOR RESEND
+   ***************************************************************** */
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [countdown]);
+
+  /** *****************************************************************
+   *            SCREEN FOCUS → ANIMATION + AUTO-FOCUS
+   ***************************************************************** */
   useFocusEffect(
     useCallback(() => {
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 300,
+        duration: 350,
         useNativeDriver: true,
       }).start();
 
-      // Auto focus the hidden input when screen comes into focus for better autofill
-      const timer = setTimeout(() => {
+      const t = setTimeout(() => {
         manualInputRef.current?.focus();
       }, 300);
 
+      if (Platform.OS === 'android') startOtpListener();
+
       return () => {
-        clearTimeout(timer);
+        clearTimeout(t);
+        stopOtpListener();
       };
-    }, [fadeAnim])
+    }, [])
   );
 
-  // Auto focus hidden input on initial mount for autofill
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      manualInputRef.current?.focus();
-    }, 500);
-    
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Countdown timer for resend OTP
-  useEffect(() => {
-    const timer = countdown > 0 && setInterval(() => {
-      setCountdown(countdown - 1);
-    }, 1000);
-    return () => {
-      if (timer) clearInterval(timer);
-    };
-  }, [countdown]);
-
-  // Handle OTP verification when shouldVerify is true and OTP is complete
+  /** *****************************************************************
+   *            VERIFY OTP
+   ***************************************************************** */
   useEffect(() => {
     if (shouldVerify && manualOtp.length === OTP_LENGTH) {
       handleVerify();
@@ -116,143 +183,156 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
     }
   }, [shouldVerify, manualOtp]);
 
-  // Enhanced autofill handling
-  useEffect(() => {
-    const handleAutoFill = (text: string) => {
-      if (/^\d+$/.test(text) && text.length === OTP_LENGTH) {
-        setManualOtp(text);
-        setShouldVerify(true);
-        Keyboard.dismiss();
-      }
-    };
+  const handleVerify = async () => {
+    if (isLoading) return;
 
-    // Check clipboard on mount for autofill
-    const checkClipboard = async () => {
-      try {
-        const text = await Clipboard.getString();
-        if (/^\d+$/.test(text) && text.length === OTP_LENGTH) {
-          handleAutoFill(text);
-        }
-      } catch (error) {
-        console.error('Clipboard error:', error);
-      }
-    };
+    const finalOtp = manualOtp.length === OTP_LENGTH ? manualOtp : otp.join('');
 
-    checkClipboard();
-
-    // Set up interval to check for autofill
-    let clipboardInterval: NodeJS.Timeout;
-    
-    clipboardInterval = setInterval(async () => {
-      try {
-        const text = await Clipboard.getString();
-        if (/^\d+$/.test(text) && text.length === OTP_LENGTH) {
-          handleAutoFill(text);
-          clearInterval(clipboardInterval);
-        }
-      } catch (error) {
-        console.error('Clipboard error:', error);
-      }
-    }, 1000);
-
-    // Clear interval after 10 seconds
-    const timeout = setTimeout(() => {
-      if (clipboardInterval) clearInterval(clipboardInterval);
-    }, 10000);
-
-    return () => {
-      if (clipboardInterval) clearInterval(clipboardInterval);
-      clearTimeout(timeout);
-    };
-  }, []);
-
-  const handleVerify = useCallback(async () => {
-  if (isLoading) return;
-
-  // Extract final OTP (manual OR auto)
-  const otpCode = manualOtp.length === OTP_LENGTH ? manualOtp : otp.join('');
-
-  if (otpCode.length !== OTP_LENGTH) {
-    setError('Please enter a valid 6-digit OTP');
-    shakeInput();
-    return;
-  }
-
-  setIsLoading(true);
-  Keyboard.dismiss();
-
-  try {
-    // 🔥 Get FCM token stored earlier
-    const deviceToken = await AsyncStorage.getItem('fcm_token');
-
-    // API CALL
-    const response = await verifyOTP({
-      contact_number: userInput,
-      otp: otpCode,
-      device_token: deviceToken || null, // safe fallback
-      platform: Platform.OS === 'ios' ? 'ios' : 'android',
-    });
-
-    // Store tokens + user object
-    await AsyncStorage.multiSet([
-      ['accessToken', response.data.tokens.access],
-      ['refreshToken', response.data.tokens.refresh],
-      ['user', JSON.stringify(response.data.user)],
-    ]);
-
-    // Auto-login if required
-    if (response.data.navigate_to === 'HomeTabs') {
-      login(response.data.tokens.access);
+    if (finalOtp.length !== OTP_LENGTH) {
+      setError('Please enter a valid 6-digit OTP');
+      shakeInput();
+      return;
     }
 
-    // Fade out animation before navigating
-    Animated.timing(fadeAnim, {
-      toValue: 0,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => {
-      navigation.navigate(response.data.navigate_to as never);
-    });
-
-  } catch (err: any) {
-    setError(err?.response?.data?.error || 'Invalid OTP. Please try again.');
-    shakeInput();
-
-    // Reset OTP fields
-    setOtp(Array(OTP_LENGTH).fill(''));
-    setManualOtp('');
-    manualInputRef.current?.focus();
-  } finally {
-    setIsLoading(false);
-  }
-}, [otp, manualOtp, userInput, navigation, isLoading, fadeAnim, login]);
-
-
-  const handleResendOTP = async () => {
-    if (countdown > 0) return;
+    setIsLoading(true);
+    Keyboard.dismiss();
+    stopOtpListener();
 
     try {
-      setCountdown(RESEND_COUNTDOWN);
+      const deviceToken = await AsyncStorage.getItem('fcm_token');
+
+      const payload: any = {
+        contact_number: userInput,
+        otp: finalOtp,
+        platform: Platform.OS,
+        device_token: deviceToken || null,
+      };
+
+      if (Platform.OS === 'android' && appHash) payload.app_hash = appHash;
+
+      console.log('Verifying OTP:', payload);
+
+      const response = await verifyOTP(payload);
+
+      await AsyncStorage.multiSet([
+        ['accessToken', response.data.tokens.access],
+        ['refreshToken', response.data.tokens.refresh],
+        ['user', JSON.stringify(response.data.user)],
+      ]);
+
+      login(response.data.tokens.access);
+
+    } catch (err: any) {
+      console.log('OTP verify error:', err);
+      setError(err?.response?.data?.error || 'Invalid OTP. Try again.');
+      shakeInput();
+
+      // restart OTP listener
+      if (Platform.OS === 'android') startOtpListener();
+
       setOtp(Array(OTP_LENGTH).fill(''));
       setManualOtp('');
-      setError('');
-      setIsLoading(true);
 
-      const response = await resendOTP({ contact_number: userInput });
-      
-      if (response.status === 200) {
-        manualInputRef.current?.focus();
-      } else {
-        setError('Failed to resend OTP. Please try again.');
-      }
-    } catch (error: any) {
-      console.error('Resend OTP error:', error);
-      setError('Something went wrong. Please try again.');
+      setTimeout(() => manualInputRef.current?.focus(), 150);
     } finally {
       setIsLoading(false);
     }
   };
 
+  /** *****************************************************************
+   *            RESEND OTP
+   ***************************************************************** */
+  const handleResendOTP = async () => {
+    if (countdown > 0) return;
+
+    setCountdown(RESEND_COUNTDOWN);
+    setOtp(Array(OTP_LENGTH).fill(''));
+    setManualOtp('');
+    setError('');
+
+    setIsLoading(true);
+
+    const payload: any = {
+      contact_number: userInput,
+      platform: Platform.OS,
+    };
+
+    if (Platform.OS === 'android' && appHash) payload.app_hash = appHash;
+
+    try {
+      const response = await resendOTP(payload);
+      console.log('Resend OTP response:', response.data);
+
+      manualInputRef.current?.focus();
+
+      if (Platform.OS === 'android') startOtpListener();
+    } catch (e) {
+      console.log('Resend error:', e);
+      setError('Failed to resend OTP.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /** *****************************************************************
+   *            INPUT HANDLING
+   ***************************************************************** */
+  const handleBoxChangeText = (text: string, index: number) => {
+    if (!/^[0-9]?$/.test(text)) return;
+
+    const newOtp = [...otp];
+    newOtp[index] = text;
+    setOtp(newOtp);
+
+    const merged = newOtp.join('').substring(0, OTP_LENGTH);
+    setManualOtp(merged);
+
+    setError('');
+
+    if (text && index < OTP_LENGTH - 1) {
+      inputRefs.current[index + 1]?.focus();
+      setActiveInput(index + 1);
+    }
+    if (index === OTP_LENGTH - 1 && text) setShouldVerify(true);
+  };
+
+  const handleManualOtpChange = (v: string) => {
+    if (!/^\d*$/.test(v)) return;
+
+    const clean = v.replace(/[^0-9]/g, '');
+    setManualOtp(clean);
+
+    const arr = Array(OTP_LENGTH).fill('');
+    for (let i = 0; i < clean.length; i++) arr[i] = clean[i];
+    setOtp(arr);
+
+    const pos = Math.min(clean.length, OTP_LENGTH - 1);
+    setActiveInput(pos);
+
+    if (clean.length === OTP_LENGTH) setShouldVerify(true);
+  };
+
+  const handleKeyPress = (e: any, index: number) => {
+    if (e.nativeEvent.key === 'Backspace') {
+      const newOtp = [...otp];
+
+      if (!otp[index] && index > 0) {
+        newOtp[index - 1] = '';
+        setOtp(newOtp);
+        setManualOtp(newOtp.join(''));
+        inputRefs.current[index - 1]?.focus();
+        setActiveInput(index - 1);
+      } else {
+        newOtp[index] = '';
+        setOtp(newOtp);
+        setManualOtp(newOtp.join('').substring(0, OTP_LENGTH));
+      }
+    }
+  };
+
+  /** *****************************************************************
+   *            UI ANIMATION
+   ***************************************************************** */
   const shakeInput = () => {
     Animated.sequence([
       Animated.timing(shakeAnimation, { toValue: 10, duration: 50, useNativeDriver: true }),
@@ -262,150 +342,72 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
     ]).start();
   };
 
-  const handleBoxChangeText = (text: string, index: number) => {
-    if (/^[0-9]$/.test(text) || text === '') {
-      const newOtp = [...otp];
-      newOtp[index] = text;
-      setOtp(newOtp);
-      
-      // Update manual OTP to match
-      const newManualOtp = newOtp.join('').substring(0, OTP_LENGTH);
-      setManualOtp(newManualOtp);
-      
-      setError('');
-
-      if (text && index < OTP_LENGTH - 1) {
-        inputRefs.current[index + 1]?.focus();
-        setActiveInput(index + 1);
-      }
-
-      // Set shouldVerify when last digit is entered
-      if (index === OTP_LENGTH - 1 && text) {
-        setShouldVerify(true);
-      }
-    }
-  };
-
-  const handleManualOtpChange = (text: string) => {
-    if (/^\d*$/.test(text)) {
-      const cleanText = text.replace(/[^0-9]/g, '');
-      setManualOtp(cleanText);
-      setError('');
-      
-      // Update individual boxes
-      const newOtp = Array(OTP_LENGTH).fill('');
-      for (let i = 0; i < cleanText.length && i < OTP_LENGTH; i++) {
-        newOtp[i] = cleanText[i];
-      }
-      setOtp(newOtp);
-      
-      // Focus the appropriate box
-      const newActiveInput = Math.min(cleanText.length, OTP_LENGTH - 1);
-      setActiveInput(newActiveInput);
-      
-      if (cleanText.length < OTP_LENGTH) {
-        inputRefs.current[newActiveInput]?.focus();
-      } else {
-        Keyboard.dismiss();
-        setShouldVerify(true);
-      }
-    }
-  };
-
-  const handleBoxFocus = (index: number) => {
-    setActiveInput(index);
-  };
-
-  const handleKeyPress = (e: any, index: number) => {
-    if (e.nativeEvent.key === 'Backspace' && !otp[index] && index > 0) {
-      // Handle backspace on empty field - move to previous field and clear it
-      const newOtp = [...otp];
-      newOtp[index - 1] = '';
-      setOtp(newOtp);
-      
-      // Update manual OTP
-      const newManualOtp = newOtp.join('').substring(0, OTP_LENGTH);
-      setManualOtp(newManualOtp);
-      
-      inputRefs.current[index - 1]?.focus();
-      setActiveInput(index - 1);
-    } else if (e.nativeEvent.key === 'Backspace' && index > 0) {
-      // Handle backspace on field with content - clear current field
-      const newOtp = [...otp];
-      newOtp[index] = '';
-      setOtp(newOtp);
-      
-      // Update manual OTP
-      const newManualOtp = newOtp.join('').substring(0, OTP_LENGTH);
-      setManualOtp(newManualOtp);
-      
-      inputRefs.current[index]?.focus();
-    }
-  };
-
+  /** *****************************************************************
+   *            BACK PRESS
+   ***************************************************************** */
   const handleBackPress = () => {
-    Animated.timing(fadeAnim, {
-      toValue: 0,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => {
+    stopOtpListener();
+    Animated.timing(fadeAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => {
       navigation.goBack();
     });
   };
 
-  const animatedStyle = {
+  const MAX_CONTAINER_WIDTH = width * 0.85;
+  const DIGIT_BOX_SIZE = Math.min(
+    isVerySmallDevice ? width * 0.14 : width * 0.16,
+    (MAX_CONTAINER_WIDTH - OTP_LENGTH * 8) / OTP_LENGTH
+  );
+
+  const animatedShakeStyle = {
     transform: [{ translateX: shakeAnimation }],
   };
 
+  /** *****************************************************************
+   *            RENDER
+   ***************************************************************** */
   return (
     <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <KeyboardAvoidingView 
-          style={styles.container}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
+        <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
-          {/* Fixed Header with Back Button */}
+          {/* HEADER */}
           <View style={styles.headerContainer}>
-            <TouchableOpacity 
-              style={[styles.backButton, isSmallDevice && styles.backButtonSmall]} 
-              onPress={handleBackPress}
-              activeOpacity={0.7}
-            >
-              <Icon name="chevron-back" size={isSmallDevice ? 24 : 28} color="#000" />
+            <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
+              <Icon name="chevron-back" size={26} color="#000" />
             </TouchableOpacity>
-            <View style={styles.headerTitleContainer}>
-              <Text style={[styles.headerTitle, isSmallDevice && styles.headerTitleSmall]}>
-                Verification
-              </Text>
-            </View>
-            <View style={styles.headerPlaceholder} />
+
+            <Text style={styles.headerTitle}>Verification</Text>
+
+            <View style={{ width: 40 }} />
           </View>
 
-          <ScrollView 
+          {/* BODY */}
+          <ScrollView
             ref={scrollViewRef}
-            contentContainerStyle={[
-              styles.scrollContent,
-              keyboardVisible && styles.scrollContentKeyboardVisible
-            ]}
+            contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
-            automaticallyAdjustContentInsets={true}
-            contentInsetAdjustmentBehavior="always"
           >
             <View style={styles.content}>
-              {/* Updated Illustration Container without security icon */}
 
-              <View style={[styles.textHeader, isSmallDevice && styles.textHeaderSmall]}>
-                <Text style={[styles.title, isSmallDevice && styles.titleSmall]}>Enter Verification Code</Text>
-                <Text style={[styles.subtitle, isSmallDevice && styles.subtitleSmall]}>
-                  We've sent a 6-digit code to{"\n"}
+              {/* TITLE */}
+              <View style={styles.textHeader}>
+                <Text style={styles.title}>Enter Verification Code</Text>
+                <Text style={styles.subtitle}>
+                  We've sent a 6-digit code to{'\n'}
                   <Text style={styles.phoneNumber}>{userInput}</Text>
                 </Text>
+
+                {Platform.OS === 'android' && isListeningSMS && (
+                  <View style={styles.smsStatus}>
+                    <ActivityIndicator size="small" color="#E65C00" />
+                    <Text style={styles.smsStatusText}>Listening for OTP…</Text>
+                  </View>
+                )}
               </View>
 
-              {/* Enhanced Hidden OTP Input for Autofill with better attributes */}
+              {/* HIDDEN INPUT FOR AUTO-FILL */}
               <TextInput
                 ref={manualInputRef}
                 style={styles.hiddenInput}
@@ -415,118 +417,83 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
                 maxLength={OTP_LENGTH}
                 textContentType="oneTimeCode"
                 autoComplete="sms-otp"
-                importantForAutofill="yes"
-                autoFocus={true}
-                caretHidden={true}
-                autoCorrect={false}
-                spellCheck={false}
-                dataDetectorTypes="none"
-                contextMenuHidden={true}
-                autoCapitalize="none"
-                enterKeyHint="done"
-                inputMode="numeric"
-                enablesReturnKeyAutomatically={true}
-                returnKeyType="done"
-                onSubmitEditing={() => {
-                  if (manualOtp.length === OTP_LENGTH) {
-                    handleVerify();
-                  }
-                }}
+                caretHidden
               />
 
-              {/* OTP Boxes Container */}
-              <Animated.View 
-                style={[
-                  styles.otpContainer, 
-                  animatedStyle,
-                ]}
-              >
-                {Array(OTP_LENGTH).fill(0).map((_, index) => (
+              {/* OTP BOXES */}
+              <Animated.View style={[styles.otpContainer, animatedShakeStyle]}>
+                {otp.map((digit, index) => (
                   <TouchableOpacity
-                    key={index}
                     activeOpacity={1}
+                    key={index}
                     onPress={() => {
                       inputRefs.current[index]?.focus();
                       setActiveInput(index);
                     }}
-                    style={[styles.otpBoxTouchable]}
                   >
-                    <View style={[
-                      styles.otpBox,
-                      {
-                        width: DIGIT_BOX_SIZE,
-                        height: DIGIT_BOX_SIZE,
-                      },
-                      otp[index] ? styles.otpBoxFilled : null,
-                      error ? styles.otpBoxError : null,
-                      activeInput === index ? styles.otpBoxActive : null
-                    ]}>
-                      <Text style={[styles.otpText, isSmallDevice && styles.otpTextSmall]}>
-                        {otp[index] || ''}
-                      </Text>
-                      {activeInput === index && !otp[index] && (
-                        <Text style={styles.cursor}>|</Text>
-                      )}
+                    <View
+                      style={[
+                        styles.otpBox,
+                        { width: DIGIT_BOX_SIZE, height: DIGIT_BOX_SIZE },
+                        digit ? styles.otpBoxFilled : null,
+                        activeInput === index ? styles.otpBoxActive : null,
+                        error ? styles.otpBoxError : null,
+                      ]}
+                    >
+                      <Text style={styles.otpText}>{digit}</Text>
+                      {activeInput === index && !digit && <Text style={styles.cursor}>|</Text>}
                     </View>
+
                     <TextInput
                       ref={(ref) => (inputRefs.current[index] = ref)}
-                      style={[styles.otpInputHidden]}
-                      keyboardType="number-pad"
-                      value={otp[index]}
-                      onChangeText={(text) => handleBoxChangeText(text, index)}
+                      value={digit}
+                      onChangeText={(t) => handleBoxChangeText(t, index)}
                       onKeyPress={(e) => handleKeyPress(e, index)}
+                      keyboardType="number-pad"
                       maxLength={1}
-                      onFocus={() => handleBoxFocus(index)}
-                      contextMenuHidden={true}
-                      selectTextOnFocus={true}
-                      caretHidden={true}
-                      inputMode="numeric"
+                      style={styles.otpInputHidden}
+                      caretHidden
                     />
                   </TouchableOpacity>
                 ))}
               </Animated.View>
 
+              {/* ERROR */}
               {error ? (
-                <View style={[styles.errorContainer, isSmallDevice && styles.errorContainerSmall]}>
-                  <Icon name="warning-outline" size={isSmallDevice ? 16 : 18} color="#ff4444" />
-                  <Text style={[styles.errorText, isSmallDevice && styles.errorTextSmall]}>{error}</Text>
+                <View style={styles.errorContainer}>
+                  <Icon name="warning-outline" size={18} color="#ff4444" />
+                  <Text style={styles.errorText}>{error}</Text>
                 </View>
               ) : null}
 
+              {/* VERIFY BUTTON */}
               <TouchableOpacity
-                style={[
-                  styles.buttonContainer, 
-                  ((otp.join('').length !== OTP_LENGTH && manualOtp.length !== OTP_LENGTH) || isLoading) && styles.buttonDisabled
-                ]}
+                style={[styles.buttonContainer, isLoading && styles.buttonDisabled]}
                 onPress={handleVerify}
-                disabled={(otp.join('').length !== OTP_LENGTH && manualOtp.length !== OTP_LENGTH) || isLoading}
-                activeOpacity={0.9}
+                disabled={manualOtp.length !== OTP_LENGTH || isLoading}
               >
-                <View style={[styles.button, isSmallDevice && styles.buttonSmall]}>
-                  {isLoading ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <Text style={[styles.buttonText, isSmallDevice && styles.buttonTextSmall]}>Verify & Continue</Text>
-                  )}
+                <View style={styles.button}>
+                  {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Verify & Continue</Text>}
                 </View>
               </TouchableOpacity>
 
-              <View style={[styles.resendContainer, isSmallDevice && styles.resendContainerSmall]}>
-                <Text style={[styles.resendText, isSmallDevice && styles.resendTextSmall]}>Didn't receive the code? </Text>
-                <TouchableOpacity 
-                  onPress={handleResendOTP} 
-                  disabled={countdown > 0}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[
-                    styles.resendLink, 
-                    isSmallDevice && styles.resendLinkSmall,
-                    countdown > 0 && styles.resendDisabled
-                  ]}>
+              {/* RESEND */}
+              <View style={styles.resendContainer}>
+                <Text style={styles.resendText}>Didn't receive the code? </Text>
+                <TouchableOpacity onPress={handleResendOTP} disabled={countdown > 0}>
+                  <Text style={[styles.resendLink, countdown > 0 && styles.resendDisabled]}>
                     {countdown > 0 ? `Resend in ${countdown}s` : 'Resend OTP'}
                   </Text>
                 </TouchableOpacity>
               </View>
+
+              {/* AUTO-FILL INFO */}
+              {Platform.OS === 'android' && (
+                <View style={styles.autofillHint}>
+                  <Icon name="flash-outline" size={16} color="#E65C00" />
+                  <Text style={styles.autofillHintText}>OTP will be auto-filled from SMS</Text>
+                </View>
+              )}
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -535,131 +502,83 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
   );
 };
 
+/* ********************************************************************
+ *                               STYLES
+ ******************************************************************** */
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
+  container: { flex: 1, backgroundColor: '#fff' },
+
   scrollContent: {
     flexGrow: 1,
-    paddingBottom: 20,
+    paddingBottom: 30,
   },
-  scrollContentKeyboardVisible: {
-    paddingBottom: 100,
-  },
+
   headerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    padding: 20,
     paddingTop: Platform.OS === 'ios' ? 60 : (StatusBar.currentHeight || 0) + 20,
-    paddingBottom: 20,
+    justifyContent: 'space-between',
     backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: '#eee',
   },
+
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
     backgroundColor: '#f8f8f8',
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
   },
-  backButtonSmall: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-  },
-  headerTitleContainer: {
-    flex: 1,
-    alignItems: 'center',
-  },
+
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#333',
   },
-  headerTitleSmall: {
-    fontSize: 16,
-  },
-  headerPlaceholder: {
-    width: 40,
-  },
+
   content: {
     flex: 1,
     paddingHorizontal: 30,
-    paddingTop: 20,
+    paddingTop: 30,
     alignItems: 'center',
-    minHeight: height * 0.7,
   },
-  illustrationContainer: {
-    alignItems: 'center',
-    marginBottom: 30,
-  },
-  illustrationContainerSmall: {
-    marginBottom: 20,
-  },
-  illustrationCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#FFF5EF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#E65C00',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
+
   textHeader: {
     alignItems: 'center',
     marginBottom: 40,
-    width: '100%',
   },
-  textHeaderSmall: {
-    marginBottom: 30,
+
+  title: { fontSize: 26, fontWeight: '700', color: '#333', marginBottom: 10 },
+  subtitle: { fontSize: 16, color: '#666', textAlign: 'center', lineHeight: 22 },
+  phoneNumber: { color: '#E65C00', fontWeight: '600' },
+
+  smsStatus: {
+    marginTop: 12,
+    padding: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF5EF',
+    borderRadius: 8,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    textAlign: 'center',
-    color: '#333',
-    marginBottom: 12,
+  smsStatusText: { color: '#E65C00', marginLeft: 6, fontSize: 12 },
+
+  hiddenInput: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    opacity: 0,
   },
-  titleSmall: {
-    fontSize: 24,
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    lineHeight: 24,
-  },
-  subtitleSmall: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  phoneNumber: {
-    fontWeight: '600',
-    color: '#E65C00',
-  },
+
   otpContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    width: width * 0.85,
     marginBottom: 30,
-    width: '100%',
   },
-  otpBoxTouchable: {
-    marginHorizontal: 4,
-  },
+
   otpBox: {
     borderWidth: 2,
     borderColor: '#E0E0E0',
@@ -667,146 +586,72 @@ const styles = StyleSheet.create({
     backgroundColor: '#FAFAFA',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-    position: 'relative',
   },
+
   otpBoxFilled: {
     borderColor: '#E65C00',
     backgroundColor: '#FFF5EF',
-    shadowColor: '#E65C00',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
   },
-  otpBoxError: {
-    borderColor: '#ff4444',
-  },
+
   otpBoxActive: {
     borderColor: '#E65C00',
-    backgroundColor: '#FFF',
-    shadowColor: '#E65C00',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
+    backgroundColor: '#fff',
+    elevation: 4,
   },
-  otpText: {
-    color: '#333',
-    fontWeight: '600',
-    fontSize: 24,
-  },
-  otpTextSmall: {
-    fontSize: 20,
-  },
-  cursor: {
-    color: '#E65C00',
-    fontSize: 24,
-    fontWeight: 'bold',
-    position: 'absolute',
-  },
+
+  otpBoxError: { borderColor: '#ff4444' },
+
+  otpText: { fontSize: 22, fontWeight: '600', color: '#333' },
+  cursor: { position: 'absolute', color: '#E65C00', fontSize: 24 },
+
   otpInputHidden: {
     position: 'absolute',
+    opacity: 0,
     width: '100%',
     height: '100%',
-    opacity: 0,
   },
-  hiddenInput: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-    opacity: 0,
-  },
+
   errorContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
     backgroundColor: '#FFF2F2',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    alignSelf: 'stretch',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 20,
   },
-  errorContainerSmall: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    marginBottom: 16,
-  },
-  errorText: {
-    color: '#ff4444',
-    marginLeft: 8,
-    fontSize: 14,
-    fontWeight: '500',
-    flexShrink: 1,
-  },
-  errorTextSmall: {
-    fontSize: 13,
-    marginLeft: 6,
-  },
+
+  errorText: { marginLeft: 8, color: '#ff4444', fontSize: 14 },
+
   buttonContainer: {
-    borderRadius: 16,
+    borderRadius: 14,
     overflow: 'hidden',
     alignSelf: 'stretch',
-    marginTop: 10,
     marginBottom: 25,
-    shadowColor: '#E65C00',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
   },
+  buttonDisabled: { opacity: 0.6 },
   button: {
-    padding: 20,
+    backgroundColor: '#E65C00',
+    paddingVertical: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#E65C00',
   },
-  buttonSmall: {
-    padding: 18,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 16,
-    letterSpacing: 0.5,
-  },
-  buttonTextSmall: {
-    fontSize: 15,
-  },
-  resendContainer: {
+  buttonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+
+  resendContainer: { flexDirection: 'row', justifyContent: 'center', marginBottom: 20 },
+  resendText: { fontSize: 15, color: '#666' },
+  resendLink: { fontSize: 15, fontWeight: '600', color: '#E65C00' },
+  resendDisabled: { color: '#aaa' },
+
+  autofillHint: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    marginBottom: 20,
-    flexWrap: 'wrap',
+    alignItems: 'center',
+    padding: 10,
+    backgroundColor: '#F0F8FF',
+    borderRadius: 8,
+    borderColor: '#E65C00',
+    borderWidth: 1,
   },
-  resendContainerSmall: {
-    marginBottom: 16,
-  },
-  resendText: {
-    color: '#666',
-    fontSize: 15,
-  },
-  resendTextSmall: {
-    fontSize: 14,
-  },
-  resendLink: {
-    color: '#E65C00',
-    fontWeight: '600',
-    fontSize: 15,
-  },
-  resendLinkSmall: {
-    fontSize: 14,
-  },
-  resendDisabled: {
-    color: '#999',
-  },
+  autofillHintText: { color: '#E65C00', marginLeft: 6, fontSize: 12 },
 });
 
 export default OTPScreen;

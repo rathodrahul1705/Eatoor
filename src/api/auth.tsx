@@ -1,8 +1,12 @@
 // src/api/auth.ts
 import API from './httpClient';
 
-export const sendOTP = (contact_number: string) =>
-  API.post('/login/send-otp/', { contact_number });
+export const sendOTP = (payload: {
+  contact_number: string;
+  platform: string;
+  app_hash: string | null;
+}) => API.post('/login/send-otp/', payload);
+
 
 export const verifyOTP = (payload: {
   contact_number: string;

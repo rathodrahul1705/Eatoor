@@ -124,6 +124,8 @@ dependencies {
     implementation("com.facebook.react:react-android")
     implementation project(':react-native-maps')
     implementation project(':react-native-config')
+    implementation "com.google.android.gms:play-services-auth-api-phone:18.0.1"
+    implementation "androidx.multidex:multidex:2.0.1"
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
