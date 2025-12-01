@@ -35,11 +35,7 @@ const DEFAULT_COORDINATES = {
   latitude: 19.0760,
   longitude: 72.8777,
 };
-const ADDRESS_TYPES = [
-  { id: 'home', label: 'Home', icon: 'home-outline' },
-  { id: 'office', label: 'Office', icon: 'business-outline' },
-  { id: 'other', label: 'Other', icon: 'location-outline' },
-];
+const ADDRESS_TYPES = ['Home', 'Office', 'Other'];
 
 // Location timeout constants
 const LOCATION_TIMEOUT = 10000; // 10 seconds
@@ -108,9 +104,6 @@ const MapLocationPicker = () => {
     longitude: 0 
   });
   const [locationError, setLocationError] = useState(false);
-  const [isFormExpanded, setIsFormExpanded] = useState(false);
-  const [activeInput, setActiveInput] = useState(null);
-  const [scrollPosition, setScrollPosition] = useState(0);
 
   // Refs
   const mapRef = useRef(null);
@@ -118,30 +111,29 @@ const MapLocationPicker = () => {
   const searchTimeoutRef = useRef(null);
   const locationTimeoutRef = useRef(null);
   const isMountedRef = useRef(true);
-  const scrollViewRef = useRef(null);
   
   // Animation values
+  const slideAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const formTranslateY = useRef(new Animated.Value(height * 0.45)).current;
-  const mapTranslateY = useRef(new Animated.Value(0)).current;
-  const inputFocusAnim = useRef(new Animated.Value(0)).current;
-  const expandButtonRotate = useRef(new Animated.Value(0)).current;
-  const searchResultsOpacity = useRef(new Animated.Value(0)).current;
-  const formScaleAnim = useRef(new Animated.Value(1)).current;
 
   // Cleanup function
   useEffect(() => {
     isMountedRef.current = true;
     
-    // Initial animations
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 500,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start();
+    // Animate form sliding up
+    Animated.timing(slideAnim, {
+      toValue: 1,
+      duration: 600,
+      easing: Easing.out(Easing.poly(4)),
+      useNativeDriver: true,
+    }).start();
+    
+    // Fade in content
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 800,
+      useNativeDriver: true,
+    }).start();
     
     // Initialize component
     initializeComponent();
@@ -156,59 +148,6 @@ const MapLocationPicker = () => {
       }
     };
   }, []);
-
-  // Toggle form expansion with scroll management
-  const toggleFormExpansion = () => {
-    const newExpandedState = !isFormExpanded;
-    setIsFormExpanded(newExpandedState);
-    
-    const formTargetY = newExpandedState ? height * 0.1 : height * 0.45;
-    const mapTargetY = newExpandedState ? -height * 0.35 : 0;
-    
-    // If expanding, scroll to top of form
-    if (newExpandedState && scrollViewRef.current) {
-      setTimeout(() => {
-        scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-      }, 100);
-    }
-    
-    Animated.parallel([
-      Animated.spring(formTranslateY, {
-        toValue: formTargetY,
-        tension: 50,
-        friction: 10,
-        useNativeDriver: true,
-      }),
-      Animated.spring(mapTranslateY, {
-        toValue: mapTargetY,
-        tension: 50,
-        friction: 10,
-        useNativeDriver: true,
-      }),
-      Animated.spring(expandButtonRotate, {
-        toValue: newExpandedState ? 1 : 0,
-        tension: 40,
-        friction: 8,
-        useNativeDriver: true,
-      }),
-      Animated.spring(formScaleAnim, {
-        toValue: newExpandedState ? 0.98 : 1,
-        tension: 40,
-        friction: 8,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
-
-  // Show/hide search results
-  const showSearchResultsWithAnimation = (show) => {
-    Animated.timing(searchResultsOpacity, {
-      toValue: show ? 1 : 0,
-      duration: 300,
-      easing: Easing.inOut(Easing.ease),
-      useNativeDriver: true,
-    }).start();
-  };
 
   const initializeComponent = async () => {
     await Promise.all([
@@ -433,7 +372,6 @@ const MapLocationPicker = () => {
     if (!query.trim()) {
       setSearchResults([]);
       setShowSearchResults(false);
-      showSearchResultsWithAnimation(false);
       return;
     }
 
@@ -448,17 +386,12 @@ const MapLocationPicker = () => {
       if (data.status === 'OK' && isMountedRef.current) {
         setSearchResults(data.predictions);
         setShowSearchResults(true);
-        showSearchResultsWithAnimation(true);
       } else {
         setSearchResults([]);
-        setShowSearchResults(false);
-        showSearchResultsWithAnimation(false);
       }
     } catch (error) {
       console.error('Search error:', error);
       setSearchResults([]);
-      setShowSearchResults(false);
-      showSearchResultsWithAnimation(false);
     } finally {
       if (isMountedRef.current) {
         setIsSearching(false);
@@ -482,7 +415,6 @@ const MapLocationPicker = () => {
     } else {
       setSearchResults([]);
       setShowSearchResults(false);
-      showSearchResultsWithAnimation(false);
     }
   };
 
@@ -491,7 +423,6 @@ const MapLocationPicker = () => {
     try {
       setIsSearching(true);
       setShowSearchResults(false);
-      showSearchResultsWithAnimation(false);
       setSearchQuery(place.description);
       Keyboard.dismiss();
       
@@ -575,34 +506,11 @@ const MapLocationPicker = () => {
     }
   };
 
-  const handleInputFocus = (field) => {
-    setActiveInput(field);
-    Animated.spring(inputFocusAnim, {
-      toValue: 1,
-      tension: 50,
-      friction: 7,
-      useNativeDriver: false,
-    }).start();
-  };
-
   const handleInputBlur = () => {
-    setActiveInput(null);
-    Animated.spring(inputFocusAnim, {
-      toValue: 0,
-      tension: 50,
-      friction: 7,
-      useNativeDriver: false,
-    }).start();
     // Reset manual edit flag after delay
     setTimeout(() => {
       setIsManualAddressEdit(false);
     }, 2000);
-  };
-
-  // Handle scroll events
-  const handleScroll = (event) => {
-    const currentOffset = event.nativeEvent.contentOffset.y;
-    setScrollPosition(currentOffset);
   };
 
   // Address validation and submission
@@ -685,21 +593,18 @@ const MapLocationPicker = () => {
     }
   };
 
-  // Render functions
+  // Render functions for better code organization
   const renderSearchItem = ({ item }) => (
     <TouchableOpacity 
       style={styles.searchItem}
       onPress={() => handlePlaceSelect(item)}
-      activeOpacity={0.7}
     >
-      <View style={styles.searchItemIconContainer}>
-        <Icon name="location-outline" size={18} color="#FF6B35" />
-      </View>
+      <Icon name="location-outline" size={20} color="#666" style={styles.searchItemIcon} />
       <View style={styles.searchItemTextContainer}>
         <Text style={styles.searchItemPrimaryText} numberOfLines={1}>
           {item.structured_formatting.main_text}
         </Text>
-        <Text style={styles.searchItemSecondaryText} numberOfLines={2}>
+        <Text style={styles.searchItemSecondaryText} numberOfLines={1}>
           {item.structured_formatting.secondary_text}
         </Text>
       </View>
@@ -708,148 +613,71 @@ const MapLocationPicker = () => {
 
   const renderAddressTypeButtons = () => (
     <View style={styles.addressTypeContainer}>
-      {ADDRESS_TYPES.map((type) => {
-        const isSelected = address.addressType === type.label;
-        return (
-          <TouchableOpacity
-            key={type.id}
+      {ADDRESS_TYPES.map((type) => (
+        <TouchableOpacity
+          key={type}
+          style={[
+            styles.addressTypeButton,
+            address.addressType === type && styles.addressTypeButtonSelected,
+          ]}
+          onPress={() => handleAddressTypeChange(type)}
+        >
+          <Icon 
+            name={
+              type === 'Home' ? 'home-outline' : 
+              type === 'Office' ? 'business-outline' : 
+              'location-outline'
+            } 
+            size={16} 
+            color={address.addressType === type ? '#FFF' : '#666'} 
+            style={styles.addressTypeIcon}
+          />
+          <Text
             style={[
-              styles.addressTypeButton,
-              isSelected && styles.addressTypeButtonSelected,
+              styles.addressTypeText,
+              address.addressType === type && styles.addressTypeTextSelected,
             ]}
-            onPress={() => handleAddressTypeChange(type.label)}
-            activeOpacity={0.7}
           >
-            <View 
-              style={[
-                styles.addressTypeButtonInner,
-                isSelected && styles.addressTypeButtonInnerSelected,
-              ]}
-            >
-              <Icon 
-                name={type.icon} 
-                size={16} 
-                color={isSelected ? '#FFF' : '#666'} 
-              />
-              <Text
-                style={[
-                  styles.addressTypeText,
-                  isSelected && styles.addressTypeTextSelected,
-                ]}
-              >
-                {type.label}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        );
-      })}
+            {type}
+          </Text>
+        </TouchableOpacity>
+      ))}
     </View>
   );
 
-  // Interpolations for animations
-  const expandButtonRotation = expandButtonRotate.interpolate({
+  // Animation interpolation
+  const formTranslateY = slideAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ['0deg', '180deg'],
+    outputRange: [300, 0],
   });
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-          {/* Header with Integrated Search */}
+          {/* Header */}
           <View style={styles.header}>
-            <View style={styles.headerContent}>
-              <TouchableOpacity 
-                style={styles.backButton}
-                onPress={() => navigation.goBack()}
-                activeOpacity={0.7}
-              >
-                <Icon name="arrow-back" size={24} color="#333" />
-              </TouchableOpacity>
-              
-              {/* Search Input in Header */}
-              <View style={styles.searchContainer}>
-                <Icon name="search" size={20} color="#999" style={styles.searchIcon} />
-                <TextInput
-                  ref={searchInputRef}
-                  style={styles.searchInput}
-                  placeholder="Search for address or place"
-                  placeholderTextColor="#999"
-                  value={searchQuery}
-                  onChangeText={handleSearchChange}
-                  onFocus={() => setIsSearchFocused(true)}
-                  onBlur={() => setIsSearchFocused(false)}
-                  returnKeyType="search"
-                  onSubmitEditing={() => {
-                    if (searchQuery.trim().length > 0) {
-                      searchPlaces(searchQuery);
-                    }
-                  }}
-                />
-                {searchQuery.length > 0 && (
-                  <TouchableOpacity 
-                    onPress={() => {
-                      setSearchQuery('');
-                      setSearchResults([]);
-                      setShowSearchResults(false);
-                      showSearchResultsWithAnimation(false);
-                    }}
-                    style={styles.clearButton}
-                  >
-                    <Icon name="close-circle" size={20} color="#999" />
-                  </TouchableOpacity>
-                )}
-                {isSearching && (
-                  <ActivityIndicator size="small" color="#FF6B35" style={styles.searchLoading} />
-                )}
-              </View>
-            </View>
+            <TouchableOpacity 
+              style={styles.backButton}
+              onPress={() => navigation.goBack()}
+            >
+              <Icon name="arrow-back" size={24} color="#333" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Select Location</Text>
+            <View style={styles.headerRightPlaceholder} />
           </View>
 
-          {/* Search Results Dropdown */}
-          <Animated.View 
-            style={[
-              styles.searchResultsContainer,
-              {
-                opacity: searchResultsOpacity,
-                transform: [{
-                  translateY: searchResultsOpacity.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [-10, 0]
-                  })
-                }]
-              }
-            ]}
-          >
-            {showSearchResults && searchResults.length > 0 && (
-              <FlatList
-                data={searchResults}
-                renderItem={renderSearchItem}
-                keyExtractor={(item) => item.place_id}
-                keyboardShouldPersistTaps="always"
-                style={styles.searchResultsList}
-                showsVerticalScrollIndicator={false}
-              />
-            )}
-          </Animated.View>
-
           {/* Map Section */}
-          <Animated.View 
-            style={[
-              styles.mapContainer,
-              {
-                transform: [{ translateY: mapTranslateY }],
-              }
-            ]}
-          >
+          <View style={styles.mapContainer}>
             {loading ? (
               <View style={styles.mapLoadingContainer}>
-                <ActivityIndicator size="large" color="#FF6B35" />
+                <ActivityIndicator size="large" color="#E65C00" />
                 <Text style={styles.mapLoadingText}>Getting your location...</Text>
+                <Text style={styles.mapLoadingSubtext}>This should only take a moment</Text>
               </View>
             ) : (
               <>
@@ -887,15 +715,62 @@ const MapLocationPicker = () => {
                     </Marker>
                   )}
                 </MapView>
+                
+                {/* Search Bar */}
+                <View style={styles.searchContainer}>
+                  <View style={styles.searchInputContainer}>
+                    <Icon name="search" size={20} color="#999" style={styles.searchIcon} />
+                    <TextInput
+                      ref={searchInputRef}
+                      style={styles.searchInput}
+                      placeholder="Search for address or place"
+                      placeholderTextColor="#999"
+                      value={searchQuery}
+                      onChangeText={handleSearchChange}
+                      onFocus={() => setIsSearchFocused(true)}
+                      onBlur={() => setIsSearchFocused(false)}
+                      returnKeyType="search"
+                      onSubmitEditing={() => {
+                        if (searchQuery.trim().length > 0) {
+                          searchPlaces(searchQuery);
+                        }
+                      }}
+                    />
+                    {searchQuery.length > 0 && (
+                      <TouchableOpacity 
+                        onPress={() => {
+                          setSearchQuery('');
+                          setSearchResults([]);
+                          setShowSearchResults(false);
+                        }}
+                        style={styles.clearButton}
+                      >
+                        <Icon name="close-circle" size={20} color="#999" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  {isSearching && (
+                    <ActivityIndicator size="small" color="#E65C00" style={styles.searchLoading} />
+                  )}
+                </View>
+
+                {/* Search Results */}
+                {showSearchResults && searchResults.length > 0 && (
+                  <View style={styles.searchResultsContainer}>
+                    <FlatList
+                      data={searchResults}
+                      renderItem={renderSearchItem}
+                      keyExtractor={(item) => item.place_id}
+                      keyboardShouldPersistTaps="handled"
+                      style={styles.searchResultsList}
+                    />
+                  </View>
+                )}
 
                 {/* Current Location Button */}
-                <TouchableOpacity 
-                  style={styles.currentLocationButton} 
-                  onPress={getCurrentLocation}
-                  activeOpacity={0.8}
-                >
+                <TouchableOpacity style={styles.currentLocationButton} onPress={getCurrentLocation}>
                   <View style={styles.locationButtonInner}>
-                    <Icon name="locate" size={20} color="#FF6B35" />
+                    <Icon name="locate" size={20} color="#E65C00" />
                   </View>
                 </TouchableOpacity>
 
@@ -914,313 +789,134 @@ const MapLocationPicker = () => {
                 )}
               </>
             )}
-          </Animated.View>
-
-          {/* Expand/Collapse Button */}
-          <Animated.View 
-            style={[
-              styles.expandButtonContainer,
-              {
-                transform: [{ translateY: mapTranslateY }]
-              }
-            ]}
-          >
-            <TouchableOpacity 
-              style={styles.expandButton}
-              onPress={toggleFormExpansion}
-              activeOpacity={0.8}
-            >
-              <Animated.View style={{ transform: [{ rotate: expandButtonRotation }] }}>
-                <Icon name="chevron-down" size={24} color="#FFF" />
-              </Animated.View>
-            </TouchableOpacity>
-          </Animated.View>
+          </View>
 
           {/* Address Form Section */}
           {!loading && (
-            <Animated.View 
-              style={[
-                styles.formContainer, 
-                { 
-                  transform: [
-                    { translateY: formTranslateY },
-                    { scale: formScaleAnim }
-                  ],
-                }
-              ]}
-            >
+            <Animated.View style={[
+              styles.formContainer, 
+              { transform: [{ translateY: formTranslateY }] }
+            ]}>
               <ScrollView 
-                ref={scrollViewRef}
                 style={styles.formScrollContainer} 
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
-                contentContainerStyle={[
-                  styles.formScrollContent,
-                  { minHeight: height * 0.6 }
-                ]}
-                onScroll={handleScroll}
-                scrollEventThrottle={16}
-                bounces={!isFormExpanded}
-                keyboardDismissMode="interactive"
               >
-                <View style={styles.formHeader}>
-                  <Text style={styles.sectionTitle}>Add Address</Text>
-                </View>
+                <Text style={styles.sectionTitle}>Save Address As</Text>
                 
                 {/* Address Type Selection */}
-                <Text style={styles.sectionSubtitle}>Address Type</Text>
                 {renderAddressTypeButtons()}
 
                 {/* Custom Name Field (only for Other) */}
                 {address.addressType === 'Other' && (
-                  <Animated.View 
-                    style={[
-                      styles.inputContainer,
-                      { 
-                        transform: [{
-                          scale: activeInput === 'customName' ? inputFocusAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [1, 1.02]
-                          }) : 1 
-                        }]
-                      }
-                    ]}
-                  >
-                    <Text style={styles.label}>
-                      Name of location <Text style={styles.requiredStar}>*</Text>
-                    </Text>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>Name of location *</Text>
                     <TextInput
-                      style={[
-                        styles.input,
-                        activeInput === 'customName' && styles.inputFocused
-                      ]}
+                      style={styles.input}
                       value={address.customName}
                       onChangeText={(text) => handleInputChange('customName', text)}
-                      onFocus={() => handleInputFocus('customName')}
                       onBlur={handleInputBlur}
                       placeholder="Enter location name"
                       placeholderTextColor="#999"
                     />
-                  </Animated.View>
+                  </View>
                 )}
 
                 {/* Complete Address */}
-                <Animated.View 
-                  style={[
-                    styles.inputContainer,
-                    { 
-                      transform: [{
-                        scale: activeInput === 'completeAddress' ? inputFocusAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [1, 1.02]
-                        }) : 1 
-                      }]
-                    }
-                  ]}
-                >
-                  <Text style={styles.label}>
-                    Complete Address <Text style={styles.requiredStar}>*</Text>
-                  </Text>
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Complete Address *</Text>
                   <TextInput
-                    style={[
-                      styles.input,
-                      styles.textArea,
-                      activeInput === 'completeAddress' && styles.inputFocused
-                    ]}
+                    style={[styles.input, styles.textArea]}
                     value={address.completeAddress}
                     onChangeText={(text) => handleInputChange('completeAddress', text)}
-                    onFocus={() => handleInputFocus('completeAddress')}
                     onBlur={handleInputBlur}
                     placeholder="Full address"
                     placeholderTextColor="#999"
                     multiline
                     numberOfLines={3}
                   />
-                </Animated.View>
+                </View>
 
                 {/* Landmark */}
-                <Animated.View 
-                  style={[
-                    styles.inputContainer,
-                    { 
-                      transform: [{
-                        scale: activeInput === 'landmark' ? inputFocusAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [1, 1.02]
-                        }) : 1 
-                      }]
-                    }
-                  ]}
-                >
+                <View style={styles.inputContainer}>
                   <Text style={styles.label}>Landmark</Text>
                   <TextInput
-                    style={[
-                      styles.input,
-                      activeInput === 'landmark' && styles.inputFocused
-                    ]}
+                    style={styles.input}
                     value={address.landmark}
                     onChangeText={(text) => handleInputChange('landmark', text)}
-                    onFocus={() => handleInputFocus('landmark')}
                     onBlur={handleInputBlur}
                     placeholder="Nearby landmark"
                     placeholderTextColor="#999"
                   />
-                </Animated.View>
+                </View>
 
+                {/* City, Zipcode */}
                 <View style={styles.row}>
-                  {/* City */}
-                  <Animated.View 
-                    style={[
-                      styles.inputContainer,
-                      styles.flex1,
-                      { 
-                        transform: [{
-                          scale: activeInput === 'city' ? inputFocusAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [1, 1.02]
-                          }) : 1 
-                        }]
-                      }
-                    ]}
-                  >
-                    <Text style={styles.label}>
-                      City <Text style={styles.requiredStar}>*</Text>
-                    </Text>
+                  <View style={[styles.inputContainer, styles.flex1]}>
+                    <Text style={styles.label}>City *</Text>
                     <TextInput
-                      style={[
-                        styles.input,
-                        activeInput === 'city' && styles.inputFocused
-                      ]}
+                      style={styles.input}
                       value={address.city}
                       onChangeText={(text) => handleInputChange('city', text)}
-                      onFocus={() => handleInputFocus('city')}
                       onBlur={handleInputBlur}
                       placeholder="City"
                       placeholderTextColor="#999"
                     />
-                  </Animated.View>
-
-                  {/* Zipcode */}
-                  <Animated.View 
-                    style={[
-                      styles.inputContainer,
-                      styles.flex1,
-                      styles.zipInput,
-                      { 
-                        transform: [{
-                          scale: activeInput === 'zipCode' ? inputFocusAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [1, 1.02]
-                          }) : 1 
-                        }]
-                      }
-                    ]}
-                  >
-                    <Text style={styles.label}>
-                      Zipcode <Text style={styles.requiredStar}>*</Text>
-                    </Text>
+                  </View>
+                  <View style={[styles.inputContainer, styles.flex1, styles.zipInput]}>
+                    <Text style={styles.label}>Zipcode *</Text>
                     <TextInput
-                      style={[
-                        styles.input,
-                        activeInput === 'zipCode' && styles.inputFocused
-                      ]}
+                      style={styles.input}
                       value={address.zipCode}
                       onChangeText={(text) => handleInputChange('zipCode', text)}
-                      onFocus={() => handleInputFocus('zipCode')}
                       onBlur={handleInputBlur}
                       placeholder="Zip code"
                       placeholderTextColor="#999"
                       keyboardType="numeric"
                     />
-                  </Animated.View>
+                  </View>
                 </View>
 
+                {/* State, Country */}
                 <View style={styles.row}>
-                  {/* State */}
-                  <Animated.View 
-                    style={[
-                      styles.inputContainer,
-                      styles.flex1,
-                      { 
-                        transform: [{
-                          scale: activeInput === 'state' ? inputFocusAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [1, 1.02]
-                          }) : 1 
-                        }]
-                      }
-                    ]}
-                  >
-                    <Text style={styles.label}>
-                      State <Text style={styles.requiredStar}>*</Text>
-                    </Text>
+                  <View style={[styles.inputContainer, styles.flex1]}>
+                    <Text style={styles.label}>State *</Text>
                     <TextInput
-                      style={[
-                        styles.input,
-                        activeInput === 'state' && styles.inputFocused
-                      ]}
+                      style={styles.input}
                       value={address.state}
                       onChangeText={(text) => handleInputChange('state', text)}
-                      onFocus={() => handleInputFocus('state')}
                       onBlur={handleInputBlur}
                       placeholder="State"
                       placeholderTextColor="#999"
                     />
-                  </Animated.View>
-
-                  {/* Country */}
-                  <Animated.View 
-                    style={[
-                      styles.inputContainer,
-                      styles.flex1,
-                      { 
-                        transform: [{
-                          scale: activeInput === 'country' ? inputFocusAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [1, 1.02]
-                          }) : 1 
-                        }]
-                      }
-                    ]}
-                  >
-                    <Text style={styles.label}>
-                      Country <Text style={styles.requiredStar}>*</Text>
-                    </Text>
+                  </View>
+                  <View style={[styles.inputContainer, styles.flex1]}>
+                    <Text style={styles.label}>Country *</Text>
                     <TextInput
-                      style={[
-                        styles.input,
-                        activeInput === 'country' && styles.inputFocused
-                      ]}
+                      style={styles.input}
                       value={address.country}
                       onChangeText={(text) => handleInputChange('country', text)}
-                      onFocus={() => handleInputFocus('country')}
                       onBlur={handleInputBlur}
                       placeholder="Country"
                       placeholderTextColor="#999"
                     />
-                  </Animated.View>
+                  </View>
                 </View>
 
-                {/* Save Button - Fixed at bottom */}
-                <View style={styles.saveButtonContainer}>
-                  <TouchableOpacity 
-                    style={[styles.saveButton, isSubmitting && styles.saveButtonDisabled]} 
-                    onPress={handleSaveAddress}
-                    disabled={isSubmitting}
-                    activeOpacity={0.8}
-                  >
-                    <View style={styles.saveButtonContent}>
-                      {isSubmitting ? (
-                        <ActivityIndicator size="small" color="#FFFFFF" />
-                      ) : (
-                        <>
-                          <Icon name="checkmark-circle-outline" size={22} color="#FFF" style={styles.saveIcon} />
-                          <Text style={styles.saveButtonText}>Save Address</Text>
-                        </>
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                </View>
+                {/* Save Button */}
+                <TouchableOpacity 
+                  style={[styles.saveButton, isSubmitting && styles.saveButtonDisabled]} 
+                  onPress={handleSaveAddress}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.saveButtonText}>Save Address</Text>
+                  )}
+                </TouchableOpacity>
+
+                <View style={styles.spacer} />
               </ScrollView>
             </Animated.View>
           )}
@@ -1235,217 +931,87 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
-  header: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#FFFFFF',
-    zIndex: 40,
-    paddingTop: Platform.OS === 'ios' ? 50 : 25,
-    paddingBottom: 15,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
-  },
-  headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-  },
-  backButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: '#F8F9FA',
-    marginRight: 12,
-  },
-  searchContainer: {
+  loadingContainer: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8F9FA',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    height: 44,
-    borderWidth: 2,
-    borderColor: '#F0F0F0',
-  },
-  searchIcon: {
-    marginRight: 12,
-  },
-  searchInput: {
-    flex: 1,
-    height: 44,
-    color: '#2D3436',
-    fontSize: 16,
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
-    paddingVertical: 0,
-  },
-  clearButton: {
-    padding: 6,
-  },
-  searchLoading: {
-    marginLeft: 8,
-  },
-  searchResultsContainer: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 105 : 80,
-    left: 16,
-    right: 16,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    maxHeight: 300,
-    zIndex: 50,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.15,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 10,
-      },
-    }),
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-    overflow: 'hidden',
-  },
-  searchResultsList: {
-    borderRadius: 16,
-  },
-  searchItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F8F9FA',
-  },
-  searchItemIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#FFF5F0',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    backgroundColor: '#FFFFFF',
   },
-  searchItemTextContainer: {
-    flex: 1,
-  },
-  searchItemPrimaryText: {
-    fontSize: 15,
-    color: '#2D3436',
-    marginBottom: 4,
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
-  },
-  searchItemSecondaryText: {
-    fontSize: 13,
-    color: '#7F8C8D',
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
-    lineHeight: 16,
-  },
-  mapContainer: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 100 : 75,
-    left: 0,
-    right: 0,
-    height: height * 0.55,
-    zIndex: 1,
-  },
-  map: {
-    ...StyleSheet.absoluteFillObject,
+  loadingText: {
+    marginTop: 16,
+    color: '#333333',
+    fontSize: 16,
   },
   mapLoadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#F8F8F8',
   },
   mapLoadingText: {
     marginTop: 16,
     color: '#333333',
     fontSize: 16,
     fontWeight: '600',
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
   },
-  expandButtonContainer: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 100 + height * 0.55 - 24 : 75 + height * 0.55 - 24,
-    left: '50%',
-    marginLeft: -24,
-    zIndex: 20,
+  mapLoadingSubtext: {
+    marginTop: 8,
+    color: '#666666',
+    fontSize: 14,
   },
-  expandButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#FF6B35',
-    justifyContent: 'center',
+  header: {
+    flexDirection: 'row',
     alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#FF6B35',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
-  },
-  markerContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  markerPin: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FF6B35',
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'ios' ? 50 : 10,
+    paddingBottom: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEEEEE',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 3,
       },
       android: {
-        elevation: 6,
+        elevation: 5,
       },
     }),
+    zIndex: 10,
   },
-  markerBase: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#FF6B35',
-    position: 'absolute',
-    bottom: -18,
+  backButton: {
+    padding: 4,
+    borderRadius: 20,
+    backgroundColor: '#F8F8F8',
   },
-  currentLocationButton: {
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333333',
+  },
+  headerRightPlaceholder: {
+    width: 32,
+  },
+  mapContainer: {
+    height: '45%',
+    position: 'relative',
+  },
+  map: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  searchContainer: {
     position: 'absolute',
-    bottom: 100,
-    right: 20,
-    backgroundColor: '#FFFFFF',
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    justifyContent: 'center',
+    top: 16,
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 8,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -1454,144 +1020,239 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
       },
       android: {
-        elevation: 6,
+        elevation: 8,
+        shadowColor: '#000',
       },
     }),
-    zIndex: 10,
   },
-  locationButtonInner: {
+  searchInputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8F8F8',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 44,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    height: 44,
+    color: '#333333',
+    fontSize: 16,
+    ...Platform.select({
+      ios: {
+        paddingVertical: 8,
+      },
+    }),
+  },
+  clearButton: {
+    padding: 4,
+  },
+  searchLoading: {
+    marginLeft: 8,
+  },
+  searchResultsContainer: {
+    position: 'absolute',
+    top: 68,
+    left: 16,
+    right: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    maxHeight: 200,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 8,
+        shadowColor: '#000',
+      },
+    }),
+    zIndex: 1000,
+  },
+  searchResultsList: {
+    borderRadius: 12,
+  },
+  searchItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEEEEE',
+  },
+  searchItemIcon: {
+    marginRight: 12,
+  },
+  searchItemTextContainer: {
+    flex: 1,
+  },
+  searchItemPrimaryText: {
+    fontSize: 16,
+    color: '#333333',
+    marginBottom: 2,
+  },
+  searchItemSecondaryText: {
+    fontSize: 14,
+    color: '#666666',
+  },
+  markerContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  markerPin: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#E65C00',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 3,
+      },
+      android: {
+        elevation: 5,
+      },
+    }),
+  },
+  markerBase: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#E65C00',
+    position: 'absolute',
+    bottom: -15,
+  },
+  currentLocationButton: {
+    position: 'absolute',
+    bottom: 100,
+    right: 16,
+    backgroundColor: '#FFFFFF',
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#F8F9FA',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#FF6B35',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+      },
+      android: {
+        elevation: 5,
+      },
+    }),
+  },
+  locationButtonInner: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F8F8F8',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   locationErrorBanner: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(255, 149, 0, 0.95)',
-    padding: 12,
+    backgroundColor: 'rgba(255, 149, 0, 0.9)',
+    padding: 8,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
-    zIndex: 5,
   },
   locationErrorText: {
     color: '#FFFFFF',
     fontWeight: '600',
     marginLeft: 8,
     fontSize: 14,
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
   },
   draggingOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(255, 107, 53, 0.95)',
-    padding: 14,
+    backgroundColor: 'rgba(230, 92, 0, 0.8)',
+    padding: 8,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-    zIndex: 5,
   },
   draggingText: {
     color: '#FFFFFF',
     fontWeight: 'bold',
-    marginLeft: 12,
-    fontSize: 15,
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
+    marginLeft: 8,
   },
   formContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: height,
+    flex: 1,
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    overflow: 'hidden',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    marginTop: -20,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: -8 },
+        shadowOffset: { width: 0, height: -3 },
         shadowOpacity: 0.1,
-        shadowRadius: 16,
+        shadowRadius: 4,
       },
       android: {
-        elevation: 16,
+        elevation: 10,
         borderTopWidth: 1,
-        borderTopColor: '#F0F0F0',
+        borderTopColor: '#EEE',
       },
     }),
-    zIndex: 2,
   },
   formScrollContainer: {
-    flex: 1,
-  },
-  formScrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 120,
-    paddingTop: 100,
-  },
-  formHeader: {
-    marginBottom: 20,
+    padding: 20,
   },
   sectionTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#2D3436',
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
-  },
-  sectionSubtitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#636E72',
-    marginBottom: 12,
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#333333',
+    marginBottom: 20,
   },
   addressTypeContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 24,
-    gap: 10,
+    marginBottom: 20,
   },
   addressTypeButton: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    overflow: 'hidden',
-  },
-  addressTypeButtonInner: {
     flexDirection: 'row',
+    padding: 12,
+    marginHorizontal: 4,
+    borderRadius: 12,
+    backgroundColor: '#F8F8F8',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-  },
-  addressTypeButtonInnerSelected: {
-    backgroundColor: '#FF6B35',
+    borderWidth: 1,
+    borderColor: '#EEEEEE',
   },
   addressTypeButtonSelected: {
-    borderColor: '#FF6B35',
+    backgroundColor: '#E65C00',
+    borderColor: '#E65C00',
+  },
+  addressTypeIcon: {
+    marginRight: 6,
   },
   addressTypeText: {
-    color: '#636E72',
+    color: '#666666',
     fontWeight: '600',
-    fontSize: 14,
-    marginLeft: 6,
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
   },
   addressTypeTextSelected: {
     color: '#FFFFFF',
@@ -1600,110 +1261,74 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   label: {
-    color: '#2D3436',
+    color: '#333333',
     marginBottom: 8,
     fontWeight: '600',
     fontSize: 14,
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
-  },
-  requiredStar: {
-    color: '#FF6B35',
   },
   input: {
-    backgroundColor: '#F8F9FA',
-    borderWidth: 2,
-    borderColor: '#F0F0F0',
-    borderRadius: 14,
+    backgroundColor: '#F8F8F8',
+    borderWidth: 1,
+    borderColor: '#EEEEEE',
+    borderRadius: 12,
     padding: 16,
     fontSize: 16,
-    color: '#2D3436',
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
+    color: '#333333',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.03,
-        shadowRadius: 3,
+        shadowOpacity: 0.05,
+        shadowRadius: 1,
       },
       android: {
-        elevation: 2,
-      },
-    }),
-  },
-  inputFocused: {
-    borderColor: '#FF6B35',
-    backgroundColor: '#FFFFFF',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#FF6B35',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 4,
+        elevation: 1,
       },
     }),
   },
   textArea: {
     minHeight: 100,
     textAlignVertical: 'top',
-    lineHeight: 20,
   },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 12,
   },
   flex1: {
     flex: 1,
   },
   zipInput: {
-    marginLeft: 0,
-  },
-  saveButtonContainer: {
-    marginTop: 20,
-    marginBottom: 40,
+    marginLeft: 10,
   },
   saveButton: {
-    backgroundColor: '#FF6B35',
+    backgroundColor: '#E65C00',
     padding: 18,
-    borderRadius: 16,
+    borderRadius: 12,
     alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 30,
     ...Platform.select({
       ios: {
-        shadowColor: '#FF6B35',
-        shadowOffset: { width: 0, height: 4 },
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.3,
-        shadowRadius: 8,
+        shadowRadius: 3,
       },
       android: {
-        elevation: 6,
+        elevation: 5,
       },
     }),
-  },
-  saveButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   saveButtonDisabled: {
-    backgroundColor: '#DFE6E9',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#DFE6E9',
-        shadowOpacity: 0.2,
-      },
-    }),
-  },
-  saveIcon: {
-    marginRight: 10,
+    backgroundColor: '#CCCCCC',
   },
   saveButtonText: {
     color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '700',
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  spacer: {
+    height: 20,
   },
 });
 
