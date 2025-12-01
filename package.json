@@ -10,6 +10,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@mapbox/polyline": "^1.2.1",
     "@notifee/react-native": "^9.1.8",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-clipboard/clipboard": "^1.16.3",
@@ -36,6 +37,7 @@
     "react-native-gesture-handler": "^2.28.0",
     "react-native-linear-gradient": "^2.8.3",
     "react-native-maps": "^1.26.14",
+    "react-native-maps-clustering": "^1.2.4",
     "react-native-modal": "^14.0.0-rc.1",
     "react-native-otp-verify": "^1.1.8",
     "react-native-permissions": "^5.4.4",
@@ -43,6 +45,7 @@
     "react-native-safe-area-context": "^5.6.0",
     "react-native-screens": "^4.13.1",
     "react-native-sms-retriever": "^1.1.1",
+    "react-native-svg": "^15.15.0",
     "react-native-vector-icons": "^10.3.0"
   },
   "devDependencies": {

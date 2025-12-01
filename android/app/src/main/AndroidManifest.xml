@@ -12,51 +12,55 @@
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
     <application
-        android:name=".MainApplication"
+    android:name=".MainApplication"
+    android:label="@string/app_name"
+    android:icon="@mipmap/ic_launcher"
+    android:roundIcon="@mipmap/ic_launcher_round"
+    android:allowBackup="false"
+    android:hardwareAccelerated="true"
+    android:usesCleartextTraffic="true"
+    android:theme="@style/AppTheme"
+    android:supportsRtl="true">
+
+    <!-- Main Activity -->
+    <activity
+        android:name=".MainActivity"
         android:label="@string/app_name"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round"
-        android:allowBackup="false"
-        android:theme="@style/AppTheme"
-        android:supportsRtl="true">
+        android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
+        android:launchMode="singleTask"
+        android:windowSoftInputMode="adjustResize"
+        android:exported="true">
+        <intent-filter>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent-filter>
+    </activity>
 
-        <!-- Main Activity -->
-        <activity
-            android:name=".MainActivity"
-            android:label="@string/app_name"
-            android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
-            android:launchMode="singleTask"
-            android:windowSoftInputMode="adjustResize"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+    <!-- Razorpay conflict resolution -->
+    <activity
+        android:name="com.razorpay.CheckoutActivity"
+        android:exported="true"
+        tools:replace="android:exported" />
 
-        <!-- Razorpay conflict resolution -->
-        <activity
-            android:name="com.razorpay.CheckoutActivity"
-            android:exported="true"
-            tools:replace="android:exported" />
+    <!-- OTP Autofill -->
+    <activity
+        android:name="com.facebook.react.common.otp.OtpRetrieverBroadcastReceiver"
+        android:exported="true">
+        <intent-filter>
+            <action android:name="com.google.android.gms.auth.api.phone.SMS_RETRIEVED" />
+        </intent-filter>
+    </activity>
 
-        <!-- ADD THIS FOR OTP AUTOFILL -->
-        <activity
-            android:name="com.facebook.react.common.otp.OtpRetrieverBroadcastReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="com.google.android.gms.auth.api.phone.SMS_RETRIEVED" />
-            </intent-filter>
-        </activity>
+    <!-- GOOGLE MAPS API KEY -->
+    <meta-data
+        android:name="com.google.android.geo.API_KEY"
+        android:value="AIzaSyBKOWlVTzhP7lRcNEHbT2SNz-W_bYx3v28" />
 
-        <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyBKOWlVTzhP7lRcNEHbT2SNz-W_bYx3v28"/>
+    <!-- ADMOB -->
+    <meta-data 
+        android:name="com.google.android.gms.ads.APPLICATION_ID"
+        android:value="ca-app-pub-3940256099942544~3347511713" />
 
-        <meta-data 
-            android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713" />
+</application>
 
-
-    </application>
 </manifest>

@@ -100,6 +100,7 @@ const TrackOrder = () => {
   const [liveTrackingData, setLiveTrackingData] = useState<LiveTrackingData | null>(null);
   const [trackingInterval, setTrackingInterval] = useState<NodeJS.Timeout | null>(null);
   const [lastUpdated, setLastUpdated] = useState(moment());
+  const [rotationAngleValue, setRotationAngleValue] = useState(0);
   
   const ANIMATION_DURATION = 2000;
   
@@ -112,22 +113,16 @@ const TrackOrder = () => {
     image: 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png'
   });
 
-  // Calculate current position
-  const currentLatitude = coordinates?.agent ? deliveryAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [coordinates.restaurant.latitude, coordinates.delivery.latitude]
-  }) : 0;
-
-  const currentLongitude = coordinates?.agent ? deliveryAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [coordinates.restaurant.longitude, coordinates.delivery.longitude]
-  }) : 0;
-
-  // Calculate rotation angle
-  const rotationAngle = deliveryAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '90deg']
-  });
+  // Update rotation angle when animation changes
+  useEffect(() => {
+    const listener = deliveryAnim.addListener(({ value }) => {
+      setRotationAngleValue(value * 90);
+    });
+    
+    return () => {
+      deliveryAnim.removeListener(listener);
+    };
+  }, [deliveryAnim]);
 
   // Calculate distance between two coordinates (Haversine formula)
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -559,7 +554,7 @@ const TrackOrder = () => {
             marginBottom: isMapExpanded ? 0 : 16,
           }
         ]}>
-          {coordinates && (
+          {coordinates ? (
             <MapView
               ref={mapRef}
               provider={PROVIDER_GOOGLE}
@@ -574,65 +569,83 @@ const TrackOrder = () => {
               zoomEnabled={isMapExpanded}
               rotateEnabled={isMapExpanded}
               pitchEnabled={isMapExpanded}
+              showsUserLocation={false}
+              showsMyLocationButton={false}
+              showsCompass={false}
+              showsScale={false}
+              showsTraffic={false}
+              showsBuildings={false}
+              showsIndoors={false}
             >
+              {/* Polyline connecting restaurant and delivery location */}
               <Polyline
                 coordinates={[coordinates.restaurant, coordinates.delivery]}
                 strokeColor="#FF7A33"
-                strokeWidth={4}
+                strokeWidth={3}
                 lineDashPattern={[5, 5]}
               />
               
-              <Marker coordinate={coordinates.restaurant}>
+              {/* Restaurant Marker */}
+              <Marker
+                coordinate={coordinates.restaurant}
+                title={coordinates.restaurant.title}
+                description="Restaurant"
+              >
                 <Animated.View style={[
                   styles.restaurantMarker, 
                   { 
                     backgroundColor: statusDetails.color,
-                    transform: [{
-                      scale: deliveryAnim.interpolate({
-                        inputRange: [0, 0.5, 1],
-                        outputRange: [1, 1.2, 1]
-                      })
-                    }]
                   }
                 ]}>
                   <Icon name="restaurant" size={20} color="#fff" />
                 </Animated.View>
               </Marker>
               
-              <Marker coordinate={coordinates.delivery}>
+              {/* Delivery Location Marker */}
+              <Marker
+                coordinate={coordinates.delivery}
+                title={coordinates.delivery.title}
+                description="Your Location"
+              >
                 <Animated.View style={[
                   styles.deliveryMarker,
                   {
                     backgroundColor: statusDetails.color,
-                    transform: [{
-                      scale: deliveryAnim.interpolate({
-                        inputRange: [0, 0.8, 1],
-                        outputRange: [1, 1.2, 1.5]
-                      })
-                    }]
                   }
                 ]}>
                   <Icon name="home" size={20} color="#fff" />
                 </Animated.View>
               </Marker>
               
+              {/* Delivery Partner Marker (if available) */}
               {coordinates.agent && (
-                <Marker coordinate={{
-                  latitude: coordinates.agent.latitude,
-                  longitude: coordinates.agent.longitude
-                }}>
-                  <Animated.View style={[
-                    styles.deliveryPartnerMarker, 
-                    { 
-                      backgroundColor: statusDetails.color,
-                      transform: [{ rotate: rotationAngle.__getValue() }]
-                    }
-                  ]}>
+                <Marker
+                  coordinate={{
+                    latitude: coordinates.agent.latitude,
+                    longitude: coordinates.agent.longitude
+                  }}
+                  title={coordinates.agent.title}
+                  description="Delivery Partner"
+                >
+                  <Animated.View 
+                    style={[
+                      styles.deliveryPartnerMarker, 
+                      { 
+                        backgroundColor: statusDetails.color,
+                        transform: [{ rotate: `${rotationAngleValue}deg` }]
+                      }
+                    ]}
+                  >
                     <Icon name="bicycle" size={24} color="#fff" />
                   </Animated.View>
                 </Marker>
               )}
             </MapView>
+          ) : (
+            <View style={styles.mapPlaceholder}>
+              <ActivityIndicator size="large" color="#FF7A33" />
+              <Text style={styles.mapPlaceholderText}>Loading map...</Text>
+            </View>
           )}
 
           {/* Order Info Overlay - Only visible when map is small */}
@@ -660,7 +673,7 @@ const TrackOrder = () => {
             <View style={styles.deliveryInfo}>
               <View style={styles.deliveryInfoItem}>
                 <Icon name="location-outline" size={14} color="#FF7A33" />
-                <Text style={styles.deliveryText}>{distance}</Text>
+                <Text style={styles.deliveryText}>{distance || 'Calculating...'}</Text>
               </View>
               <View style={styles.deliveryInfoItem}>
                 <Icon name="time-outline" size={14} color="#FF7A33" />
@@ -773,7 +786,7 @@ const TrackOrder = () => {
         <View style={styles.orderDetailsCard}>
           <Text style={styles.sectionTitle}>Order Details</Text>
           
-          {order.items.map((item, index) => (
+          {order.items && order.items.map((item, index) => (
             <View key={index} style={styles.orderItem}>
               <View style={styles.itemImagePlaceholder}>
                 <Icon name="fast-food-outline" size={18} color="#666" />
@@ -906,6 +919,17 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  mapPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0'
+  },
+  mapPlaceholderText: {
+    marginTop: 10,
+    fontSize: getResponsiveFontSize(14),
+    color: '#666'
+  },
   orderInfoOverlay: {
     position: 'absolute',
     bottom: 0,
@@ -958,14 +982,6 @@ const styles = StyleSheet.create({
   kitchenStatus: {
     fontSize: getResponsiveFontSize(13),
     color: '#666'
-  },
-  refreshButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 122, 51, 0.1)'
   },
   deliveryInfo: {
     flexDirection: 'row',
