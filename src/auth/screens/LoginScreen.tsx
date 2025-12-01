@@ -42,6 +42,16 @@ const errorColor = '#D32F2F';
 const linkColor = '#E65C00';
 const backgroundColor = '#FFFFFF';
 
+// Responsive sizing
+const responsiveSize = (size: number) => {
+  const baseWidth = 375; // iPhone 6/7/8
+  const scale = width / baseWidth;
+  return Math.round(size * Math.min(scale, 1.2));
+};
+
+const isSmallDevice = width < 375;
+const isLargeDevice = width > 414;
+
 const LoginScreen = () => {
   const navigation = useNavigation<StackNavigationProp<AuthStackParamList, 'Login'>>();
 
@@ -167,7 +177,7 @@ const LoginScreen = () => {
 
   const handleInputFocus = () => {
     setTimeout(() => {
-      scrollViewRef.current?.scrollTo({ y: 120, animated: true });
+      scrollViewRef.current?.scrollTo({ y: isSmallDevice ? 80 : 120, animated: true });
     }, 100);
   };
 
@@ -205,39 +215,53 @@ const LoginScreen = () => {
       {/* ------------------------ */}
       {/* COUNTRY PICKER MODAL    */}
       {/* ------------------------ */}
-      <Modal visible={showCountryPicker} animationType="slide">
+      <Modal 
+        visible={showCountryPicker} 
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
         <SafeAreaView style={styles.modalContainer}>
+          {/* Compact Header */}
           <View style={styles.modalHeader}>
-            <View>
-              <Text style={styles.modalTitle}>Select Country</Text>
-              <Text style={styles.modalSubtitle}>Choose your country code</Text>
-            </View>
-            <TouchableOpacity onPress={() => setShowCountryPicker(false)}>
-              <Icon name="close" size={26} color={textColor} />
+            <TouchableOpacity 
+              style={styles.modalCloseButton}
+              onPress={() => setShowCountryPicker(false)}
+            >
+              <Icon name="close" size={24} color={textColor} />
             </TouchableOpacity>
+            <View style={styles.modalTitleContainer}>
+              <Text style={styles.modalTitle}>Select Country</Text>
+            </View>
+            <View style={styles.modalCloseButton} />
           </View>
 
+          {/* Compact Search */}
           <View style={styles.searchContainer}>
-            <Icon name="search-outline" size={20} color={lightTextColor} style={{ marginRight: 10 }} />
-            <TextInput
-              placeholder="Search country or code..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              style={styles.searchInput}
-              placeholderTextColor={lightTextColor}
-              autoFocus
-            />
-            {searchQuery ? (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Icon name="close-circle" size={20} color={lightTextColor} />
-              </TouchableOpacity>
-            ) : null}
+            <View style={styles.searchInputContainer}>
+              <Icon name="search-outline" size={18} color={lightTextColor} style={styles.searchIcon} />
+              <TextInput
+                placeholder="Search country or code..."
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                style={styles.searchInput}
+                placeholderTextColor={lightTextColor}
+                autoFocus
+              />
+              {searchQuery ? (
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <Icon name="close-circle" size={18} color={lightTextColor} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
           </View>
 
           <FlatList
             data={filteredCountries}
             renderItem={renderCountryItem}
             keyExtractor={(item) => item.code}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.countryList}
+            keyboardShouldPersistTaps="handled"
           />
         </SafeAreaView>
       </Modal>
@@ -246,8 +270,17 @@ const LoginScreen = () => {
       {/* MAIN CONTENT             */}
       {/* ------------------------ */}
       <View style={styles.container}>
-        <KeyboardAvoidingView style={styles.keyboardAvoid} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <ScrollView ref={scrollViewRef} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        <KeyboardAvoidingView 
+          style={styles.keyboardAvoid} 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
+          <ScrollView 
+            ref={scrollViewRef} 
+            contentContainerStyle={styles.scrollContent} 
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
               <View style={styles.content}>
                 
@@ -256,6 +289,7 @@ const LoginScreen = () => {
                   <Image
                     source={{ uri: 'https://eatoorprod.s3.amazonaws.com/eatoor-logo/fwdeatoorlogofiles/5.png' }}
                     style={styles.logoImage}
+                    resizeMode="contain"
                   />
                   <View style={styles.badge}>
                     <Text style={styles.badgeText}>Food Delivery</Text>
@@ -276,7 +310,10 @@ const LoginScreen = () => {
                     <View style={styles.inputWrapper}>
                       
                       {/* Country Picker */}
-                      <TouchableOpacity style={styles.countryPicker} onPress={() => setShowCountryPicker(true)}>
+                      <TouchableOpacity 
+                        style={styles.countryPicker} 
+                        onPress={() => setShowCountryPicker(true)}
+                      >
                         <Text style={styles.countryFlag}>{selectedCountry.flag}</Text>
                         <Text style={styles.dialCode}>{selectedCountry.dialCode}</Text>
                         <Icon name="chevron-down" size={14} color={primaryColor} />
@@ -310,7 +347,10 @@ const LoginScreen = () => {
 
                   {/* Continue */}
                   <TouchableOpacity
-                    style={[styles.continueButton, (mobileNumber.length < selectedCountry.minLength || isLoading) && styles.buttonDisabled]}
+                    style={[
+                      styles.continueButton, 
+                      (mobileNumber.length < selectedCountry.minLength || isLoading) && styles.buttonDisabled
+                    ]}
                     disabled={mobileNumber.length < selectedCountry.minLength || isLoading}
                     onPress={handleContinue}
                   >
@@ -328,9 +368,13 @@ const LoginScreen = () => {
                   <View style={styles.termsContainer}>
                     <Text style={styles.termsText}>
                       By continuing, agree to{' '}
-                      <Text style={styles.linkText} onPress={() => Linking.openURL('https://www.eatoor.com/terms-and-conditions')}>Terms</Text>
+                      <Text style={styles.linkText} onPress={() => Linking.openURL('https://www.eatoor.com/terms-and-conditions')}>
+                        Terms
+                      </Text>
                       {' '}and{' '}
-                      <Text style={styles.linkText} onPress={() => Linking.openURL('https://www.eatoor.com/privacy-policy')}>Privacy</Text>
+                      <Text style={styles.linkText} onPress={() => Linking.openURL('https://www.eatoor.com/privacy-policy')}>
+                        Privacy
+                      </Text>
                     </Text>
                   </View>
 
@@ -345,69 +389,122 @@ const LoginScreen = () => {
 };
 
 /* ---------------------------- */
-/*        STYLES BELOW          */
+/*        IMPROVED STYLES       */
 /* ---------------------------- */
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: backgroundColor },
-  container: { flex: 1, backgroundColor },
-  keyboardAvoid: { flex: 1 },
-  scrollContent: { flexGrow: 1, justifyContent: 'center' },
+  safeArea: { 
+    flex: 1, 
+    backgroundColor: backgroundColor 
+  },
+  container: { 
+    flex: 1, 
+    backgroundColor 
+  },
+  keyboardAvoid: { 
+    flex: 1 
+  },
+  scrollContent: { 
+    flexGrow: 1, 
+    justifyContent: 'center',
+    minHeight: height,
+  },
 
   content: {
     flex: 1,
-    minHeight: height,
+    minHeight: height * 0.8,
     justifyContent: 'center',
-    paddingBottom: 20,
+    paddingBottom: responsiveSize(20),
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: responsiveSize(20),
   },
 
-  logoContainer: { alignItems: 'center', marginBottom: 30 },
-  logoImage: { width: 100, height: 100, borderRadius: 20 },
+  logoContainer: { 
+    alignItems: 'center', 
+    marginBottom: isSmallDevice ? responsiveSize(20) : responsiveSize(30) 
+  },
+  logoImage: { 
+    width: isSmallDevice ? responsiveSize(80) : responsiveSize(100), 
+    height: isSmallDevice ? responsiveSize(80) : responsiveSize(100), 
+    borderRadius: responsiveSize(20) 
+  },
   badge: {
-    marginTop: 10,
+    marginTop: responsiveSize(8),
     backgroundColor: '#FFF5E6',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
+    paddingHorizontal: responsiveSize(12),
+    paddingVertical: responsiveSize(6),
+    borderRadius: responsiveSize(12),
     borderColor: '#FFE4C2',
     borderWidth: 1,
   },
-  badgeText: { color: primaryColor, fontWeight: '600', fontSize: 12 },
+  badgeText: { 
+    color: primaryColor, 
+    fontWeight: '600', 
+    fontSize: responsiveSize(12) 
+  },
 
-  headingWithLines: { flexDirection: 'row', alignItems: 'center', width: '100%', maxWidth: 300, marginBottom: 35 },
-  line: { flex: 1, height: 1, backgroundColor: borderColor },
-  headingTitle: { marginHorizontal: 15, fontSize: 18, fontWeight: '600', color: textColor },
+  headingWithLines: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    width: '100%', 
+    maxWidth: responsiveSize(300), 
+    marginBottom: isSmallDevice ? responsiveSize(25) : responsiveSize(35) 
+  },
+  line: { 
+    flex: 1, 
+    height: 1, 
+    backgroundColor: borderColor 
+  },
+  headingTitle: { 
+    marginHorizontal: responsiveSize(15), 
+    fontSize: responsiveSize(18), 
+    fontWeight: '600', 
+    color: textColor 
+  },
 
-  inputSection: { width: '100%', maxWidth: 400, alignItems: 'center' },
-  inputContainer: { marginBottom: 25, width: '100%' },
+  inputSection: { 
+    width: '100%', 
+    maxWidth: responsiveSize(400), 
+    alignItems: 'center' 
+  },
+  inputContainer: { 
+    marginBottom: responsiveSize(25), 
+    width: '100%' 
+  },
 
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1.5,
     borderColor: borderColor,
-    borderRadius: 12,
+    borderRadius: responsiveSize(12),
     backgroundColor: '#FAFAFA',
-    paddingHorizontal: 14,
-    height: 52,
+    paddingHorizontal: responsiveSize(14),
+    height: responsiveSize(52),
   },
 
   countryPicker: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingRight: 12,
+    paddingRight: responsiveSize(12),
     borderRightWidth: 1.5,
     borderRightColor: borderColor,
-    marginRight: 12,
-    minWidth: 85,
+    marginRight: responsiveSize(12),
+    minWidth: responsiveSize(85),
   },
 
-  countryFlag: { fontSize: 14, marginRight: 6 },
-  dialCode: { fontSize: 14, fontWeight: '500', color: textColor, marginRight: 6 },
+  countryFlag: { 
+    fontSize: responsiveSize(14), 
+    marginRight: responsiveSize(6) 
+  },
+  dialCode: { 
+    fontSize: responsiveSize(14), 
+    fontWeight: '500', 
+    color: textColor, 
+    marginRight: responsiveSize(6) 
+  },
   input: {
     flex: 1,
-    fontSize: 16,
+    fontSize: responsiveSize(16),
     color: textColor,
     fontWeight: '400',
     paddingVertical: 0,
@@ -417,66 +514,146 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFF5F5',
-    marginTop: 8,
-    padding: 8,
-    borderRadius: 6,
+    marginTop: responsiveSize(8),
+    padding: responsiveSize(8),
+    borderRadius: responsiveSize(6),
   },
-  errorText: { color: errorColor, marginLeft: 6, fontWeight: '500', fontSize: 13 },
+  errorText: { 
+    color: errorColor, 
+    marginLeft: responsiveSize(6), 
+    fontWeight: '500', 
+    fontSize: responsiveSize(13) 
+  },
 
   continueButton: {
     backgroundColor: primaryColor,
-    paddingVertical: 15,
-    borderRadius: 12,
+    paddingVertical: responsiveSize(15),
+    borderRadius: responsiveSize(12),
     width: '100%',
-    maxWidth: 400,
+    maxWidth: responsiveSize(400),
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
-  buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  buttonIcon: { marginLeft: 8 },
+  buttonDisabled: { 
+    opacity: 0.6 
+  },
+  buttonText: { 
+    color: '#fff', 
+    fontSize: responsiveSize(16), 
+    fontWeight: '600' 
+  },
+  buttonIcon: { 
+    marginLeft: responsiveSize(8) 
+  },
 
-  termsContainer: { marginTop: 10 },
-  termsText: { color: lightTextColor, fontSize: 12, textAlign: 'center' },
-  linkText: { color: linkColor, fontWeight: '600' },
+  termsContainer: { 
+    marginTop: responsiveSize(10) 
+  },
+  termsText: { 
+    color: lightTextColor, 
+    fontSize: responsiveSize(12), 
+    textAlign: 'center',
+    lineHeight: responsiveSize(16),
+  },
+  linkText: { 
+    color: linkColor, 
+    fontWeight: '600' 
+  },
 
-  /* MODAL STYLES */
-  modalContainer: { flex: 1, backgroundColor: '#fff' },
+  /* IMPROVED MODAL STYLES - More Compact */
+  modalContainer: { 
+    flex: 1, 
+    backgroundColor: '#fff' 
+  },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    padding: 20,
+    alignItems: 'center',
+    paddingHorizontal: responsiveSize(16),
+    paddingVertical: responsiveSize(12),
     borderBottomWidth: 1,
     borderBottomColor: borderColor,
+    minHeight: responsiveSize(56),
   },
-  modalTitle: { fontSize: 22, fontWeight: '700', color: textColor },
-  modalSubtitle: { fontSize: 14, color: lightTextColor },
+  modalCloseButton: {
+    width: responsiveSize(40),
+    height: responsiveSize(40),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalTitleContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  modalTitle: { 
+    fontSize: responsiveSize(18), 
+    fontWeight: '700', 
+    color: textColor 
+  },
 
   searchContainer: {
+    paddingHorizontal: responsiveSize(16),
+    paddingVertical: responsiveSize(12),
+    borderBottomWidth: 1,
+    borderBottomColor: borderColor,
+  },
+  searchInputContainer: {
     flexDirection: 'row',
-    padding: 14,
-    margin: 16,
+    alignItems: 'center',
     borderColor: borderColor,
     borderWidth: 1,
-    borderRadius: 10,
-    alignItems: 'center',
+    borderRadius: responsiveSize(10),
+    paddingHorizontal: responsiveSize(12),
+    height: responsiveSize(44),
     backgroundColor: '#F8F8F8',
   },
-  searchInput: { flex: 1, fontSize: 15, color: textColor },
+  searchIcon: { 
+    marginRight: responsiveSize(8) 
+  },
+  searchInput: { 
+    flex: 1, 
+    fontSize: responsiveSize(15), 
+    color: textColor,
+    paddingVertical: responsiveSize(8),
+  },
 
+  countryList: {
+    paddingBottom: responsiveSize(20),
+  },
   countryItem: {
     flexDirection: 'row',
-    padding: 14,
+    padding: responsiveSize(12),
+    paddingHorizontal: responsiveSize(16),
     borderBottomWidth: 1,
     borderBottomColor: borderColor,
     alignItems: 'center',
+    minHeight: responsiveSize(56),
   },
-  countryInfo: { flex: 1, marginLeft: 12 },
-  countryName: { fontSize: 15, fontWeight: '500', color: textColor },
-  countryRegion: { fontSize: 12, color: lightTextColor },
-  countryCode: { fontSize: 15, fontWeight: '600', color: primaryColor },
+  countryInfo: { 
+    flex: 1, 
+    marginLeft: responsiveSize(12) 
+  },
+  countryName: { 
+    fontSize: responsiveSize(15), 
+    fontWeight: '500', 
+    color: textColor 
+  },
+  countryRegion: { 
+    fontSize: responsiveSize(12), 
+    color: lightTextColor,
+    marginTop: responsiveSize(2),
+  },
+  countryCode: { 
+    fontSize: responsiveSize(15), 
+    fontWeight: '600', 
+    color: primaryColor 
+  },
 });
 
 export default LoginScreen;
