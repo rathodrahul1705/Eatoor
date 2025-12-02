@@ -16,6 +16,7 @@ import {
   FlatList,
   Animated,
   Easing,
+  SafeAreaView,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import Geolocation from '@react-native-community/geolocation';
@@ -46,7 +47,7 @@ const LOCATION_TIMEOUT = 10000; // 10 seconds
 const LOCATION_OPTIONS = {
   enableHighAccuracy: true,
   timeout: LOCATION_TIMEOUT,
-  maximumAge: 30000, // Use cached location up to 30 seconds old
+  maximumAge: 30000,
 };
 
 // Debounce utility function
@@ -108,9 +109,7 @@ const MapLocationPicker = () => {
     longitude: 0 
   });
   const [locationError, setLocationError] = useState(false);
-  const [isFormExpanded, setIsFormExpanded] = useState(false);
-  const [activeInput, setActiveInput] = useState(null);
-  const [scrollPosition, setScrollPosition] = useState(0);
+  const [mapHeight, setMapHeight] = useState(height * 0.4);
 
   // Refs
   const mapRef = useRef(null);
@@ -121,27 +120,11 @@ const MapLocationPicker = () => {
   const scrollViewRef = useRef(null);
   
   // Animation values
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const formTranslateY = useRef(new Animated.Value(height * 0.45)).current;
-  const mapTranslateY = useRef(new Animated.Value(0)).current;
-  const inputFocusAnim = useRef(new Animated.Value(0)).current;
-  const expandButtonRotate = useRef(new Animated.Value(0)).current;
   const searchResultsOpacity = useRef(new Animated.Value(0)).current;
-  const formScaleAnim = useRef(new Animated.Value(1)).current;
 
   // Cleanup function
   useEffect(() => {
     isMountedRef.current = true;
-    
-    // Initial animations
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 500,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start();
     
     // Initialize component
     initializeComponent();
@@ -156,49 +139,6 @@ const MapLocationPicker = () => {
       }
     };
   }, []);
-
-  // Toggle form expansion with scroll management
-  const toggleFormExpansion = () => {
-    const newExpandedState = !isFormExpanded;
-    setIsFormExpanded(newExpandedState);
-    
-    const formTargetY = newExpandedState ? height * 0.1 : height * 0.45;
-    const mapTargetY = newExpandedState ? -height * 0.35 : 0;
-    
-    // If expanding, scroll to top of form
-    if (newExpandedState && scrollViewRef.current) {
-      setTimeout(() => {
-        scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-      }, 100);
-    }
-    
-    Animated.parallel([
-      Animated.spring(formTranslateY, {
-        toValue: formTargetY,
-        tension: 50,
-        friction: 10,
-        useNativeDriver: true,
-      }),
-      Animated.spring(mapTranslateY, {
-        toValue: mapTargetY,
-        tension: 50,
-        friction: 10,
-        useNativeDriver: true,
-      }),
-      Animated.spring(expandButtonRotate, {
-        toValue: newExpandedState ? 1 : 0,
-        tension: 40,
-        friction: 8,
-        useNativeDriver: true,
-      }),
-      Animated.spring(formScaleAnim, {
-        toValue: newExpandedState ? 0.98 : 1,
-        tension: 40,
-        friction: 8,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
 
   // Show/hide search results
   const showSearchResultsWithAnimation = (show) => {
@@ -576,33 +516,19 @@ const MapLocationPicker = () => {
   };
 
   const handleInputFocus = (field) => {
-    setActiveInput(field);
-    Animated.spring(inputFocusAnim, {
-      toValue: 1,
-      tension: 50,
-      friction: 7,
-      useNativeDriver: false,
-    }).start();
+    // Scroll to input field when focused
+    setTimeout(() => {
+      if (scrollViewRef.current) {
+        scrollViewRef.current.scrollTo({ y: mapHeight + 100, animated: true });
+      }
+    }, 300);
   };
 
   const handleInputBlur = () => {
-    setActiveInput(null);
-    Animated.spring(inputFocusAnim, {
-      toValue: 0,
-      tension: 50,
-      friction: 7,
-      useNativeDriver: false,
-    }).start();
     // Reset manual edit flag after delay
     setTimeout(() => {
       setIsManualAddressEdit(false);
     }, 2000);
-  };
-
-  // Handle scroll events
-  const handleScroll = (event) => {
-    const currentOffset = event.nativeEvent.contentOffset.y;
-    setScrollPosition(currentOffset);
   };
 
   // Address validation and submission
@@ -693,7 +619,7 @@ const MapLocationPicker = () => {
       activeOpacity={0.7}
     >
       <View style={styles.searchItemIconContainer}>
-        <Icon name="location-outline" size={18} color="#FF6B35" />
+        <Icon name="location-outline" size={16} color="#FF6B35" />
       </View>
       <View style={styles.searchItemTextContainer}>
         <Text style={styles.searchItemPrimaryText} numberOfLines={1}>
@@ -728,7 +654,7 @@ const MapLocationPicker = () => {
             >
               <Icon 
                 name={type.icon} 
-                size={16} 
+                size={14} 
                 color={isSelected ? '#FFF' : '#666'} 
               />
               <Text
@@ -746,223 +672,178 @@ const MapLocationPicker = () => {
     </View>
   );
 
-  // Interpolations for animations
-  const expandButtonRotation = expandButtonRotate.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '180deg'],
-  });
+  const renderMapSection = () => (
+    <View style={[styles.mapContainer, { height: mapHeight }]}>
+      {loading ? (
+        <View style={styles.mapLoadingContainer}>
+          <ActivityIndicator size="large" color="#FF6B35" />
+          <Text style={styles.mapLoadingText}>Getting your location...</Text>
+        </View>
+      ) : (
+        <>
+          <MapView
+            ref={mapRef}
+            style={styles.map}
+            region={mapRegion}
+            provider={PROVIDER_GOOGLE}
+            showsUserLocation={true}
+            showsMyLocationButton={false}
+            onRegionChangeComplete={handleRegionChangeComplete}
+            onPanDrag={() => setIsDragging(true)}
+          >
+            {location && (
+              <Marker
+                coordinate={location}
+                draggable
+                onDragStart={() => setIsDragging(true)}
+                onDragEnd={(e) => {
+                  const newLocation = e.nativeEvent.coordinate;
+                  setLocation(newLocation);
+                  handleRegionChangeComplete({
+                    ...newLocation,
+                    latitudeDelta: mapRegion.latitudeDelta,
+                    longitudeDelta: mapRegion.longitudeDelta,
+                  });
+                }}
+              >
+                <View style={styles.markerContainer}>
+                  <View style={styles.markerPin}>
+                    <Icon name="location" size={20} color="#FFF" />
+                  </View>
+                  <View style={styles.markerBase} />
+                </View>
+              </Marker>
+            )}
+          </MapView>
+
+          {/* Current Location Button */}
+          <TouchableOpacity 
+            style={styles.currentLocationButton} 
+            onPress={getCurrentLocation}
+            activeOpacity={0.8}
+          >
+            <View style={styles.locationButtonInner}>
+              <Icon name="locate" size={20} color="#FF6B35" />
+            </View>
+          </TouchableOpacity>
+
+          {locationError && (
+            <View style={styles.locationErrorBanner}>
+              <Icon name="warning-outline" size={14} color="#FFF" />
+              <Text style={styles.locationErrorText}>Using default location</Text>
+            </View>
+          )}
+
+          {isDragging && (
+            <View style={styles.draggingOverlay}>
+              <ActivityIndicator size="small" color="#FFFFFF" />
+              <Text style={styles.draggingText}>Updating address...</Text>
+            </View>
+          )}
+        </>
+      )}
+    </View>
+  );
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-    >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-          {/* Header with Integrated Search */}
-          <View style={styles.header}>
-            <View style={styles.headerContent}>
-              <TouchableOpacity 
-                style={styles.backButton}
-                onPress={() => navigation.goBack()}
-                activeOpacity={0.7}
-              >
-                <Icon name="arrow-back" size={24} color="#333" />
-              </TouchableOpacity>
-              
-              {/* Search Input in Header */}
-              <View style={styles.searchContainer}>
-                <Icon name="search" size={20} color="#999" style={styles.searchIcon} />
-                <TextInput
-                  ref={searchInputRef}
-                  style={styles.searchInput}
-                  placeholder="Search for address or place"
-                  placeholderTextColor="#999"
-                  value={searchQuery}
-                  onChangeText={handleSearchChange}
-                  onFocus={() => setIsSearchFocused(true)}
-                  onBlur={() => setIsSearchFocused(false)}
-                  returnKeyType="search"
-                  onSubmitEditing={() => {
-                    if (searchQuery.trim().length > 0) {
-                      searchPlaces(searchQuery);
-                    }
-                  }}
-                />
-                {searchQuery.length > 0 && (
-                  <TouchableOpacity 
-                    onPress={() => {
-                      setSearchQuery('');
-                      setSearchResults([]);
-                      setShowSearchResults(false);
-                      showSearchResultsWithAnimation(false);
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.container}>
+            {/* Header */}
+            <View style={styles.header}>
+              <View style={styles.headerContent}>
+                <TouchableOpacity 
+                  style={styles.backButton}
+                  onPress={() => navigation.goBack()}
+                  activeOpacity={0.7}
+                >
+                  <Icon name="arrow-back" size={20} color="#333" />
+                </TouchableOpacity>
+                
+                <View style={styles.searchContainer}>
+                  <Icon name="search" size={16} color="#999" style={styles.searchIcon} />
+                  <TextInput
+                    ref={searchInputRef}
+                    style={styles.searchInput}
+                    placeholder="Search for address or place"
+                    placeholderTextColor="#999"
+                    value={searchQuery}
+                    onChangeText={handleSearchChange}
+                    onFocus={() => setIsSearchFocused(true)}
+                    onBlur={() => setIsSearchFocused(false)}
+                    returnKeyType="search"
+                    onSubmitEditing={() => {
+                      if (searchQuery.trim().length > 0) {
+                        searchPlaces(searchQuery);
+                      }
                     }}
-                    style={styles.clearButton}
-                  >
-                    <Icon name="close-circle" size={20} color="#999" />
-                  </TouchableOpacity>
-                )}
-                {isSearching && (
-                  <ActivityIndicator size="small" color="#FF6B35" style={styles.searchLoading} />
-                )}
+                  />
+                  {searchQuery.length > 0 && (
+                    <TouchableOpacity 
+                      onPress={() => {
+                        setSearchQuery('');
+                        setSearchResults([]);
+                        setShowSearchResults(false);
+                        showSearchResultsWithAnimation(false);
+                      }}
+                      style={styles.clearButton}
+                    >
+                      <Icon name="close-circle" size={16} color="#999" />
+                    </TouchableOpacity>
+                  )}
+                  {isSearching && (
+                    <ActivityIndicator size="small" color="#FF6B35" style={styles.searchLoading} />
+                  )}
+                </View>
               </View>
             </View>
-          </View>
 
-          {/* Search Results Dropdown */}
-          <Animated.View 
-            style={[
-              styles.searchResultsContainer,
-              {
-                opacity: searchResultsOpacity,
-                transform: [{
-                  translateY: searchResultsOpacity.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [-10, 0]
-                  })
-                }]
-              }
-            ]}
-          >
-            {showSearchResults && searchResults.length > 0 && (
-              <FlatList
-                data={searchResults}
-                renderItem={renderSearchItem}
-                keyExtractor={(item) => item.place_id}
-                keyboardShouldPersistTaps="always"
-                style={styles.searchResultsList}
-                showsVerticalScrollIndicator={false}
-              />
-            )}
-          </Animated.View>
-
-          {/* Map Section */}
-          <Animated.View 
-            style={[
-              styles.mapContainer,
-              {
-                transform: [{ translateY: mapTranslateY }],
-              }
-            ]}
-          >
-            {loading ? (
-              <View style={styles.mapLoadingContainer}>
-                <ActivityIndicator size="large" color="#FF6B35" />
-                <Text style={styles.mapLoadingText}>Getting your location...</Text>
-              </View>
-            ) : (
-              <>
-                <MapView
-                  ref={mapRef}
-                  style={styles.map}
-                  region={mapRegion}
-                  provider={PROVIDER_GOOGLE}
-                  showsUserLocation={true}
-                  showsMyLocationButton={false}
-                  onRegionChangeComplete={handleRegionChangeComplete}
-                  onPanDrag={() => setIsDragging(true)}
-                >
-                  {location && (
-                    <Marker
-                      coordinate={location}
-                      draggable
-                      onDragStart={() => setIsDragging(true)}
-                      onDragEnd={(e) => {
-                        const newLocation = e.nativeEvent.coordinate;
-                        setLocation(newLocation);
-                        handleRegionChangeComplete({
-                          ...newLocation,
-                          latitudeDelta: mapRegion.latitudeDelta,
-                          longitudeDelta: mapRegion.longitudeDelta,
-                        });
-                      }}
-                    >
-                      <View style={styles.markerContainer}>
-                        <View style={styles.markerPin}>
-                          <Icon name="location" size={16} color="#FFF" />
-                        </View>
-                        <View style={styles.markerBase} />
-                      </View>
-                    </Marker>
-                  )}
-                </MapView>
-
-                {/* Current Location Button */}
-                <TouchableOpacity 
-                  style={styles.currentLocationButton} 
-                  onPress={getCurrentLocation}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.locationButtonInner}>
-                    <Icon name="locate" size={20} color="#FF6B35" />
-                  </View>
-                </TouchableOpacity>
-
-                {locationError && (
-                  <View style={styles.locationErrorBanner}>
-                    <Icon name="warning-outline" size={16} color="#FFF" />
-                    <Text style={styles.locationErrorText}>Using default location</Text>
-                  </View>
-                )}
-
-                {isDragging && (
-                  <View style={styles.draggingOverlay}>
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                    <Text style={styles.draggingText}>Updating address...</Text>
-                  </View>
-                )}
-              </>
-            )}
-          </Animated.View>
-
-          {/* Expand/Collapse Button */}
-          <Animated.View 
-            style={[
-              styles.expandButtonContainer,
-              {
-                transform: [{ translateY: mapTranslateY }]
-              }
-            ]}
-          >
-            <TouchableOpacity 
-              style={styles.expandButton}
-              onPress={toggleFormExpansion}
-              activeOpacity={0.8}
-            >
-              <Animated.View style={{ transform: [{ rotate: expandButtonRotation }] }}>
-                <Icon name="chevron-down" size={24} color="#FFF" />
-              </Animated.View>
-            </TouchableOpacity>
-          </Animated.View>
-
-          {/* Address Form Section */}
-          {!loading && (
+            {/* Search Results Dropdown */}
             <Animated.View 
               style={[
-                styles.formContainer, 
-                { 
-                  transform: [
-                    { translateY: formTranslateY },
-                    { scale: formScaleAnim }
-                  ],
+                styles.searchResultsContainer,
+                {
+                  opacity: searchResultsOpacity,
+                  transform: [{
+                    translateY: searchResultsOpacity.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-10, 0]
+                    })
+                  }]
                 }
               ]}
             >
-              <ScrollView 
-                ref={scrollViewRef}
-                style={styles.formScrollContainer} 
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                contentContainerStyle={[
-                  styles.formScrollContent,
-                  { minHeight: height * 0.6 }
-                ]}
-                onScroll={handleScroll}
-                scrollEventThrottle={16}
-                bounces={!isFormExpanded}
-                keyboardDismissMode="interactive"
-              >
+              {showSearchResults && searchResults.length > 0 && (
+                <FlatList
+                  data={searchResults}
+                  renderItem={renderSearchItem}
+                  keyExtractor={(item) => item.place_id}
+                  keyboardShouldPersistTaps="always"
+                  style={styles.searchResultsList}
+                  showsVerticalScrollIndicator={false}
+                />
+              )}
+            </Animated.View>
+
+            {/* Main ScrollView containing Map and Form */}
+            <ScrollView
+              ref={scrollViewRef}
+              style={styles.mainScrollView}
+              showsVerticalScrollIndicator={true}
+              bounces={true}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.scrollContentContainer}
+            >
+              {/* Map Section */}
+              {renderMapSection()}
+
+              {/* Address Form Section */}
+              <View style={styles.formContainer}>
                 <View style={styles.formHeader}>
                   <Text style={styles.sectionTitle}>Add Address</Text>
                 </View>
@@ -973,27 +854,12 @@ const MapLocationPicker = () => {
 
                 {/* Custom Name Field (only for Other) */}
                 {address.addressType === 'Other' && (
-                  <Animated.View 
-                    style={[
-                      styles.inputContainer,
-                      { 
-                        transform: [{
-                          scale: activeInput === 'customName' ? inputFocusAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [1, 1.02]
-                          }) : 1 
-                        }]
-                      }
-                    ]}
-                  >
+                  <View style={styles.inputContainer}>
                     <Text style={styles.label}>
                       Name of location <Text style={styles.requiredStar}>*</Text>
                     </Text>
                     <TextInput
-                      style={[
-                        styles.input,
-                        activeInput === 'customName' && styles.inputFocused
-                      ]}
+                      style={styles.input}
                       value={address.customName}
                       onChangeText={(text) => handleInputChange('customName', text)}
                       onFocus={() => handleInputFocus('customName')}
@@ -1001,32 +867,16 @@ const MapLocationPicker = () => {
                       placeholder="Enter location name"
                       placeholderTextColor="#999"
                     />
-                  </Animated.View>
+                  </View>
                 )}
 
                 {/* Complete Address */}
-                <Animated.View 
-                  style={[
-                    styles.inputContainer,
-                    { 
-                      transform: [{
-                        scale: activeInput === 'completeAddress' ? inputFocusAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [1, 1.02]
-                        }) : 1 
-                      }]
-                    }
-                  ]}
-                >
+                <View style={styles.inputContainer}>
                   <Text style={styles.label}>
                     Complete Address <Text style={styles.requiredStar}>*</Text>
                   </Text>
                   <TextInput
-                    style={[
-                      styles.input,
-                      styles.textArea,
-                      activeInput === 'completeAddress' && styles.inputFocused
-                    ]}
+                    style={[styles.input, styles.textArea]}
                     value={address.completeAddress}
                     onChangeText={(text) => handleInputChange('completeAddress', text)}
                     onFocus={() => handleInputFocus('completeAddress')}
@@ -1036,28 +886,13 @@ const MapLocationPicker = () => {
                     multiline
                     numberOfLines={3}
                   />
-                </Animated.View>
+                </View>
 
                 {/* Landmark */}
-                <Animated.View 
-                  style={[
-                    styles.inputContainer,
-                    { 
-                      transform: [{
-                        scale: activeInput === 'landmark' ? inputFocusAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [1, 1.02]
-                        }) : 1 
-                      }]
-                    }
-                  ]}
-                >
+                <View style={styles.inputContainer}>
                   <Text style={styles.label}>Landmark</Text>
                   <TextInput
-                    style={[
-                      styles.input,
-                      activeInput === 'landmark' && styles.inputFocused
-                    ]}
+                    style={styles.input}
                     value={address.landmark}
                     onChangeText={(text) => handleInputChange('landmark', text)}
                     onFocus={() => handleInputFocus('landmark')}
@@ -1065,32 +900,16 @@ const MapLocationPicker = () => {
                     placeholder="Nearby landmark"
                     placeholderTextColor="#999"
                   />
-                </Animated.View>
+                </View>
 
                 <View style={styles.row}>
                   {/* City */}
-                  <Animated.View 
-                    style={[
-                      styles.inputContainer,
-                      styles.flex1,
-                      { 
-                        transform: [{
-                          scale: activeInput === 'city' ? inputFocusAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [1, 1.02]
-                          }) : 1 
-                        }]
-                      }
-                    ]}
-                  >
+                  <View style={[styles.inputContainer, styles.flex1]}>
                     <Text style={styles.label}>
                       City <Text style={styles.requiredStar}>*</Text>
                     </Text>
                     <TextInput
-                      style={[
-                        styles.input,
-                        activeInput === 'city' && styles.inputFocused
-                      ]}
+                      style={styles.input}
                       value={address.city}
                       onChangeText={(text) => handleInputChange('city', text)}
                       onFocus={() => handleInputFocus('city')}
@@ -1098,32 +917,15 @@ const MapLocationPicker = () => {
                       placeholder="City"
                       placeholderTextColor="#999"
                     />
-                  </Animated.View>
+                  </View>
 
                   {/* Zipcode */}
-                  <Animated.View 
-                    style={[
-                      styles.inputContainer,
-                      styles.flex1,
-                      styles.zipInput,
-                      { 
-                        transform: [{
-                          scale: activeInput === 'zipCode' ? inputFocusAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [1, 1.02]
-                          }) : 1 
-                        }]
-                      }
-                    ]}
-                  >
+                  <View style={[styles.inputContainer, styles.flex1, styles.zipInput]}>
                     <Text style={styles.label}>
                       Zipcode <Text style={styles.requiredStar}>*</Text>
                     </Text>
                     <TextInput
-                      style={[
-                        styles.input,
-                        activeInput === 'zipCode' && styles.inputFocused
-                      ]}
+                      style={styles.input}
                       value={address.zipCode}
                       onChangeText={(text) => handleInputChange('zipCode', text)}
                       onFocus={() => handleInputFocus('zipCode')}
@@ -1132,33 +934,17 @@ const MapLocationPicker = () => {
                       placeholderTextColor="#999"
                       keyboardType="numeric"
                     />
-                  </Animated.View>
+                  </View>
                 </View>
 
                 <View style={styles.row}>
                   {/* State */}
-                  <Animated.View 
-                    style={[
-                      styles.inputContainer,
-                      styles.flex1,
-                      { 
-                        transform: [{
-                          scale: activeInput === 'state' ? inputFocusAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [1, 1.02]
-                          }) : 1 
-                        }]
-                      }
-                    ]}
-                  >
+                  <View style={[styles.inputContainer, styles.flex1]}>
                     <Text style={styles.label}>
                       State <Text style={styles.requiredStar}>*</Text>
                     </Text>
                     <TextInput
-                      style={[
-                        styles.input,
-                        activeInput === 'state' && styles.inputFocused
-                      ]}
+                      style={styles.input}
                       value={address.state}
                       onChangeText={(text) => handleInputChange('state', text)}
                       onFocus={() => handleInputFocus('state')}
@@ -1166,31 +952,15 @@ const MapLocationPicker = () => {
                       placeholder="State"
                       placeholderTextColor="#999"
                     />
-                  </Animated.View>
+                  </View>
 
                   {/* Country */}
-                  <Animated.View 
-                    style={[
-                      styles.inputContainer,
-                      styles.flex1,
-                      { 
-                        transform: [{
-                          scale: activeInput === 'country' ? inputFocusAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [1, 1.02]
-                          }) : 1 
-                        }]
-                      }
-                    ]}
-                  >
+                  <View style={[styles.inputContainer, styles.flex1]}>
                     <Text style={styles.label}>
                       Country <Text style={styles.requiredStar}>*</Text>
                     </Text>
                     <TextInput
-                      style={[
-                        styles.input,
-                        activeInput === 'country' && styles.inputFocused
-                      ]}
+                      style={styles.input}
                       value={address.country}
                       onChangeText={(text) => handleInputChange('country', text)}
                       onFocus={() => handleInputFocus('country')}
@@ -1198,35 +968,38 @@ const MapLocationPicker = () => {
                       placeholder="Country"
                       placeholderTextColor="#999"
                     />
-                  </Animated.View>
+                  </View>
                 </View>
 
-                {/* Save Button - Fixed at bottom */}
-                <View style={styles.saveButtonContainer}>
-                  <TouchableOpacity 
-                    style={[styles.saveButton, isSubmitting && styles.saveButtonDisabled]} 
-                    onPress={handleSaveAddress}
-                    disabled={isSubmitting}
-                    activeOpacity={0.8}
-                  >
-                    <View style={styles.saveButtonContent}>
-                      {isSubmitting ? (
-                        <ActivityIndicator size="small" color="#FFFFFF" />
-                      ) : (
-                        <>
-                          <Icon name="checkmark-circle-outline" size={22} color="#FFF" style={styles.saveIcon} />
-                          <Text style={styles.saveButtonText}>Save Address</Text>
-                        </>
-                      )}
-                    </View>
-                  </TouchableOpacity>
+                {/* Extra padding for save button */}
+                <View style={{ height: 100 }} />
+              </View>
+            </ScrollView>
+
+            {/* Fixed Save Button */}
+            <View style={styles.saveButtonContainer}>
+              <TouchableOpacity 
+                style={[styles.saveButton, isSubmitting && styles.saveButtonDisabled]} 
+                onPress={handleSaveAddress}
+                disabled={isSubmitting}
+                activeOpacity={0.8}
+              >
+                <View style={styles.saveButtonContent}>
+                  {isSubmitting ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Icon name="checkmark-circle-outline" size={18} color="#FFF" style={styles.saveIcon} />
+                      <Text style={styles.saveButtonText}>Save Address</Text>
+                    </>
+                  )}
                 </View>
-              </ScrollView>
-            </Animated.View>
-          )}
-        </Animated.View>
-      </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
@@ -1236,14 +1009,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   header: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
     backgroundColor: '#FFFFFF',
     zIndex: 40,
-    paddingTop: Platform.OS === 'ios' ? 50 : 25,
-    paddingBottom: 15,
+    paddingTop: Platform.OS === 'ios' ? 0 : 10,
+    paddingBottom: 12,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -1262,47 +1031,53 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   backButton: {
-    padding: 8,
+    padding: 6,
     borderRadius: 20,
     backgroundColor: '#F8F9FA',
-    marginRight: 12,
+    marginRight: 10,
   },
   searchContainer: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F8F9FA',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    height: 44,
-    borderWidth: 2,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 40,
+    borderWidth: 1,
     borderColor: '#F0F0F0',
   },
   searchIcon: {
-    marginRight: 12,
+    marginRight: 8,
   },
   searchInput: {
     flex: 1,
-    height: 44,
+    height: 40,
     color: '#2D3436',
-    fontSize: 16,
+    fontSize: 14,
     fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
     paddingVertical: 0,
   },
   clearButton: {
-    padding: 6,
+    padding: 4,
   },
   searchLoading: {
     marginLeft: 8,
   },
+  mainScrollView: {
+    flex: 1,
+  },
+  scrollContentContainer: {
+    paddingBottom: 120, // Space for save button
+  },
   searchResultsContainer: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 105 : 80,
+    top: Platform.OS === 'ios' ? 60 : 50,
     left: 16,
     right: 16,
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    maxHeight: 300,
+    borderRadius: 12,
+    maxHeight: 280,
     zIndex: 50,
     ...Platform.select({
       ios: {
@@ -1320,97 +1095,69 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   searchResultsList: {
-    borderRadius: 16,
+    borderRadius: 12,
   },
   searchItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    padding: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#F8F9FA',
   },
   searchItemIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: '#FFF5F0',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 10,
   },
   searchItemTextContainer: {
     flex: 1,
   },
   searchItemPrimaryText: {
-    fontSize: 15,
+    fontSize: 14,
     color: '#2D3436',
     marginBottom: 4,
     fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
   },
   searchItemSecondaryText: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#7F8C8D',
     fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
     lineHeight: 16,
   },
   mapContainer: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 100 : 75,
-    left: 0,
-    right: 0,
-    height: height * 0.55,
-    zIndex: 1,
+    width: '100%',
+    overflow: 'hidden',
   },
   map: {
-    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
   },
   mapLoadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#F8F9FA',
+    height: 300,
   },
   mapLoadingText: {
-    marginTop: 16,
+    marginTop: 12,
     color: '#333333',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
-  },
-  expandButtonContainer: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 100 + height * 0.55 - 24 : 75 + height * 0.55 - 24,
-    left: '50%',
-    marginLeft: -24,
-    zIndex: 20,
-  },
-  expandButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#FF6B35',
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#FF6B35',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
   },
   markerContainer: {
     alignItems: 'center',
     justifyContent: 'center',
   },
   markerPin: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: '#FF6B35',
     borderWidth: 3,
     borderColor: '#FFFFFF',
@@ -1434,16 +1181,16 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: '#FF6B35',
     position: 'absolute',
-    bottom: -18,
+    bottom: -20,
   },
   currentLocationButton: {
     position: 'absolute',
-    bottom: 100,
-    right: 20,
+    bottom: 16,
+    right: 16,
     backgroundColor: '#FFFFFF',
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
     ...Platform.select({
@@ -1460,13 +1207,13 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   locationButtonInner: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#F8F9FA',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: '#FF6B35',
   },
   locationErrorBanner: {
@@ -1475,7 +1222,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: 'rgba(255, 149, 0, 0.95)',
-    padding: 12,
+    padding: 10,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
@@ -1484,8 +1231,8 @@ const styles = StyleSheet.create({
   locationErrorText: {
     color: '#FFFFFF',
     fontWeight: '600',
-    marginLeft: 8,
-    fontSize: 14,
+    marginLeft: 6,
+    fontSize: 12,
     fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
   },
   draggingOverlay: {
@@ -1494,81 +1241,54 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: 'rgba(255, 107, 53, 0.95)',
-    padding: 14,
+    padding: 12,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
     zIndex: 5,
   },
   draggingText: {
     color: '#FFFFFF',
     fontWeight: 'bold',
-    marginLeft: 12,
-    fontSize: 15,
+    marginLeft: 8,
+    fontSize: 13,
     fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
   },
   formContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: height,
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: -8 },
-        shadowOpacity: 0.1,
-        shadowRadius: 16,
-      },
-      android: {
-        elevation: 16,
-        borderTopWidth: 1,
-        borderTopColor: '#F0F0F0',
-      },
-    }),
-    zIndex: 2,
-  },
-  formScrollContainer: {
-    flex: 1,
-  },
-  formScrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 120,
-    paddingTop: 100,
+    paddingTop: 20,
+    paddingBottom: 20,
   },
   formHeader: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '700',
     color: '#2D3436',
     fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
   },
   sectionSubtitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
     color: '#636E72',
-    marginBottom: 12,
+    marginBottom: 10,
     fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
   },
   addressTypeContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 24,
-    gap: 10,
+    marginBottom: 20,
+    gap: 8,
   },
   addressTypeButton: {
     flex: 1,
     backgroundColor: '#F8F9FA',
-    borderRadius: 14,
-    borderWidth: 2,
+    borderRadius: 12,
+    borderWidth: 1.5,
     borderColor: 'transparent',
     overflow: 'hidden',
   },
@@ -1576,9 +1296,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 10,
-    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 10,
   },
   addressTypeButtonInnerSelected: {
     backgroundColor: '#FF6B35',
@@ -1589,21 +1309,21 @@ const styles = StyleSheet.create({
   addressTypeText: {
     color: '#636E72',
     fontWeight: '600',
-    fontSize: 14,
-    marginLeft: 6,
+    fontSize: 12,
+    marginLeft: 4,
     fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
   },
   addressTypeTextSelected: {
     color: '#FFFFFF',
   },
   inputContainer: {
-    marginBottom: 16,
+    marginBottom: 14,
   },
   label: {
     color: '#2D3436',
-    marginBottom: 8,
+    marginBottom: 6,
     fontWeight: '600',
-    fontSize: 14,
+    fontSize: 12,
     fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
   },
   requiredStar: {
@@ -1611,49 +1331,23 @@ const styles = StyleSheet.create({
   },
   input: {
     backgroundColor: '#F8F9FA',
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: '#F0F0F0',
-    borderRadius: 14,
-    padding: 16,
-    fontSize: 16,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 14,
     color: '#2D3436',
     fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.03,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  inputFocused: {
-    borderColor: '#FF6B35',
-    backgroundColor: '#FFFFFF',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#FF6B35',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
   },
   textArea: {
-    minHeight: 100,
+    minHeight: 90,
     textAlignVertical: 'top',
-    lineHeight: 20,
+    lineHeight: 18,
   },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 10,
   },
   flex1: {
     flex: 1,
@@ -1662,13 +1356,30 @@ const styles = StyleSheet.create({
     marginLeft: 0,
   },
   saveButtonContainer: {
-    marginTop: 20,
-    marginBottom: 40,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 16,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 16,
+    backgroundColor: '#FFFFFF',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+    zIndex: 30,
   },
   saveButton: {
     backgroundColor: '#FF6B35',
-    padding: 18,
-    borderRadius: 16,
+    padding: 16,
+    borderRadius: 14,
     alignItems: 'center',
     ...Platform.select({
       ios: {
@@ -1697,11 +1408,11 @@ const styles = StyleSheet.create({
     }),
   },
   saveIcon: {
-    marginRight: 10,
+    marginRight: 8,
   },
   saveButtonText: {
     color: '#FFFFFF',
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '700',
     fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
   },

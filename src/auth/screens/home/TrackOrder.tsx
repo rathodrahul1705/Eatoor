@@ -123,6 +123,167 @@ const triggerHaptic = (type: 'light' | 'medium' | 'heavy' = 'medium') => {
   }
 };
 
+// Bike Animation Component
+const BikeAnimation = () => {
+  const bikePosition = useRef(new Animated.Value(0)).current;
+  const wheelRotation1 = useRef(new Animated.Value(0)).current;
+  const wheelRotation2 = useRef(new Animated.Value(0)).current;
+  
+  useEffect(() => {
+    // Start bike animation
+    const bikeAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(bikePosition, {
+          toValue: width - 100,
+          duration: 20000,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+        Animated.timing(bikePosition, {
+          toValue: 0,
+          duration: 0,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    // Wheel rotation animation
+    const wheelAnimation = Animated.loop(
+      Animated.timing(wheelRotation1, {
+        toValue: 1,
+        duration: 500,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+
+    const wheelAnimation2 = Animated.loop(
+      Animated.timing(wheelRotation2, {
+        toValue: 1,
+        duration: 500,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+
+    bikeAnimation.start();
+    wheelAnimation.start();
+    wheelAnimation2.start();
+
+    return () => {
+      bikeAnimation.stop();
+      wheelAnimation.stop();
+      wheelAnimation2.stop();
+    };
+  }, []);
+
+  const wheelSpin1 = wheelRotation1.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg']
+  });
+
+  const wheelSpin2 = wheelRotation2.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg']
+  });
+
+  return (
+    <View style={styles.bikeAnimationContainer}>
+      {/* Road */}
+      <View style={styles.road}>
+        <View style={styles.roadLine} />
+        <View style={[styles.roadLine, { left: width / 3 }]} />
+        <View style={[styles.roadLine, { left: (2 * width) / 3 }]} />
+      </View>
+      
+      {/* Bike Container */}
+      <Animated.View 
+        style={[
+          styles.bikeContainer,
+          {
+            transform: [{ translateX: bikePosition }]
+          }
+        ]}
+      >
+        {/* Bike Body */}
+        <View style={styles.bikeBody}>
+          {/* Main Frame */}
+          <View style={styles.bikeFrame}>
+            {/* Horizontal bar */}
+            <View style={styles.bikeHorizontalBar} />
+            {/* Diagonal bar */}
+            <View style={styles.bikeDiagonalBar} />
+            {/* Seat post */}
+            <View style={styles.seatPost} />
+            {/* Handlebar post */}
+            <View style={styles.handlebarPost} />
+          </View>
+          
+          {/* Seat */}
+          <View style={styles.bikeSeat} />
+          
+          {/* Front Wheel */}
+          <Animated.View 
+            style={[
+              styles.wheelContainer,
+              styles.frontWheel,
+              { transform: [{ rotate: wheelSpin1 }] }
+            ]}
+          >
+            <View style={styles.wheel}>
+              <View style={styles.wheelSpoke} />
+              <View style={[styles.wheelSpoke, { transform: [{ rotate: '45deg' }] }]} />
+              <View style={[styles.wheelSpoke, { transform: [{ rotate: '90deg' }] }]} />
+              <View style={[styles.wheelSpoke, { transform: [{ rotate: '135deg' }] }]} />
+              <View style={styles.wheelHub} />
+            </View>
+          </Animated.View>
+          
+          {/* Back Wheel */}
+          <Animated.View 
+            style={[
+              styles.wheelContainer,
+              styles.backWheel,
+              { transform: [{ rotate: wheelSpin2 }] }
+            ]}
+          >
+            <View style={styles.wheel}>
+              <View style={styles.wheelSpoke} />
+              <View style={[styles.wheelSpoke, { transform: [{ rotate: '45deg' }] }]} />
+              <View style={[styles.wheelSpoke, { transform: [{ rotate: '90deg' }] }]} />
+              <View style={[styles.wheelSpoke, { transform: [{ rotate: '135deg' }] }]} />
+              <View style={styles.wheelHub} />
+            </View>
+          </Animated.View>
+          
+          {/* Handlebar */}
+          <View style={styles.handlebar}>
+            <View style={styles.handlebarGripLeft} />
+            <View style={styles.handlebarGripRight} />
+          </View>
+          
+          {/* Motor/Engine */}
+          <View style={styles.engine}>
+            <View style={styles.engineDetail} />
+            <View style={styles.engineExhaust} />
+          </View>
+          
+          {/* Delivery Box */}
+          <View style={styles.deliveryBox}>
+            <View style={styles.boxLabel}>
+              <Text style={styles.boxLabelText}>FOOD</Text>
+            </View>
+            <View style={styles.boxStripes}>
+              <View style={styles.boxStripe} />
+              <View style={styles.boxStripe} />
+            </View>
+          </View>
+        </View>
+      </Animated.View>
+    </View>
+  );
+};
+
 const TrackOrder = () => {
   const navigation = useNavigation();
   const route = useRoute();
@@ -155,6 +316,7 @@ const TrackOrder = () => {
   const [lastUpdated, setLastUpdated] = useState(moment());
   const [rotationAngleValue, setRotationAngleValue] = useState(0);
   const [pulseAnim] = useState(new Animated.Value(1));
+  const [routeCoordinates, setRouteCoordinates] = useState([]);
   
   // Layout states
   const [currentMapHeight, setCurrentMapHeight] = useState(SMALL_MAP_HEIGHT);
@@ -236,6 +398,86 @@ const TrackOrder = () => {
 
   const deg2rad = (deg: number) => deg * (Math.PI/180);
 
+  // Calculate distance between two points in meters
+  const calculateDistanceBetweenPoints = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371e3; // Earth's radius in meters
+    const φ1 = lat1 * Math.PI/180;
+    const φ2 = lat2 * Math.PI/180;
+    const Δφ = (lat2 - lat1) * Math.PI/180;
+    const Δλ = (lon2 - lon1) * Math.PI/180;
+
+    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+    return R * c;
+  };
+
+  // Calculate route coordinates based on status
+  const calculateRouteCoordinates = useCallback(() => {
+    if (!coordinates) return [];
+    
+    let route = [];
+    
+    if (coordinates.agent) {
+      // When agent is "On the Way": restaurant → agent → customer
+      route = [
+        {
+          latitude: coordinates.restaurant.latitude,
+          longitude: coordinates.restaurant.longitude
+        },
+        {
+          latitude: coordinates.agent.latitude,
+          longitude: coordinates.agent.longitude
+        },
+        {
+          latitude: coordinates.delivery.latitude,
+          longitude: coordinates.delivery.longitude
+        }
+      ];
+    } else {
+      // For other statuses: restaurant → customer (direct path)
+      route = [
+        {
+          latitude: coordinates.restaurant.latitude,
+          longitude: coordinates.restaurant.longitude
+        },
+        {
+          latitude: coordinates.delivery.latitude,
+          longitude: coordinates.delivery.longitude
+        }
+      ];
+    }
+    
+    return route;
+  }, [coordinates, deliveryStatus]);
+
+  // Update route when coordinates or status changes
+  useEffect(() => {
+    if (coordinates) {
+      const newRoute = calculateRouteCoordinates();
+      setRouteCoordinates(newRoute);
+    }
+  }, [coordinates, deliveryStatus, calculateRouteCoordinates]);
+
+  // Calculate agent rotation angle
+  const calculateAgentRotation = useCallback(() => {
+    if (!coordinates || !coordinates.agent) return;
+    
+    // Calculate bearing from restaurant to agent
+    const restaurant = coordinates.restaurant;
+    const agent = coordinates.agent;
+    
+    const y = Math.sin(agent.longitude - restaurant.longitude) * Math.cos(agent.latitude);
+    const x = Math.cos(restaurant.latitude) * Math.sin(agent.latitude) -
+             Math.sin(restaurant.latitude) * Math.cos(agent.latitude) * 
+             Math.cos(agent.longitude - restaurant.longitude);
+    const bearing = Math.atan2(y, x);
+    const angle = bearing * (180 / Math.PI);
+    setRotationAngleValue(angle);
+  }, [coordinates]);
+
   // Fetch live tracking data
   const fetchLiveTrackingData = useCallback(async (showLoader = false) => {
     try {
@@ -288,7 +530,7 @@ const TrackOrder = () => {
           }
           
           if (data.estimated_time_minutes) {
-            setEta(`${data.estimated_time_minutes} mins`);
+            setEta(`${data.estimated_time_minutes + 10} mins`);
           }
           
           if (data.porter_agent_assign_status === 'assigned') {
@@ -348,7 +590,6 @@ const TrackOrder = () => {
         const placedTime = moment(orderData.placed_on);
         const estimatedTime = moment(orderData.estimated_delivery);
         const diffMinutes = estimatedTime.diff(placedTime, 'minutes');
-        setEta(`${diffMinutes - 10}-${diffMinutes} mins`);
       } else {
         throw new Error('No order data available');
       }
@@ -398,7 +639,7 @@ const TrackOrder = () => {
 
     const interval = setInterval(() => {
       fetchAllData(false);
-    }, 30000);
+    }, 60000);
 
     setTrackingInterval(interval);
 
@@ -411,6 +652,13 @@ const TrackOrder = () => {
       }
     };
   }, [order_number]);
+
+  // Update agent rotation when coordinates change
+  useEffect(() => {
+    if (coordinates && coordinates.agent) {
+      calculateAgentRotation();
+    }
+  }, [coordinates, calculateAgentRotation]);
 
   // Map expand/collapse function
   const toggleMap = useCallback(() => {
@@ -575,12 +823,53 @@ const TrackOrder = () => {
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
         <View style={styles.loadingContainer}>
-          <Animated.View style={styles.loadingAnimation}>
-            <Icon name="bicycle" size={70} color="#FF6B35" />
-            <ActivityIndicator size="large" color="#FF6B35" style={styles.loadingSpinner} />
-          </Animated.View>
-          <Text style={styles.loadingTitle}>Tracking Your Order</Text>
-          <Text style={styles.loadingSubtitle}>Fetching real-time updates...</Text>
+          {/* Bike Animation */}
+          <BikeAnimation />
+          
+          <View style={styles.loadingContent}>
+            <Text style={styles.loadingTitle}>Tracking Your Order</Text>
+            <Text style={styles.loadingSubtitle}>Fetching real-time updates...</Text>
+            
+            {/* Progress dots */}
+            <View style={styles.progressDots}>
+              <Animated.View style={[
+                styles.progressDot,
+                {
+                  backgroundColor: '#FF6B35',
+                  opacity: new Animated.Value(0.3).interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [0.3, 1, 0.3]
+                  })
+                }
+              ]} />
+              <Animated.View style={[
+                styles.progressDot,
+                {
+                  backgroundColor: '#FF6B35',
+                  opacity: new Animated.Value(0.3).interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [0.3, 1, 0.3]
+                  })
+                }
+              ]} />
+              <Animated.View style={[
+                styles.progressDot,
+                {
+                  backgroundColor: '#FF6B35',
+                  opacity: new Animated.Value(0.3).interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [0.3, 1, 0.3]
+                  })
+                }
+              ]} />
+            </View>
+            
+            {/* Order info */}
+            <View style={styles.loadingOrderInfo}>
+              <Text style={styles.loadingOrderNumber}>Order #{order_number}</Text>
+              <Text style={styles.loadingStatus}>Preparing your delivery...</Text>
+            </View>
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -718,15 +1007,27 @@ const TrackOrder = () => {
                 />
               )}
               
-              {/* Polyline with gradient effect */}
-              <Polyline
-                coordinates={[coordinates.restaurant, coordinates.delivery]}
-                strokeColor={statusDetails.color}
-                strokeWidth={6}
-                lineDashPattern={[12, 6]}
-                lineCap="round"
-                lineJoin="round"
-              />
+              {/* Route line based on delivery status */}
+              {routeCoordinates.length > 0 && (
+                <Polyline
+                  coordinates={routeCoordinates}
+                  strokeColor={statusDetails.color}
+                  strokeWidth={4}
+                  lineCap="round"
+                  lineJoin="round"
+                />
+              )}
+              
+              {/* Completed portion of route when agent is on the way */}
+              {coordinates && coordinates.agent && deliveryStatus === DELIVERY_STATUS.ON_THE_WAY && (
+                <Polyline
+                  coordinates={[coordinates.restaurant, coordinates.agent]}
+                  strokeColor={statusDetails.color}
+                  strokeWidth={6}
+                  lineCap="round"
+                  lineJoin="round"
+                />
+              )}
               
               {/* Restaurant Marker */}
               <Marker
@@ -1145,7 +1446,7 @@ const TrackOrder = () => {
                 Last updated {lastUpdated.format('h:mm A')}
               </Text>
               <Text style={styles.footerSubtext}>
-                Auto-refreshes every 30 seconds
+                Auto-refreshes every 60 seconds
               </Text>
             </View>
           </View>
@@ -2064,29 +2365,259 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#FFFFFF'
   },
-  loadingAnimation: {
-    position: 'relative',
-    marginBottom: 30
-  },
-  loadingSpinner: {
-    position: 'absolute',
-    top: -15,
-    left: -15,
-    right: -15,
-    bottom: -15
+  loadingContent: {
+    alignItems: 'center',
+    marginTop: 40,
   },
   loadingTitle: {
-    fontSize: getResponsiveFontSize(22),
+    fontSize: getResponsiveFontSize(26),
     fontWeight: '800',
     color: '#1A1A1A',
-    marginBottom: 12
+    marginBottom: 12,
+    textAlign: 'center'
   },
   loadingSubtitle: {
-    fontSize: getResponsiveFontSize(15),
+    fontSize: getResponsiveFontSize(16),
     color: '#666',
     textAlign: 'center',
     paddingHorizontal: 40,
-    fontWeight: '500'
+    fontWeight: '500',
+    marginBottom: 30
+  },
+  loadingOrderInfo: {
+    alignItems: 'center',
+    marginTop: 20
+  },
+  loadingOrderNumber: {
+    fontSize: getResponsiveFontSize(16),
+    fontWeight: '700',
+    color: '#FF6B35',
+    marginBottom: 8
+  },
+  loadingStatus: {
+    fontSize: getResponsiveFontSize(14),
+    color: '#888',
+    fontWeight: '600'
+  },
+  progressDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginVertical: 20
+  },
+  progressDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginHorizontal: 5,
+    backgroundColor: '#FF6B35'
+  },
+  // Bike Animation Styles
+  bikeAnimationContainer: {
+    width: '100%',
+    height: 200,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+    overflow: 'hidden'
+  },
+  road: {
+    position: 'absolute',
+    bottom: 60,
+    width: '100%',
+    height: 4,
+    backgroundColor: '#E0E0E0',
+    borderRadius: 2
+  },
+  roadLine: {
+    position: 'absolute',
+    width: 30,
+    height: 3,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 1.5
+  },
+  bikeContainer: {
+    position: 'absolute',
+    bottom: 30,
+    left: 0
+  },
+  bikeBody: {
+    position: 'relative',
+    width: 100,
+    height: 60
+  },
+  bikeFrame: {
+    position: 'absolute',
+    width: 80,
+    height: 40,
+    top: 10,
+    left: 10
+  },
+  bikeHorizontalBar: {
+    position: 'absolute',
+    width: 50,
+    height: 4,
+    backgroundColor: '#333',
+    borderRadius: 2,
+    top: 10,
+    left: 20
+  },
+  bikeDiagonalBar: {
+    position: 'absolute',
+    width: 40,
+    height: 4,
+    backgroundColor: '#333',
+    borderRadius: 2,
+    top: 10,
+    left: 20,
+    transform: [{ rotate: '30deg' }]
+  },
+  seatPost: {
+    position: 'absolute',
+    width: 3,
+    height: 12,
+    backgroundColor: '#333',
+    top: 6,
+    left: 45
+  },
+  handlebarPost: {
+    position: 'absolute',
+    width: 3,
+    height: 20,
+    backgroundColor: '#333',
+    top: 6,
+    left: 20
+  },
+  bikeSeat: {
+    position: 'absolute',
+    width: 20,
+    height: 8,
+    backgroundColor: '#FF6B35',
+    borderRadius: 4,
+    top: 4,
+    left: 45
+  },
+  wheelContainer: {
+    position: 'absolute',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#F0F0F0',
+    borderWidth: 2,
+    borderColor: '#333'
+  },
+  frontWheel: {
+    top: 25,
+    left: 5
+  },
+  backWheel: {
+    top: 25,
+    left: 65
+  },
+  wheel: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative'
+  },
+  wheelSpoke: {
+    position: 'absolute',
+    width: 2,
+    height: 25,
+    backgroundColor: '#333',
+    borderRadius: 1,
+    top: 2.5
+  },
+  wheelHub: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#FF6B35'
+  },
+  handlebar: {
+    position: 'absolute',
+    width: 40,
+    height: 20,
+    top: 0,
+    left: 15,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  handlebarGripLeft: {
+    position: 'absolute',
+    width: 20,
+    height: 4,
+    backgroundColor: '#333',
+    borderRadius: 2,
+    left: 0
+  },
+  handlebarGripRight: {
+    position: 'absolute',
+    width: 20,
+    height: 4,
+    backgroundColor: '#333',
+    borderRadius: 2,
+    right: 0
+  },
+  engine: {
+    position: 'absolute',
+    width: 20,
+    height: 15,
+    backgroundColor: '#666',
+    borderRadius: 4,
+    top: 20,
+    left: 40
+  },
+  engineDetail: {
+    position: 'absolute',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FF6B35',
+    top: 3,
+    left: 6
+  },
+  engineExhaust: {
+    position: 'absolute',
+    width: 15,
+    height: 4,
+    backgroundColor: '#333',
+    borderRadius: 2,
+    top: 5,
+    right: -15
+  },
+  deliveryBox: {
+    position: 'absolute',
+    width: 25,
+    height: 20,
+    backgroundColor: '#4A90E2',
+    borderRadius: 4,
+    top: 10,
+    left: 50,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  boxLabel: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 2
+  },
+  boxLabelText: {
+    fontSize: 8,
+    fontWeight: '900',
+    color: '#4A90E2'
+  },
+  boxStripes: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    justifyContent: 'space-around'
+  },
+  boxStripe: {
+    width: '100%',
+    height: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)'
   },
   errorContainer: {
     flex: 1,
