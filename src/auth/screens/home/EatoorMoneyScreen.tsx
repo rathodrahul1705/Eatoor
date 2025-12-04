@@ -17,6 +17,7 @@ import {
   Easing,
   ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
 import RazorpayCheckout from 'react-native-razorpay';
@@ -81,6 +82,12 @@ const EatoorMoneyScreen = ({ navigation }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [processingPayment, setProcessingPayment] = useState(false);
+  const [user, setUser] = useState({
+    name: '',
+    email: '',
+    contact: '',
+    id: '',
+  });
   
   // Refs
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -126,6 +133,44 @@ const EatoorMoneyScreen = ({ navigation }) => {
       inputRange: [0, 1],
       outputRange: [1, 1.2],
     }), []);
+
+  // Fetch user data from AsyncStorage
+  const fetchUserData = useCallback(async () => {
+    if (!isMounted.current) return;
+    
+    try {
+      const userData = await AsyncStorage.getItem('user');
+      if (userData) {
+        const parsedUser = JSON.parse(userData);
+        
+        // Extract user details with fallbacks
+        const userDetails = {
+          name: parsedUser.full_name || parsedUser.name || 'Eatoor User',
+          email: parsedUser.email || 'user@example.com',
+          contact: parsedUser.contact_number || parsedUser.phone || parsedUser.mobile || '9999999999',
+          id: parsedUser.id || parsedUser.user_id || '',
+          avatar: parsedUser.avatar || parsedUser.profile_image || null,
+        };
+        
+        setUser(userDetails);
+        
+        // Update balance from user data if available
+        if (parsedUser.wallet_balance !== undefined) {
+          setBalance(parseFloat(parsedUser.wallet_balance));
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching user data from AsyncStorage:', error);
+      
+      // Set default values if AsyncStorage fails
+      setUser({
+        name: 'Eatoor User',
+        email: 'user@example.com',
+        contact: '9999999999',
+        id: '',
+      });
+    }
+  }, []);
 
   // Toggle balance visibility with animation
   const toggleBalanceVisibility = useCallback(() => {
@@ -208,7 +253,8 @@ const EatoorMoneyScreen = ({ navigation }) => {
   // Initial load
   useEffect(() => {
     fetchWalletData();
-  }, [fetchWalletData]);
+    fetchUserData(); // Fetch user data on mount
+  }, [fetchWalletData, fetchUserData]);
 
   // Load more transactions
   const loadMoreTransactions = useCallback(async () => {
@@ -259,7 +305,12 @@ const EatoorMoneyScreen = ({ navigation }) => {
   }, [navigation]);
 
   // Modal handlers
-  const openAddMoneyModal = useCallback(() => {
+  const openAddMoneyModal = useCallback(async () => {
+    // Ensure user data is loaded before showing payment modal
+    if (!user.email || !user.contact) {
+      await fetchUserData();
+    }
+    
     setAmount('');
     setAddMoneyModalVisible(true);
     
@@ -276,7 +327,7 @@ const EatoorMoneyScreen = ({ navigation }) => {
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+  }, [user, fetchUserData]);
 
   const closeAddMoneyModal = useCallback((callback) => {
     Animated.parallel([
@@ -328,7 +379,7 @@ const EatoorMoneyScreen = ({ navigation }) => {
     return { isValid: true, amount: numAmount };
   }, []);
 
-  // Payment handler
+  // Payment handler with user data
   const handleAddMoney = useCallback(async () => {
     const validation = validateAmount(amount);
     if (!validation.isValid) {
@@ -339,31 +390,44 @@ const EatoorMoneyScreen = ({ navigation }) => {
     try {
       setProcessingPayment(true);
       
-      // Create Razorpay order
+      // Get user data if not already loaded
+      if (!user.email || !user.contact) {
+        await fetchUserData();
+      }
+
+      // Create Razorpay order with user details if needed by backend
       const orderResponse = await createWalletOrder({ 
-        amount: validation.amount 
+        amount: validation.amount,
+        user_id: user.id, // Pass user ID if needed by backend
+        user_email: user.email,
+        user_name: user.name,
       });
       const orderData = orderResponse.data;
       
       if (!orderData.order_id) {
         throw new Error('Failed to create payment order');
       }
-
-      // Configure Razorpay options
+      
+      // Configure Razorpay options with user data
       const razorpayOptions = {
         description: 'Add Eatoor Money',
         image: 'https://eatoorprod.s3.amazonaws.com/eatoor-logo/fwdeatoorlogofiles/5.png',
         currency: 'INR',
-        key: orderData.key || 'rzp_test_Ler2HqmO4lVND1',
-        amount: validation.amount * 100,
+        key: orderData.key || 'rzp_test_Ler2HqmO4lVND1', // Use from API response or fallback
+        amount: validation.amount * 100, // Convert to paise
         name: 'Eatoor Money',
         order_id: orderData.order_id,
         prefill: {
-          email: 'user@example.com',
-          contact: '9999999999',
-          name: 'Eatoor User',
+          email: user.email || 'user@example.com',
+          contact: user.contact || '9999999999',
+          name: user.name || 'Eatoor User',
         },
         theme: { color: '#E65C00' },
+        notes: {
+          source: 'eatoor_wallet',
+          user_id: user.id || 'unknown',
+          app_name: 'Eatoor',
+        },
       };
 
       // Open Razorpay checkout
@@ -425,7 +489,7 @@ const EatoorMoneyScreen = ({ navigation }) => {
         setProcessingPayment(false);
       }
     }
-  }, [amount, validateAmount, fetchWalletData, closeAddMoneyModal]);
+  }, [amount, validateAmount, fetchWalletData, closeAddMoneyModal, user, fetchUserData]);
 
   // Render transaction item - memoized
   const renderTransactionItem = useCallback(({ item }) => {
