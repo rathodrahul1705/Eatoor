@@ -15,134 +15,77 @@ import {
   Dimensions,
   Animated,
   Easing,
-  BackHandler,
+  ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
+import RazorpayCheckout from 'react-native-razorpay';
+import {
+  getWalletBalance,
+  createWalletOrder,
+  walletAddMoneySuccess,
+  getWalletTransactions,
+  debitWallet,
+} from '../../../api/wallet';
 
 const { width, height } = Dimensions.get('window');
 
-// Food delivery specific transaction data
-const initialTransactions = [
-  {
-    id: '1',
-    title: 'Food Order Payment',
-    amount: -450.00,
-    type: 'deduction',
-    date: 'Today',
-    time: '14:30',
-    description: 'Dominos Pizza - Order #12345',
-    category: 'Food & Dining',
-    icon: 'fast-food',
-    color: '#FF6B35',
-    restaurant: 'Dominos Pizza',
-    orderId: '#12345'
-  },
-  {
-    id: '2',
-    title: 'Wallet Top-up',
-    amount: 1000.00,
-    type: 'addition',
-    date: 'Today',
-    time: '10:15',
-    description: 'Added via Credit Card',
-    category: 'Top-up',
-    icon: 'card',
-    color: '#4CAF50',
-  },
-  {
-    id: '3',
-    title: 'Bonus Received',
-    amount: 250.00,
-    type: 'bonus',
-    date: 'Yesterday',
-    time: '16:45',
-    description: 'Referral Program Bonus',
-    category: 'Rewards',
-    icon: 'gift',
-    color: '#9C27B0',
-  },
-  {
-    id: '4',
-    title: 'Grocery Shopping',
-    amount: -1200.50,
-    type: 'deduction',
-    date: 'Jan 12',
-    time: '19:20',
-    description: 'Big Bazaar - Monthly groceries',
-    category: 'Shopping',
-    icon: 'cart',
-    color: '#2196F3',
-    restaurant: 'Big Bazaar'
-  },
-  {
-    id: '5',
-    title: 'Refund Received',
-    amount: 320.00,
-    type: 'refund',
-    date: 'Jan 11',
-    time: '11:30',
-    description: 'Order cancellation refund',
-    category: 'Refund',
-    icon: 'refresh',
-    color: '#FF9800',
-    restaurant: 'KFC'
-  },
-  {
-    id: '6',
-    title: 'Food Order Payment',
-    amount: -325.00,
-    type: 'deduction',
-    date: 'Jan 10',
-    time: '20:15',
-    description: 'McDonald\'s - Order #12346',
-    category: 'Food & Dining',
-    icon: 'fast-food',
-    color: '#FF6B35',
-    restaurant: 'McDonald\'s'
-  },
-];
+// Transaction data mapping
+const mapTransactionType = (txn_type) => {
+  switch (txn_type) {
+    case 'credit':
+      return { type: 'addition', label: 'Credit', icon: 'add-circle', color: '#4CAF50' };
+    case 'debit':
+      return { type: 'deduction', label: 'Debit', icon: 'remove-circle', color: '#F44336' };
+    default:
+      return { type: 'addition', label: 'Other', icon: 'help-circle', color: '#2196F3' };
+  }
+};
 
-const quickActions = [
-  { id: 'add_money', label: 'Add Money', icon: 'add-circle', color: '#FF6B35', gradient: ['#FF6B35', '#FF8E53'] },
-  { id: 'send_money', label: 'Send Money', icon: 'paper-plane', color: '#2196F3', gradient: ['#2196F3', '#64B5F6'] },
-  { id: 'pay_bills', label: 'Pay Bills', icon: 'receipt', color: '#4CAF50', gradient: ['#4CAF50', '#81C784'] },
-  { id: 'scan_qr', label: 'Scan & Pay', icon: 'qr-code', color: '#9C27B0', gradient: ['#9C27B0', '#BA68C8'] },
-  { id: 'food_orders', label: 'My Orders', icon: 'restaurant', color: '#FF9800', gradient: ['#FF9800', '#FFB74D'] },
-];
+const mapTransactionSource = (txn_source) => {
+  switch (txn_source) {
+    case 'add_money':
+      return { category: 'Top-up', description: 'Money Added to Wallet' };
+    case 'order_payment':
+      return { category: 'Order Payment', description: 'Food Order Payment' };
+    case 'refund':
+      return { category: 'Refund', description: 'Order Refund' };
+    default:
+      return { category: 'Other', description: 'Wallet Transaction' };
+  }
+};
 
 const transactionFilters = [
   { id: 'all', label: 'All', icon: 'grid' },
-  { id: 'addition', label: 'Income', icon: 'trending-up' },
-  { id: 'deduction', label: 'Expense', icon: 'trending-down' },
-  { id: 'bonus', label: 'Rewards', icon: 'gift' },
-  { id: 'refund', label: 'Refunds', icon: 'refresh' },
-];
-
-const paymentMethods = [
-  { id: 'upi', label: 'UPI', icon: 'phone-portrait', color: '#2196F3', popular: true },
-  { id: 'card', label: 'Card', icon: 'card', color: '#FF6B35' },
-  { id: 'netbanking', label: 'Net Banking', icon: 'business', color: '#4CAF50' },
-  { id: 'wallet', label: 'Wallet', icon: 'wallet', color: '#9C27B0' },
+  { id: 'credit', label: 'Credit', icon: 'trending-up' },
+  { id: 'debit', label: 'Debit', icon: 'trending-down' },
 ];
 
 const EatoorMoneyScreen = ({ navigation }) => {
   // State Management
-  const [balance, setBalance] = useState(2564.75);
-  const [transactions, setTransactions] = useState(initialTransactions);
+  const [balance, setBalance] = useState(0);
+  const [transactions, setTransactions] = useState([]);
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [addMoneyModalVisible, setAddMoneyModalVisible] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('upi');
   const [amount, setAmount] = useState('');
   const [isBalanceVisible, setIsBalanceVisible] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [processingPayment, setProcessingPayment] = useState(false);
   
   // Refs
-  const backPressTimer = useRef(null);
-  const isProcessingBackPress = useRef(false);
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(height)).current;
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
   const modalClosingRef = useRef(false);
+  const flatListRef = useRef(null);
 
   // Animation Values
-  const scrollY = useRef(new Animated.Value(0)).current;
   const headerHeight = scrollY.interpolate({
     inputRange: [0, 150],
     outputRange: [height * 0.35, height * 0.2],
@@ -163,40 +106,6 @@ const EatoorMoneyScreen = ({ navigation }) => {
     outputRange: [1, 0.8],
     extrapolate: 'clamp',
   });
-  const headerTitleOpacity = scrollY.interpolate({
-    inputRange: [0, 80, 150],
-    outputRange: [0, 0.5, 1],
-    extrapolate: 'clamp',
-  });
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(height)).current;
-  const rotateAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-
-  // BackHandler for Android
-  // useEffect(() => {
-  //   const backAction = () => {
-  //     handleBackPress();
-  //     return true; // Prevent default behavior
-  //   };
-
-  //   const backHandler = BackHandler.addEventListener(
-  //     'hardwareBackPress',
-  //     backAction
-  //   );
-
-  //   return () => {
-  //     if (backPressTimer.current) {
-  //       clearTimeout(backPressTimer.current);
-  //     }
-  //     backHandler.remove();
-  //   };
-  // }, []);
-
-  const handleBackPress = () => {
-    console.log("====")
-    navigation.navigate('ProfileScreen');
-  };
 
   // Start pulse animation
   useEffect(() => {
@@ -218,50 +127,146 @@ const EatoorMoneyScreen = ({ navigation }) => {
     ).start();
   }, []);
 
-  // Filtered transactions
-  const filteredTransactions = transactions.filter(transaction => {
-    return selectedFilter === 'all' || transaction.type === selectedFilter;
-  });
+  // Load wallet data
+  useEffect(() => {
+    fetchWalletData();
+  }, []);
 
-  // Format currency
-  const formatCurrency = (amount) => {
-    return `₹${Math.abs(amount).toFixed(2)}`;
+  const fetchWalletData = async () => {
+    try {
+      setLoading(true);
+      const balanceResponse = await getWalletBalance();
+      
+      if (balanceResponse.data && balanceResponse.data.balance) {
+        setBalance(parseFloat(balanceResponse.data.balance));
+        
+        // Map API transactions to UI format
+        const mappedTransactions = balanceResponse.data.transactions?.map(transaction => {
+          const typeInfo = mapTransactionType(transaction.txn_type);
+          const sourceInfo = mapTransactionSource(transaction.txn_source);
+          
+          const date = new Date(transaction.created_at);
+          const now = new Date();
+          const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+          
+          let displayDate = '';
+          if (diffDays === 0) {
+            displayDate = 'Today';
+          } else if (diffDays === 1) {
+            displayDate = 'Yesterday';
+          } else {
+            displayDate = date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+          }
+          
+          return {
+            id: transaction.id.toString(),
+            title: sourceInfo.category,
+            amount: parseFloat(transaction.amount),
+            type: typeInfo.type,
+            txn_type: transaction.txn_type,
+            date: displayDate,
+            time: date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+            description: transaction.note || sourceInfo.description,
+            category: sourceInfo.category,
+            icon: typeInfo.icon,
+            color: typeInfo.color,
+            orderId: transaction.order_number,
+            status: transaction.status,
+            created_at: transaction.created_at,
+            fullDate: date,
+          };
+        }) || [];
+        
+        setTransactions(mappedTransactions);
+      }
+    } catch (error) {
+      console.error('Error fetching wallet data:', error);
+      Alert.alert('Error', 'Failed to load wallet data');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Handle back navigation - SIMPLIFIED AND FIXED
-  // const handleBackPress = () => {
-  //   // Prevent multiple rapid clicks
-  //   if (isProcessingBackPress.current || modalClosingRef.current) {
-  //     return;
-  //   }
+  // Load more transactions
+  const loadMoreTransactions = async () => {
+  if (loadingMore || !hasMore) return;
 
-  //   isProcessingBackPress.current = true;
+  try {
+    setLoadingMore(true);
+    const nextPage = currentPage + 1;
+    const response = await getWalletTransactions(nextPage);
 
-  //   // If modal is open, close it
-  //   if (addMoneyModalVisible) {
-  //     modalClosingRef.current = true;
-  //     closeAddMoneyModal(() => {
-  //       // Reset flags after modal is closed
-  //       setTimeout(() => {
-  //         isProcessingBackPress.current = false;
-  //         modalClosingRef.current = false;
-  //       }, 300);
-  //     });
-  //   } else {
-  //     // Navigate back if modal is not open
-  //     if (navigation && navigation.goBack) {
-  //       // Reset flag after navigation
-  //       backPressTimer.current = setTimeout(() => {
-  //         isProcessingBackPress.current = false;
-  //       }, 500);
-        
-  //       navigation.goBack();
-  //     } else {
-  //       // Reset flag if no navigation
-  //       isProcessingBackPress.current = false;
-  //     }
-  //   }
-  // };
+    if (response.data && response.data.results && response.data.results.length > 0) {
+      const newTransactions = response.data.results.map(transaction => {
+        const typeInfo = mapTransactionType(transaction.txn_type);
+        const sourceInfo = mapTransactionSource(transaction.txn_source);
+
+        const date = new Date(transaction.created_at);
+        const now = new Date();
+        const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+
+        let displayDate = '';
+        if (diffDays === 0) {
+          displayDate = 'Today';
+        } else if (diffDays === 1) {
+          displayDate = 'Yesterday';
+        } else {
+          displayDate = date.toLocaleDateString('en-IN', {
+            day: 'numeric',
+            month: 'short',
+          });
+        }
+
+        return {
+          id: transaction.id.toString(),
+          title: sourceInfo.category,
+          amount: parseFloat(transaction.amount),
+          type: typeInfo.type,
+          txn_type: transaction.txn_type,
+          date: displayDate,
+          time: date.toLocaleTimeString('en-IN', {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          description: transaction.note || sourceInfo.description,
+          category: sourceInfo.category,
+          icon: typeInfo.icon,
+          color: typeInfo.color,
+          orderId: transaction.order_number,
+          status: transaction.status,
+          created_at: transaction.created_at,
+          fullDate: date,
+        };
+      });
+
+      // KEEP DESC ORDER — append next page at bottom
+      setTransactions(prev => [...prev, ...newTransactions]);
+      setCurrentPage(nextPage);
+      setHasMore(response.data.next !== null);
+    } else {
+      setHasMore(false);
+    }
+  } catch (error) {
+    console.error('Error loading more transactions:', error);
+    Alert.alert('Error', 'Failed to load more transactions');
+  } finally {
+    setLoadingMore(false);
+  }
+};
+
+
+  // Filtered transactions
+  const filteredTransactions = transactions.filter(transaction => {
+    if (selectedFilter === 'all') return true;
+    if (selectedFilter === 'credit') return transaction.txn_type === 'credit';
+    if (selectedFilter === 'debit') return transaction.txn_type === 'debit';
+    return true;
+  });
+
+  // Handle back navigation
+  const handleBackPress = () => {
+    navigation.goBack();
+  };
 
   // Open Add Money Modal
   const openAddMoneyModal = () => {
@@ -306,89 +311,131 @@ const EatoorMoneyScreen = ({ navigation }) => {
 
   // Validate amount input - only numbers and decimals
   const validateAmountInput = (text) => {
-    // Remove any non-numeric characters except decimal point
     const cleanedText = text.replace(/[^0-9.]/g, '');
     
-    // Ensure only one decimal point
     const parts = cleanedText.split('.');
     if (parts.length > 2) {
-      // If more than one decimal point, keep only the first one
       setAmount(parts[0] + '.' + parts.slice(1).join(''));
     } else {
       setAmount(cleanedText);
     }
   };
 
-  // Handle Add Money with validation
-  const handleAddMoney = () => {
-    // Check if amount is empty
+  // Handle Add Money with Razorpay
+  const handleAddMoney = async () => {
     if (!amount || amount.trim() === '') {
       Alert.alert('Invalid Amount', 'Please enter an amount');
       return;
     }
 
-    // Convert to number
     const newAmount = parseFloat(amount);
     
-    // Check if it's a valid number
     if (isNaN(newAmount)) {
       Alert.alert('Invalid Amount', 'Please enter a valid amount');
       return;
     }
 
-    // Check minimum amount (₹100)
     if (newAmount < 100) {
       Alert.alert('Minimum Amount Required', 'Please add at least ₹100');
       return;
     }
 
-    // Check maximum amount (optional)
     if (newAmount > 100000) {
       Alert.alert('Maximum Limit Exceeded', 'Cannot add more than ₹1,00,000 at once');
       return;
     }
 
-    const newTransaction = {
-      id: Date.now().toString(),
-      title: 'Wallet Top-up',
-      amount: newAmount,
-      type: 'addition',
-      date: 'Just now',
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      description: `Added via ${paymentMethods.find(m => m.id === selectedPaymentMethod)?.label}`,
-      category: 'Top-up',
-      icon: 'add-circle',
-      color: '#4CAF50',
-    };
+    try {
+      setProcessingPayment(true);
+      
+      // Step 1: Create Razorpay order
+      const orderResponse = await createWalletOrder({ amount: newAmount });
+      const orderData = orderResponse.data;
+      
+      if (!orderData.order_id) {
+        throw new Error('Failed to create payment order');
+      }
 
-    // Update balance with animation
-    Animated.sequence([
-      Animated.timing(rotateAnim, {
-        toValue: 1,
-        duration: 500,
-        easing: Easing.out(Easing.back(2)),
-        useNativeDriver: true,
-      }),
-      Animated.timing(rotateAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start();
+      // Step 2: Initialize Razorpay checkout
+      const razorpayOptions = {
+        description: 'Add Eatoor Money',
+        image: 'https://eatoorprod.s3.amazonaws.com/eatoor-logo/fwdeatoorlogofiles/5.png', // Add your logo URL
+        currency: 'INR',
+        key: orderData.key || 'rzp_test_Ler2HqmO4lVND1', // Use key from API or fallback
+        amount: newAmount * 100, // Convert to paise
+        name: 'Eatoor Money',
+        order_id: orderData.order_id,
+        prefill: {
+          email: 'user@example.com',
+          contact: '9999999999',
+          name: 'Eatoor User',
+        },
+        theme: { color: '#E65C00' },
+      };
 
-    setBalance(prev => prev + newAmount);
-    setTransactions([newTransaction, ...transactions]);
-    closeAddMoneyModal();
+      // Step 3: Open Razorpay checkout
+      const razorpayResponse = await RazorpayCheckout.open(razorpayOptions);
+      
+      if (razorpayResponse) {
+        // Step 4: Verify payment success
+        const successPayload = {
+          razorpay_payment_id: razorpayResponse.razorpay_payment_id,
+          razorpay_order_id: razorpayResponse.razorpay_order_id,
+          razorpay_signature: razorpayResponse.razorpay_signature,
+          amount: newAmount,
+        };
 
-    // Show success animation
-    Alert.alert('Success!', `₹${newAmount.toFixed(2)} added successfully 🎉`, [
-      { text: 'Awesome!', style: 'cancel' }
-    ]);
+        const verificationResponse = await walletAddMoneySuccess(successPayload);
+
+        if (verificationResponse.status == 200) {
+          // Update balance with animation
+          Animated.sequence([
+            Animated.timing(rotateAnim, {
+              toValue: 1,
+              duration: 500,
+              easing: Easing.out(Easing.back(2)),
+              useNativeDriver: true,
+            }),
+            Animated.timing(rotateAnim, {
+              toValue: 0,
+              duration: 300,
+              useNativeDriver: true,
+            }),
+          ]).start();
+
+          // Fetch updated wallet data
+          await fetchWalletData();
+          closeAddMoneyModal();
+
+          Alert.alert(
+            'Success!',
+            `₹${newAmount.toFixed(2)} added successfully 🎉`,
+            [{ text: 'Awesome!', style: 'cancel' }]
+          );
+        } else {
+          throw new Error('Payment verification failed');
+        }
+      }
+    } catch (error) {
+      console.error('Payment error:', error);
+      
+      // Check if user cancelled the payment
+      if (error.code === 2) {
+        Alert.alert('Payment Cancelled', 'Payment was cancelled by user');
+      } else {
+        Alert.alert(
+          'Payment Failed',
+          error.message || 'Failed to process payment. Please try again.'
+        );
+      }
+    } finally {
+      setProcessingPayment(false);
+    }
   };
 
   // Render transaction item
   const renderTransactionItem = ({ item, index }) => {
-    const isPositive = item.amount >= 0;
+    const isPositive = item.txn_type === 'credit';
     const itemOpacity = scrollY.interpolate({
       inputRange: [0, 100, 100 + index * 30],
       outputRange: [1, 1, 0.9],
@@ -429,10 +476,10 @@ const EatoorMoneyScreen = ({ navigation }) => {
               <Text style={styles.transactionDescription} numberOfLines={1}>
                 {item.description}
               </Text>
-              {item.restaurant && (
+              {item.orderId && (
                 <View style={styles.restaurantBadge}>
-                  <Icon name="restaurant" size={12} color="#666" />
-                  <Text style={styles.restaurantText}>{item.restaurant}</Text>
+                  <Icon name="receipt" size={12} color="#666" />
+                  <Text style={styles.restaurantText}>Order {item.orderId}</Text>
                 </View>
               )}
             </View>
@@ -452,7 +499,7 @@ const EatoorMoneyScreen = ({ navigation }) => {
           <View style={styles.transactionFooter}>
             <View style={[styles.categoryBadge, { backgroundColor: item.color + '15' }]}>
               <Text style={[styles.categoryText, { color: item.color }]}>
-                {item.category}
+                {item.status === 'success' ? 'Completed' : item.status}
               </Text>
             </View>
             <Text style={styles.transactionDate}>
@@ -461,6 +508,18 @@ const EatoorMoneyScreen = ({ navigation }) => {
           </View>
         </View>
       </Animated.View>
+    );
+  };
+
+  // Render footer with loading indicator
+  const renderFooter = () => {
+    if (!loadingMore) return null;
+    
+    return (
+      <View style={styles.loadingFooter}>
+        <ActivityIndicator size="small" color="#FF6B35" />
+        <Text style={styles.loadingText}>Loading more...</Text>
+      </View>
     );
   };
 
@@ -489,6 +548,15 @@ const EatoorMoneyScreen = ({ navigation }) => {
       </Animated.View>
     );
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#FF6B35" />
+        <Text style={styles.loadingText}>Loading wallet...</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -522,6 +590,7 @@ const EatoorMoneyScreen = ({ navigation }) => {
       </View>
 
       <ScrollView
+        ref={flatListRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
         onScroll={Animated.event(
@@ -570,6 +639,7 @@ const EatoorMoneyScreen = ({ navigation }) => {
                 style={styles.addMoneyButtonSmall}
                 onPress={openAddMoneyModal}
                 activeOpacity={0.8}
+                disabled={processingPayment}
               >
                 <LinearGradient
                   colors={['#FF6B35', '#FF8E53']}
@@ -577,8 +647,14 @@ const EatoorMoneyScreen = ({ navigation }) => {
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                 >
-                  <Icon name="add" size={18} color="#FFF" />
-                  <Text style={styles.addMoneyButtonSmallText}>Add Money</Text>
+                  {processingPayment ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <>
+                      <Icon name="add" size={18} color="#FFF" />
+                      <Text style={styles.addMoneyButtonSmallText}>Add Money</Text>
+                    </>
+                  )}
                 </LinearGradient>
               </TouchableOpacity>
           </View>
@@ -590,6 +666,9 @@ const EatoorMoneyScreen = ({ navigation }) => {
             <View style={styles.sectionTitleContainer}>
               <Text style={styles.sectionTitle}>Recent Transactions</Text>
             </View>
+            <TouchableOpacity onPress={fetchWalletData}>
+              <Icon name="refresh" size={24} color="#666" />
+            </TouchableOpacity>
           </View>
 
           {/* Filter Chips */}
@@ -627,22 +706,41 @@ const EatoorMoneyScreen = ({ navigation }) => {
 
           {/* Transactions List */}
           {filteredTransactions.length > 0 ? (
-            <FlatList
-              data={filteredTransactions}
-              renderItem={renderTransactionItem}
-              keyExtractor={(item) => item.id}
-              scrollEnabled={false}
-              contentContainerStyle={styles.transactionsList}
-            />
+            <>
+              <FlatList
+                data={filteredTransactions}
+                renderItem={renderTransactionItem}
+                keyExtractor={(item) => item.id}
+                scrollEnabled={false}
+                contentContainerStyle={styles.transactionsList}
+                ListFooterComponent={renderFooter}
+                onEndReached={loadMoreTransactions}
+                onEndReachedThreshold={0.5}
+              />
+              {hasMore && !loadingMore && (
+                <TouchableOpacity
+                  style={styles.loadMoreButton}
+                  onPress={loadMoreTransactions}
+                >
+                  <Text style={styles.loadMoreText}>Load More</Text>
+                </TouchableOpacity>
+              )}
+            </>
           ) : (
             <View style={styles.emptyState}>
               <Icon name="receipt-outline" size={64} color="#E0E0E0" />
               <Text style={styles.emptyStateTitle}>No transactions yet</Text>
               <Text style={styles.emptyStateSubtitle}>
-                Start ordering food to see transactions here
+                Start ordering food or add money to see transactions here
               </Text>
-              <TouchableOpacity style={styles.emptyStateButton} onPress={openAddMoneyModal}>
-                <Text style={styles.emptyStateButtonText}>Add Money Now</Text>
+              <TouchableOpacity 
+                style={styles.emptyStateButton} 
+                onPress={openAddMoneyModal}
+                disabled={processingPayment}
+              >
+                <Text style={styles.emptyStateButtonText}>
+                  {processingPayment ? 'Processing...' : 'Add Money Now'}
+                </Text>
               </TouchableOpacity>
             </View>
           )}
@@ -663,6 +761,7 @@ const EatoorMoneyScreen = ({ navigation }) => {
           style={styles.fab}
           onPress={openAddMoneyModal}
           activeOpacity={0.9}
+          disabled={processingPayment}
         >
           <LinearGradient
             colors={['#FF6B35', '#FF8E53']}
@@ -670,7 +769,11 @@ const EatoorMoneyScreen = ({ navigation }) => {
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
           >
-            <Icon name="add" size={28} color="#FFF" />
+            {processingPayment ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <Icon name="add" size={28} color="#FFF" />
+            )}
           </LinearGradient>
         </TouchableOpacity>
       </Animated.View>
@@ -696,6 +799,7 @@ const EatoorMoneyScreen = ({ navigation }) => {
                 closeAddMoneyModal();
               }
             }}
+            disabled={processingPayment}
           />
           <Animated.View style={[
             styles.modalContainer,
@@ -712,12 +816,13 @@ const EatoorMoneyScreen = ({ navigation }) => {
                 </View>
                 <TouchableOpacity 
                   onPress={() => {
-                    if (!modalClosingRef.current) {
+                    if (!modalClosingRef.current && !processingPayment) {
                       closeAddMoneyModal();
                     }
                   }} 
                   style={styles.modalCloseButton}
                   activeOpacity={0.7}
+                  disabled={processingPayment}
                 >
                   <Icon name="close" size={24} color="#666" />
                 </TouchableOpacity>
@@ -737,8 +842,9 @@ const EatoorMoneyScreen = ({ navigation }) => {
                   onChangeText={validateAmountInput}
                   keyboardType="decimal-pad"
                   placeholderTextColor="#999"
-                  autoFocus
+                  autoFocus={!processingPayment}
                   maxLength={10}
+                  editable={!processingPayment}
                 />
               </View>
               {amount && parseFloat(amount) < 100 && (
@@ -759,6 +865,7 @@ const EatoorMoneyScreen = ({ navigation }) => {
                     ]}
                     onPress={() => setAmount(quickAmount.toString())}
                     activeOpacity={0.7}
+                    disabled={processingPayment}
                   >
                     <Text style={[
                       styles.quickAmountText,
@@ -775,22 +882,28 @@ const EatoorMoneyScreen = ({ navigation }) => {
             <TouchableOpacity
               style={[
                 styles.addMoneyButton,
-                (!amount || parseFloat(amount) < 100) && styles.addMoneyButtonDisabled
+                (!amount || parseFloat(amount) < 100 || processingPayment) && styles.addMoneyButtonDisabled
               ]}
               onPress={handleAddMoney}
               activeOpacity={0.8}
-              disabled={!amount || parseFloat(amount) < 100}
+              disabled={!amount || parseFloat(amount) < 100 || processingPayment}
             >
               <LinearGradient
-                colors={(!amount || parseFloat(amount) < 100) ? ['#CCCCCC', '#999999'] : ['#FF6B35', '#FF8E53']}
+                colors={(!amount || parseFloat(amount) < 100 || processingPayment) ? ['#CCCCCC', '#999999'] : ['#FF6B35', '#FF8E53']}
                 style={styles.addMoneyButtonGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
-                <Icon name="wallet" size={22} color="#FFF" style={styles.buttonIcon} />
-                <Text style={styles.addMoneyButtonText}>
-                  {amount ? `Add ₹${parseFloat(amount).toFixed(2)}` : 'Enter Amount'}
-                </Text>
+                {processingPayment ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <>
+                    <Icon name="wallet" size={22} color="#FFF" style={styles.buttonIcon} />
+                    <Text style={styles.addMoneyButtonText}>
+                      {amount ? `Add ₹${parseFloat(amount).toFixed(2)}` : 'Enter Amount'}
+                    </Text>
+                  </>
+                )}
               </LinearGradient>
             </TouchableOpacity>
           </Animated.View>
@@ -803,6 +916,12 @@ const EatoorMoneyScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#F8FAFD',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     backgroundColor: '#F8FAFD',
   },
   headerBackground: {
@@ -859,15 +978,6 @@ const styles = StyleSheet.create({
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  headerTitleFixed: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#FFF',
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    textAlign: 'center',
   },
   viewToggle: {
     padding: 10,
@@ -1320,6 +1430,32 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#FFF',
     letterSpacing: -0.5,
+  },
+  loadingFooter: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  loadingText: {
+    marginLeft: 10,
+    color: '#666',
+    fontSize: 14,
+  },
+  loadMoreButton: {
+    backgroundColor: '#F8FAFD',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 20,
+    alignSelf: 'center',
+    marginBottom: 20,
+    borderWidth: 1.5,
+    borderColor: '#F0F0F0',
+  },
+  loadMoreText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#666',
   },
 });
 
