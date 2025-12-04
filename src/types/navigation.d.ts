@@ -17,6 +17,7 @@ export type HomeStackParamList = {
   HomeKitchenDetails: undefined;
   KitchenScreen: undefined;
   PersonalDetailsScreen: undefined;
+  EatoorMoneyScreen: undefined;
 };
 
 // Tab Navigator
@@ -47,6 +48,7 @@ export type MapLocationPicker = NativeStackScreenProps<HomeStackParamList, 'MapL
 export type PersonalDetailsScreen = NativeStackScreenProps<HomeStackParamList, 'PersonalDetailsScreen'>;
 export type EatmartScreenProps = NativeStackScreenProps<HomeTabParamList, 'Eatmart'>;
 export type ReorderScreenProps = NativeStackScreenProps<HomeTabParamList, 'ReorderScreen'>;
+export type EatoorMoneyScreenProps = NativeStackScreenProps<HomeTabParamList, 'EatoorMoneyScreen'>;
 
 // For useNavigation hook
 declare global {

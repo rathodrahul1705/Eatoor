@@ -84,8 +84,8 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         multiDexEnabled true
-        versionCode 8
-        versionName "1.1.4"
+        versionCode 11
+        versionName "2.0.1"
         resValue "string", "build_config_package", "com.eatoor"
     }
     signingConfigs {

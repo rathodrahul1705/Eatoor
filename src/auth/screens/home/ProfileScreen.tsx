@@ -36,6 +36,7 @@ const ProfileScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const { logout } = useContext(AuthContext);
+  const [eatoorMoney, setEatoorMoney] = useState(0);
   
   // Animation values
   const fadeAnim = useState(new Animated.Value(0))[0];
@@ -96,6 +97,9 @@ const ProfileScreen = ({ navigation }) => {
           rating: parsedUser.rating || 0,
           contact: parsedUser.contact_number || 'Not provided'
         });
+        
+        // Set Eatoor Money from user data if available
+        setEatoorMoney(parsedUser.eatoor_money || parsedUser.wallet_balance || 0);
       }
     } catch (error) {
       console.error('Error fetching user data:', error);
@@ -119,6 +123,11 @@ const ProfileScreen = ({ navigation }) => {
         };
 
         setUserDetails(formattedUser);
+        
+        // Update Eatoor Money from API response if available
+        if (userDetails.eatoor_money !== undefined) {
+          setEatoorMoney(userDetails.eatoor_money);
+        }
       }
     } catch (error) {
       console.error('Error fetching user details:', error);
@@ -194,6 +203,16 @@ const ProfileScreen = ({ navigation }) => {
 
   const handleBackPress = () => {
     navigation.navigate('HomeTabs');
+  };
+
+  // Handle viewing Eatoor Money
+  const handleViewEatoorMoney = () => {
+    navigation.navigate('EatoorMoneyScreen', { 
+      currentBalance: eatoorMoney,
+      onBalanceUpdate: (newBalance) => {
+        setEatoorMoney(newBalance);
+      }
+    });
   };
 
   if (loading || !user) {
@@ -373,6 +392,41 @@ const ProfileScreen = ({ navigation }) => {
               <Icon name="calendar-outline" size={12} color="#888" />
               <Text style={styles.memberSince}>Member since {user.memberSince}</Text>
             </View>
+          </View>
+        </Animated.View>
+
+        {/* Eatoor Money Section - Simplified */}
+        <Animated.View 
+          style={[
+            styles.eatoorMoneySection,
+            {
+              opacity: fadeAnim,
+              transform: [
+                { translateY: slideAnim },
+                { scale: scaleAnim }
+              ]
+            }
+          ]}
+        >
+          <View style={styles.eatoorMoneyHeader}>
+            <LinearGradient
+              colors={['#FF6B35', '#FF512F', '#DD2476']}
+              style={styles.eatoorMoneyIcon}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Icon name="wallet-outline" size={isSmallScreen ? 20 : 22} color="#FFF" />
+            </LinearGradient>
+            <View style={styles.eatoorMoneyTextContainer}>
+              <Text style={styles.eatoorMoneyTitle}>Eatoor Money</Text>
+            </View>
+            <TouchableOpacity 
+              onPress={handleViewEatoorMoney}
+              style={styles.viewHistoryButton}
+            >
+              <Text style={styles.viewHistoryText}>View</Text>
+              <Icon name="chevron-forward" size={14} color="#DD2476" />
+            </TouchableOpacity>
           </View>
         </Animated.View>
 
@@ -643,6 +697,65 @@ const styles = StyleSheet.create({
     color: '#888',
     marginLeft: 4,
   },
+  // Simplified Eatoor Money Styles
+  eatoorMoneySection: {
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    marginBottom: 24,
+    padding: isSmallScreen ? 16 : 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  eatoorMoneyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  eatoorMoneyIcon: {
+    width: isSmallScreen ? 36 : 40,
+    height: isSmallScreen ? 36 : 40,
+    borderRadius: isSmallScreen ? 10 : 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#8A2BE2',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  eatoorMoneyTextContainer: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  eatoorMoneyTitle: {
+    fontSize: isSmallScreen ? 14 : 16,
+    color: '#666',
+    fontWeight: '500',
+  },
+  eatoorMoneyBalance: {
+    fontSize: isSmallScreen ? 20 : 24,
+    fontWeight: '700',
+    color: '#8A2BE2',
+    marginTop: 2,
+  },
+  viewHistoryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(138, 43, 226, 0.1)',
+  },
+  viewHistoryText: {
+    fontSize: 13,
+    color: '#DD2476',
+    fontWeight: '600',
+    marginRight: 4,
+  },
+  // Stats Section
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',

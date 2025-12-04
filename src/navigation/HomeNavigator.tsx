@@ -17,6 +17,7 @@ import PersonalDetailsScreen from '../auth/screens/home/PersonalDetailsScreen';
 import AddressScreen from '../auth/screens/home/AddressScreen';
 import ReorderScreen from '../auth/screens/home/ReorderScreen';
 import HomeKitchenNavigate from '../auth/screens/home/HomeKitchenNavigate';
+import EatoorMoneyScreen from '../auth/screens/home/EatoorMoneyScreen';
 import { HomeStackParamList } from '../types/navigation.d';
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();
@@ -40,6 +41,7 @@ const HomeNavigator = () => (
     <Stack.Screen name="AddressScreen" component={AddressScreen} />
     <Stack.Screen name="ReorderScreen" component={ReorderScreen} />
     <Stack.Screen name="HomeKitchenNavigate" component={HomeKitchenNavigate} />
+    <Stack.Screen name="EatoorMoneyScreen" component={EatoorMoneyScreen} />
   </Stack.Navigator>
 );
 
