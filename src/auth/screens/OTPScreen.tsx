@@ -18,9 +18,10 @@ import {
 } from 'react-native';
 
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/Ionicons';
 
-import { OTPScreenProps } from '../../types/navigation.d';
+import { OTPScreenProps, RootStackParamList } from '../../types/navigation.d';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { verifyOTP, resendOTP } from '../../api/auth';
 import { AuthContext } from '../../context/AuthContext';
@@ -35,7 +36,8 @@ const OTP_LENGTH = 6;
 const RESEND_COUNTDOWN = 30;
 
 const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
-  const navigation = useNavigation();
+  // Since OTP screen is inside AuthNavigator, we need to navigate within the Home stack
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { userInput, appHash } = route.params;
 
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(''));
@@ -221,6 +223,12 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
       ]);
 
       login(response.data.tokens.access);
+
+      await AsyncStorage.setItem('navigate_to', response.data.navigate_to);
+
+      // IMPORTANT: Since the login function in AuthContext will update userToken,
+      // AppNavigator will automatically switch from Auth navigator to Home navigator.
+      // The Home navigator should handle its own initial screen based on user data.
 
     } catch (err: any) {
       console.log('OTP verify error:', err);

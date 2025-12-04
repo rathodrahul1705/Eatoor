@@ -8,7 +8,7 @@ import HomeTabs from '../auth/screens/home/HomeTabs';
 export type AuthStackParamList = {
   Login: undefined;
   OTP: { userInput: string };
-  PersonalDetails: undefined
+  PersonalDetailsScreen: undefined
 };
 
 const Stack = createNativeStackNavigator<AuthStackParamList>();
