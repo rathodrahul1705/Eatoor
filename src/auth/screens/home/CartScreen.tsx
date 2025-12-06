@@ -22,6 +22,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { getCartDetails, updateCart, createPayment, verifyPayment, updatePyamentData } from '../../../api/cart';
+import { getWalletBalance } from '../../../api/wallet'; // You'll need to create this API function
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BlurView } from '@react-native-community/blur';
 import RazorpayCheckout from 'react-native-razorpay';
@@ -182,6 +183,14 @@ type PaymentVerificationState = {
   success: boolean;
 };
 
+// Wallet related types
+type WalletBalance = {
+  balance: number;
+  currency: string;
+};
+
+type PaymentMethod = 'online';
+
 // Helper function to safely format prices and text
 const safeText = (text: any, fallback: string = ''): string => {
   if (text === null || text === undefined || text === '') {
@@ -223,6 +232,12 @@ const CartScreen = ({ route, navigation }) => {
   const [showBlurOverlay, setShowBlurOverlay] = useState(false);
   const [showItemCountBadge, setShowItemCountBadge] = useState(true);
   
+  // Wallet states
+  const [walletBalance, setWalletBalance] = useState<WalletBalance | null>(null);
+  const [useWallet, setUseWallet] = useState(false);
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [walletError, setWalletError] = useState<string | null>(null);
+  
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const rotationAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
@@ -263,6 +278,13 @@ const CartScreen = ({ route, navigation }) => {
       fetchCartData();
     }
   }, [userId, kitchenId, addressId]);
+
+  // Fetch wallet balance when user is available
+  useEffect(() => {
+    if (userId) {
+      fetchWalletBalance();
+    }
+  }, [userId]);
 
   // Handle payment status animations
   useEffect(() => {
@@ -311,6 +333,41 @@ const CartScreen = ({ route, navigation }) => {
       }).start();
     }
   }, [showPaymentModal]);
+
+  // Fetch wallet balance
+  const fetchWalletBalance = async () => {
+    if (!userId) return;
+    
+    try {
+      setWalletLoading(true);
+      setWalletError(null);
+      
+      // Assuming you have an API endpoint to get wallet balance
+      const response = await getWalletBalance(userId);
+      
+      if (response.status === 200) {
+        setWalletBalance({
+          balance: safePrice(response.data.balance),
+          currency: response.data.currency || 'INR'
+        });
+      } else {
+        setWalletError('Failed to load wallet balance');
+        setWalletBalance({
+          balance: 0,
+          currency: 'INR'
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching wallet balance:', err);
+      setWalletError('Unable to load wallet balance');
+      setWalletBalance({
+        balance: 0,
+        currency: 'INR'
+      });
+    } finally {
+      setWalletLoading(false);
+    }
+  };
 
   const fetchCartData = async () => {
     if (!kitchenId) {
@@ -402,6 +459,7 @@ const CartScreen = ({ route, navigation }) => {
   const onRefresh = () => {
     setRefreshing(true);
     fetchCartData();
+    fetchWalletBalance();
   };
 
   const handleAddressChange = async () => {
@@ -411,12 +469,40 @@ const CartScreen = ({ route, navigation }) => {
         try {
           await AsyncStorage.setItem('AddressId', String(selectedAddressId.id));
           setAddressId(String(selectedAddressId.id));
-          // fetchCartData();
         } catch (error) {
           console.error('Error saving address:', error);
         }
       }
     });
+  };
+
+  // Calculate final amount after wallet deduction
+  const calculateFinalAmount = () => {
+    if (!cartData) return 0;
+    
+    const totalAmount = safePrice(cartData.billing_details.total);
+    
+    if (useWallet && walletBalance) {
+      const walletAmount = safePrice(walletBalance.balance);
+      const amountAfterWallet = totalAmount - walletAmount;
+      
+      // If wallet covers entire amount, return 0
+      // If wallet doesn't cover entire amount, return remaining amount (minimum 0)
+      return Math.max(amountAfterWallet, 0);
+    }
+    
+    return totalAmount;
+  };
+
+  // Calculate how much wallet will be used
+  const calculateWalletUsage = () => {
+    if (!cartData || !useWallet || !walletBalance) return 0;
+    
+    const totalAmount = safePrice(cartData.billing_details.total);
+    const walletAmount = safePrice(walletBalance.balance);
+    
+    // Return how much of wallet will be used (either full wallet or partial if order amount is less)
+    return Math.min(walletAmount, totalAmount);
   };
 
   const showPaymentStatusModal = (status: PaymentStatus, message: string, orderNumber?: string) => {
@@ -446,12 +532,16 @@ const CartScreen = ({ route, navigation }) => {
     }
 
     try {
+      const finalAmount = calculateFinalAmount();
+      
       const payload = {
         user_id: userId,
         restaurant_id: kitchenId,
-        amount: cartData.billing_details.total * 100, // Convert to paise
+        amount: finalAmount * 100, // Convert to paise
         currency: 'INR',
-        receipt: `order_${Date.now()}`
+        receipt: `order_${Date.now()}`,
+        wallet_used: useWallet,
+        wallet_amount: useWallet ? calculateWalletUsage() : 0
       };
 
       const response = await createPayment(payload);
@@ -483,12 +573,14 @@ const CartScreen = ({ route, navigation }) => {
         razorpay_order_id: paymentResponse.razorpay_order_id,
         razorpay_payment_id: paymentResponse.razorpay_payment_id,
         razorpay_signature: paymentResponse.razorpay_signature,
-        amount: cartData.billing_details.total,
+        amount: calculateFinalAmount(),
         deliveryAddressId: addressId,
         payment_type: 2, // Online payment
         eatoor_order_id: updateResponse.order_id,
         restaurant_id: kitchenId,
         restaurantName: cartData.restaurant_name,
+        wallet_used: useWallet,
+        wallet_amount: useWallet ? calculateWalletUsage() : 0
       };
 
       // Step 3: Verify with backend
@@ -549,6 +641,9 @@ const CartScreen = ({ route, navigation }) => {
         delivery_amount: cartData.billing_details.delivery_amount,
         delivery_fee: cartData.billing_details.delivery_amount,
         total_amount: cartData.billing_details.total,
+        wallet_used: useWallet,
+        wallet_amount: useWallet ? calculateWalletUsage() : 0,
+        final_amount: calculateFinalAmount(),
         code: null,
         discount_amount: cartData.billing_details.subtotal - cartData.billing_details.total
       };
@@ -573,10 +668,11 @@ const CartScreen = ({ route, navigation }) => {
     }
     
     // Check minimum order value
-    if (cartData.billing_details.total < MINIMUM_ORDER_VALUE) {
+    const finalAmount = calculateFinalAmount();
+    if (finalAmount > 0 && finalAmount < MINIMUM_ORDER_VALUE) {
       Alert.alert(
         'Minimum Order Value',
-        `Your order total is ₹${cartData.billing_details.total.toFixed(2)}. Minimum order value is ₹${MINIMUM_ORDER_VALUE}. Please add more items to proceed.`,
+        `Your remaining amount is ₹${finalAmount.toFixed(2)}. Minimum order value is ₹${MINIMUM_ORDER_VALUE}. Please add more items to proceed.`,
         [
           { text: 'OK' },
           {
@@ -607,6 +703,14 @@ const CartScreen = ({ route, navigation }) => {
       return;
     }
     
+    // If wallet covers entire amount
+    if (useWallet && calculateWalletUsage() >= cartData.billing_details.total) {
+      // Handle wallet-only payment
+      handleWalletPayment();
+      return;
+    }
+    
+    // For online payment (with or without wallet)
     setPaymentStatus('processing');
     setShowBlurOverlay(true);
     
@@ -616,11 +720,11 @@ const CartScreen = ({ route, navigation }) => {
       setRazorpayOrderId(orderId);
 
       const options = {
-        description: `Order from ${cartData.restaurant_name}`,
+        description: `Order from ${cartData.restaurant_name}${useWallet ? ` (Eatoor Money used: ₹${calculateWalletUsage().toFixed(2)})` : ''}`,
         image: 'https://eatoorprod.s3.amazonaws.com/eatoor-logo/fwdeatoorlogofiles/5.png',
         currency: 'INR',
         key: RAZORPAY_API_KEY,
-        amount: cartData.billing_details.total * 100, // Amount in paise
+        amount: finalAmount * 100, // Amount in paise
         name: user.full_name,
         order_id: orderId,
         prefill: {
@@ -669,6 +773,46 @@ const CartScreen = ({ route, navigation }) => {
       setShowBlurOverlay(false);
       showPaymentStatusModal('failed', error.message || 'An error occurred while processing payment');
     } finally {
+      setPaymentStatus('idle');
+    }
+  };
+
+  // Handle wallet-only payment
+  const handleWalletPayment = async () => {
+    if (!cartData || !userId || !kitchenId || !addressId) {
+      Alert.alert('Error', 'Required information missing for wallet payment');
+      return;
+    }
+    
+    setPaymentStatus('processing');
+    setShowBlurOverlay(true);
+    
+    try {
+      // Update order with wallet payment
+      const updateResponse = await updateOrderDetails('');
+      
+      if (updateResponse.status === 'success') {
+        // Simulate payment verification for wallet
+        setPaymentVerification({
+          verifying: false,
+          message: 'Payment successful using Eatoor Money!',
+          success: true
+        });
+        
+        setOrderDetails({
+          order_id: updateResponse.order_id,
+          order_number: updateResponse.order_number
+        });
+        
+        showPaymentStatusModal('success', 'Payment successful using Eatoor Money! Redirecting to order details...', updateResponse.order_number);
+      } else {
+        throw new Error('Failed to process wallet payment');
+      }
+    } catch (error) {
+      console.error('Wallet payment error:', error);
+      showPaymentStatusModal('failed', error.message || 'Eatoor Money payment failed');
+    } finally {
+      setShowBlurOverlay(false);
       setPaymentStatus('idle');
     }
   };
@@ -751,6 +895,79 @@ const CartScreen = ({ route, navigation }) => {
     return cartData.cart_details.reduce((total, item) => total + item.quantity, 0);
   };
 
+  // Render Eatoor Money section (above Pay button)
+  const renderEatoorMoneySection = () => {
+    if (walletLoading) {
+      return (
+        <View style={styles.eatoorMoneyContainer}>
+          <View style={styles.eatoorMoneyLoading}>
+            <ActivityIndicator size="small" color="#E65C00" />
+            <Text style={styles.eatoorMoneyLoadingText}>Loading Eatoor Money...</Text>
+          </View>
+        </View>
+      );
+    }
+
+    const balance = walletBalance?.balance || 0;
+    const walletUsage = calculateWalletUsage();
+    const finalAmount = calculateFinalAmount();
+
+    return (
+      <View style={styles.eatoorMoneyContainer}>
+        <View style={styles.eatoorMoneyToggleRow}>
+          <TouchableOpacity 
+            style={styles.checkboxContainer}
+            onPress={() => {
+              if (balance <= 0) {
+                Alert.alert(
+                  'No Eatoor Money',
+                  'You need to add money to your Eatoor Money first',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Add Money', onPress: () => navigation.navigate('EatoorMoneyScreen', { prevScreen: 'CartScreen' }) }
+                  ]
+                );
+                return;
+              }
+              setUseWallet(!useWallet);
+            }}
+            disabled={showBlurOverlay}
+          >
+            <View style={[
+              styles.checkbox,
+              useWallet && styles.checkboxChecked,
+              balance <= 0 && styles.checkboxDisabled
+            ]}>
+              {useWallet && (
+                <Icon name="checkmark" size={scale(12)} color="#fff" />
+              )}
+            </View>
+            <View style={styles.checkboxLabelContainer}>
+              <Text style={[
+                styles.checkboxLabel,
+                balance <= 0 && styles.checkboxLabelDisabled
+              ]}>
+                Use Eatoor Money
+              </Text>
+              <Text style={styles.balanceTextSmall}>
+                Balance: ₹{balance.toFixed(2)}
+              </Text>
+            </View>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.addMoneyButton}
+            onPress={() => navigation.navigate('EatoorMoneyScreen', { prevScreen: 'CartScreen' })}
+            disabled={showBlurOverlay}
+          >
+            <Text style={styles.addMoneyButtonText}>Add Money</Text>
+            <Icon name="arrow-forward" size={scale(14)} color="#E65C00" style={styles.addMoneyIcon} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
   const renderCartItem = ({ item }: { item: CartItem }) => {
     const isUpdating = updatingItems.some(i => i.id === item.item_id);
     const currentAction = isUpdating 
@@ -802,7 +1019,7 @@ const CartScreen = ({ route, navigation }) => {
                 styles.quantityButton,
               ]} 
               onPress={() => updateItemQuantity(item.item_id, 'decrement')}
-              // disabled={isUpdating || item.quantity <= 1}
+              disabled={showBlurOverlay}
             >
               {isUpdating && currentAction === 'decrement' ? (
                 <ActivityIndicator size="small" color="#E65C00" />
@@ -816,7 +1033,7 @@ const CartScreen = ({ route, navigation }) => {
             <TouchableOpacity 
               style={styles.quantityButton} 
               onPress={() => updateItemQuantity(item.item_id, 'increment')}
-              disabled={isUpdating}
+              disabled={isUpdating || showBlurOverlay}
             >
               {isUpdating && currentAction === 'increment' ? (
                 <ActivityIndicator size="small" color="#E65C00" />
@@ -850,6 +1067,7 @@ const CartScreen = ({ route, navigation }) => {
           }
         }}
         activeOpacity={0.7}
+        disabled={showBlurOverlay}
       >
         <Image 
           source={{ uri: item.item_image || 'https://via.placeholder.com/150' }} 
@@ -892,7 +1110,7 @@ const CartScreen = ({ route, navigation }) => {
                     quantity <= 1 && styles.disabledButton
                   ]} 
                   onPress={() => updateItemQuantity(item.item_id, 'decrement', 'SUGGESTION')}
-                  disabled={isUpdating || quantity <= 1}
+                  disabled={isUpdating || quantity <= 1 || showBlurOverlay}
                 >
                   {isUpdating && currentAction === 'decrement' ? (
                     <ActivityIndicator size="small" color="#E65C00" />
@@ -906,7 +1124,7 @@ const CartScreen = ({ route, navigation }) => {
                 <TouchableOpacity 
                   style={styles.quantityButton} 
                   onPress={() => updateItemQuantity(item.item_id, 'increment', 'SUGGESTION')}
-                  disabled={isUpdating}
+                  disabled={isUpdating || showBlurOverlay}
                 >
                   {isUpdating && currentAction === 'increment' ? (
                     <ActivityIndicator size="small" color="#E65C00" />
@@ -922,7 +1140,7 @@ const CartScreen = ({ route, navigation }) => {
                   isUpdating && styles.addItemButtonDisabled
                 ]}
                 onPress={() => updateItemQuantity(item.item_id, 'increment', 'SUGGESTION')}
-                disabled={isUpdating}
+                disabled={isUpdating || showBlurOverlay}
               >
                 {isUpdating && currentAction === 'increment' ? (
                   <ActivityIndicator size="small" color="#fff" />
@@ -991,11 +1209,10 @@ const CartScreen = ({ route, navigation }) => {
   );
 
   const safeFormatNumber = (value, decimals = 2) => {
-  const num = Number(value);
-  if (isNaN(num)) return "0.00";
-  return num.toFixed(decimals);
-};
-
+    const num = Number(value);
+    if (isNaN(num)) return "0.00";
+    return num.toFixed(decimals);
+  };
 
   const renderCartContent = () => (
     <KeyboardAvoidingView 
@@ -1023,6 +1240,7 @@ const CartScreen = ({ route, navigation }) => {
                 <TouchableOpacity 
                   style={styles.itemCountBadge}
                   onPress={() => setShowItemCountBadge(!showItemCountBadge)}
+                  disabled={showBlurOverlay}
                 >
                   <Text style={styles.itemCountText}>{getTotalItems()}</Text>
                 </TouchableOpacity>
@@ -1033,6 +1251,7 @@ const CartScreen = ({ route, navigation }) => {
               <TouchableOpacity 
                 style={styles.clearCartButton}
                 onPress={handleClearCart}
+                disabled={showBlurOverlay}
               >
                 <Icon name="trash-outline" size={scale(18)} color="#E65C00" />
                 <Text style={styles.clearCartText}>Clear All</Text>
@@ -1064,6 +1283,7 @@ const CartScreen = ({ route, navigation }) => {
               <TouchableOpacity 
                 style={styles.viewAllButton}
                 onPress={() => BackToKitchen()}
+                disabled={showBlurOverlay}
               >
                 <Text style={styles.viewAllText}>View All</Text>
                 <Icon name="chevron-forward" size={scale(16)} color="#E65C00" />
@@ -1102,6 +1322,7 @@ const CartScreen = ({ route, navigation }) => {
                 <TouchableOpacity 
                   style={styles.changeAddressButton}
                   onPress={handleAddressChange}
+                  disabled={showBlurOverlay}
                 >
                   <Text style={styles.changeAddressText}>
                     {fullAddress !== "Select Address" ? "Change" : "Add"}
@@ -1197,10 +1418,22 @@ const CartScreen = ({ route, navigation }) => {
               </View>
             )}
 
+            {/* Eatoor Money Deduction Row - Show in bill details */}
+            {useWallet && walletBalance && walletBalance.balance > 0 && (
+              <View style={styles.billRow}>
+                <Text style={styles.billLabel}>Eatoor Money</Text>
+                <Text style={[styles.billValue, styles.eatoorMoneyDeductionBill]}>
+                  - ₹{calculateWalletUsage().toFixed(2)}
+                </Text>
+              </View>
+            )}
+
             <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Total Bill</Text>
+              <Text style={styles.totalLabel}>
+                {useWallet && calculateFinalAmount() > 0 ? 'Amount to Pay' : 'Total Bill'}
+              </Text>
               <Text style={styles.totalValue}>
-                ₹{safeFormatNumber(cartData?.billing_details?.total, 2)}
+                ₹{calculateFinalAmount().toFixed(2)}
               </Text>
             </View>
           </View>
@@ -1218,7 +1451,7 @@ const CartScreen = ({ route, navigation }) => {
 
       </ScrollView>
     </KeyboardAvoidingView>
-);
+  );
     
   const renderPaymentFooter = () => {
     if (!cartData || !cartData?.cart_details || cartData?.cart_details.length === 0) {
@@ -1238,18 +1471,34 @@ const CartScreen = ({ route, navigation }) => {
       );
     }
 
-    const totalAmount = safePrice(cartData?.billing_details.total);
+    const finalAmount = calculateFinalAmount();
+    const walletUsage = calculateWalletUsage();
 
     return (
       <View style={styles.paymentFooter}>
+        {/* Eatoor Money Section - Above Pay Button */}
+        {renderEatoorMoneySection()}
+        
         <View style={styles.paymentFooterContent}>
           <View style={styles.totalAmountContainer}>
-            <Text style={styles.totalAmountLabel}>Total Amount</Text>
-            <Text style={styles.totalAmountValue}>₹{totalAmount.toFixed(2)}</Text>
+            <Text style={styles.totalAmountLabel}>
+              {finalAmount === 0 ? 'PAID' : 'TO PAY'}
+            </Text>
+            <View style={styles.totalAmountValueContainer}>
+              <Text style={styles.totalAmountValue}>₹{finalAmount.toFixed(2)}</Text>
+              {useWallet && walletUsage > 0 && (
+                <Text style={styles.walletUsageFooter}>
+                  (Eatoor Money: ₹{walletUsage.toFixed(2)})
+                </Text>
+              )}
+            </View>
           </View>
           {addressId ? (
             <TouchableOpacity 
-              style={styles.payButton}
+              style={[
+                styles.payButton,
+                finalAmount === 0 && styles.payButtonPaid
+              ]}
               onPress={initiatePayment}
               disabled={paymentStatus === 'processing' || paymentVerification.verifying || showBlurOverlay}
               activeOpacity={0.8}
@@ -1258,8 +1507,17 @@ const CartScreen = ({ route, navigation }) => {
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <>
-                  <Text style={styles.payButtonText}>Proceed to Pay</Text>
-                  <Icon name="arrow-forward" size={scale(20)} color="#fff" style={styles.payButtonIcon} />
+                  <Text style={styles.payButtonText}>
+                    {finalAmount === 0 
+                      ? 'Place Order' 
+                      : 'Proceed to Pay'}
+                  </Text>
+                  <Icon 
+                    name="arrow-forward" 
+                    size={scale(20)} 
+                    color="#fff" 
+                    style={styles.payButtonIcon} 
+                  />
                 </>
               )}
             </TouchableOpacity>
@@ -1545,7 +1803,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContentContainer: {
-    paddingBottom: verticalScale(120),
+    paddingBottom: verticalScale(140),
     paddingHorizontal: scale(16),
   },
   downArrowIcon: {
@@ -1586,22 +1844,186 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#666',
   },
+  // Eatoor Money Section Styles (Zomato Style)
+  eatoorMoneyContainer: {
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(10),
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  eatoorMoneyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: verticalScale(10),
+  },
+  eatoorMoneyTitle: {
+    fontSize: FONT.LG,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  eatoorMoneyBalance: {
+    fontSize: FONT.SM,
+    color: '#666',
+    fontWeight: '500',
+  },
+  eatoorMoneyBalanceAmount: {
+    fontWeight: '700',
+    color: '#E65C00',
+  },
+  eatoorMoneyToggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: verticalScale(6),
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  checkbox: {
+    width: scale(18),
+    height: scale(18),
+    borderRadius: scale(4),
+    borderWidth: 2,
+    borderColor: '#d1d1d6',
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: scale(8),
+  },
+  checkboxChecked: {
+    backgroundColor: '#E65C00',
+    borderColor: '#E65C00',
+  },
+  checkboxDisabled: {
+    backgroundColor: '#f0f0f0',
+    borderColor: '#d1d1d6',
+  },
+  checkboxLabelContainer: {
+    flex: 1,
+  },
+  checkboxLabel: {
+    fontSize: FONT.BASE,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginBottom: verticalScale(2),
+  },
+  checkboxLabelDisabled: {
+    color: '#999',
+  },
+  balanceTextSmall: {
+    fontSize: FONT.SM,
+    color: '#E65C00',
+    fontWeight: '500',
+  },
+  addMoneyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(4),
+    backgroundColor: '#fff',
+    borderRadius: scale(4),
+    borderWidth: 1,
+    borderColor: '#E65C00',
+  },
+  addMoneyButtonText: {
+    color: '#E65C00',
+    fontSize: FONT.SM,
+    fontWeight: '600',
+  },
+  addMoneyIcon: {
+    marginLeft: scale(4),
+  },
+  eatoorMoneyLoading: {
+    alignItems: 'center',
+    padding: verticalScale(10),
+  },
+  eatoorMoneyLoadingText: {
+    fontSize: FONT.SM,
+    color: '#666',
+    marginTop: verticalScale(6),
+    fontWeight: '500',
+  },
+  eatoorMoneyDetails: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: scale(8),
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(8),
+    marginTop: verticalScale(6),
+  },
+  insufficientWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff3e0',
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(8),
+    borderRadius: scale(6),
+    marginBottom: verticalScale(8),
+    borderWidth: 1,
+    borderColor: '#ffcc80',
+  },
+  insufficientText: {
+    fontSize: FONT.SM,
+    color: '#E65C00',
+    fontWeight: '500',
+    marginLeft: scale(6),
+    flex: 1,
+  },
+  eatoorMoneyBreakdown: {
+    borderTopWidth: 1,
+    borderTopColor: '#e8e8e8',
+    paddingTop: verticalScale(6),
+  },
+  eatoorMoneyRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: verticalScale(4),
+  },
+  eatoorMoneyLabel: {
+    fontSize: FONT.SM,
+    color: '#666',
+    fontWeight: '500',
+  },
+  eatoorMoneyDeduction: {
+    fontSize: FONT.SM,
+    color: '#E65C00',
+    fontWeight: '700',
+  },
+  eatoorMoneyAmount: {
+    fontSize: FONT.BASE,
+    color: '#E65C00',
+    fontWeight: '800',
+  },
+  eatoorMoneyFullyPaid: {
+    fontSize: FONT.BASE,
+    color: '#4CAF50',
+    fontWeight: '800',
+  },
+  sectionDivider: {
+    height: 8,
+    backgroundColor: '#f0f0f0',
+    marginHorizontal: -scale(16),
+    marginTop: verticalScale(10),
+  },
   // Section Cards - All content in cards like Zomato
   sectionCard: {
     backgroundColor: '#fff',
-    borderRadius: scale(16),
-    padding: scale(16),
-    marginBottom: verticalScale(16),
-    marginTop: verticalScale(10),
+    borderRadius: scale(12),
+    padding: scale(12),
+    marginBottom: verticalScale(12),
+    marginTop: verticalScale(8),
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
       },
       android: {
-        elevation: 4,
+        elevation: 2,
       },
     }),
   },
@@ -1609,24 +2031,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: verticalScale(16),
+    marginBottom: verticalScale(12),
   },
   sectionTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   sectionTitle: {
-    fontSize: FONT.XL,
+    fontSize: FONT.LG,
     fontWeight: '700',
     color: '#1a1a1a',
   },
   itemCountBadge: {
     backgroundColor: '#E65C00',
-    paddingHorizontal: scale(8),
-    paddingVertical: verticalScale(4),
-    borderRadius: scale(12),
-    marginLeft: scale(8),
-    minWidth: scale(24),
+    paddingHorizontal: scale(6),
+    paddingVertical: verticalScale(2),
+    borderRadius: scale(10),
+    marginLeft: scale(6),
+    minWidth: scale(20),
     alignItems: 'center',
   },
   itemCountText: {
@@ -1637,10 +2059,10 @@ const styles = StyleSheet.create({
   clearCartButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(6),
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(5),
     backgroundColor: '#fff0e6',
-    borderRadius: scale(8),
+    borderRadius: scale(6),
     borderWidth: 1,
     borderColor: '#ffd1b3',
   },
@@ -1662,9 +2084,9 @@ const styles = StyleSheet.create({
   // Cart Item Styles - Compact and Clean
   cartItemCard: {
     backgroundColor: '#fff',
-    borderRadius: scale(12),
-    padding: scale(12),
-    marginBottom: verticalScale(8),
+    borderRadius: scale(10),
+    padding: scale(10),
+    marginBottom: verticalScale(6),
     borderWidth: 1,
     borderColor: '#f0f0f0',
   },
@@ -1673,12 +2095,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   itemTypeContainer: {
-    marginRight: scale(12),
+    marginRight: scale(10),
   },
   itemTypeBadge: {
-    width: scale(20),
-    height: scale(20),
-    borderRadius: scale(4),
+    width: scale(18),
+    height: scale(18),
+    borderRadius: scale(3),
     borderWidth: 1.5,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1692,9 +2114,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(230, 92, 0, 0.1)',
   },
   itemTypeIndicator: {
-    width: scale(10),
-    height: scale(10),
-    borderRadius: scale(5),
+    width: scale(8),
+    height: scale(8),
+    borderRadius: scale(4),
   },
   vegIndicator: {
     backgroundColor: '#4CAF50',
@@ -1704,13 +2126,13 @@ const styles = StyleSheet.create({
   },
   itemDetails: {
     flex: 1,
-    marginRight: scale(12),
+    marginRight: scale(10),
   },
   itemName: {
     fontSize: FONT.BASE,
     fontWeight: '600',
     color: '#1a1a1a',
-    marginBottom: verticalScale(4),
+    marginBottom: verticalScale(3),
   },
   priceRow: {
     flexDirection: 'row',
@@ -1721,7 +2143,7 @@ const styles = StyleSheet.create({
     fontSize: FONT.SM,
     color: '#999',
     textDecorationLine: 'line-through',
-    marginRight: scale(6),
+    marginRight: scale(4),
     fontWeight: '500',
   },
   discountText: {
@@ -1729,9 +2151,9 @@ const styles = StyleSheet.create({
     color: '#E65C00',
     fontWeight: '600',
     backgroundColor: '#fff0e6',
-    paddingHorizontal: scale(6),
-    paddingVertical: verticalScale(2),
-    borderRadius: scale(4),
+    paddingHorizontal: scale(4),
+    paddingVertical: verticalScale(1),
+    borderRadius: scale(3),
   },
   itemPrice: {
     fontSize: FONT.BASE,
@@ -1740,9 +2162,9 @@ const styles = StyleSheet.create({
   },
   bogoBadge: {
     backgroundColor: '#FFEB3B',
-    paddingHorizontal: scale(6),
-    paddingVertical: verticalScale(2),
-    borderRadius: scale(4),
+    paddingHorizontal: scale(5),
+    paddingVertical: verticalScale(1),
+    borderRadius: scale(3),
     alignSelf: 'flex-start',
     marginTop: verticalScale(4),
     borderWidth: 1,
@@ -1758,18 +2180,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff5f5',
-    borderRadius: scale(20),
-    paddingHorizontal: scale(6),
-    paddingVertical: verticalScale(4),
+    borderRadius: scale(16),
+    paddingHorizontal: scale(4),
+    paddingVertical: verticalScale(2),
     borderWidth: 1.5,
     borderColor: '#ffd6d6',
   },
   quantityButton: {
-    padding: scale(4),
-    borderRadius: scale(12),
+    padding: scale(3),
+    borderRadius: scale(10),
     backgroundColor: '#fff',
-    width: scale(24),
-    height: scale(24),
+    width: scale(22),
+    height: scale(22),
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1780,64 +2202,61 @@ const styles = StyleSheet.create({
     fontSize: FONT.SM,
     fontWeight: '700',
     color: '#E65C00',
-    marginHorizontal: scale(6),
-    minWidth: scale(20),
+    marginHorizontal: scale(4),
+    minWidth: scale(18),
     textAlign: 'center',
   },
   // Suggested Items - Horizontal Scroll
-  suggestedItemsRowContainer: {
-    marginTop: verticalScale(8),
-  },
   suggestedItemsHorizontalContainer: {
-    paddingHorizontal: scale(4),
-    paddingBottom: verticalScale(4),
+    paddingHorizontal: scale(2),
+    paddingBottom: verticalScale(2),
   },
   suggestedItemCard: {
-    width: scale(140),
+    width: scale(130),
     backgroundColor: '#fff',
-    borderRadius: scale(12),
+    borderRadius: scale(10),
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#f0f0f0',
-    marginHorizontal: scale(6),
+    marginHorizontal: scale(5),
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.08,
+        shadowRadius: 3,
       },
       android: {
-        elevation: 3,
+        elevation: 2,
       },
     }),
   },
   suggestedItemImage: {
     width: '100%',
-    height: verticalScale(100),
+    height: verticalScale(90),
     backgroundColor: '#f8f8f8',
   },
   suggestedItemContent: {
-    padding: scale(10),
+    padding: scale(8),
   },
   suggestedItemHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: verticalScale(6),
+    marginBottom: verticalScale(4),
   },
   suggestedItemTypeBadge: {
-    width: scale(14),
-    height: scale(14),
-    borderRadius: scale(3),
+    width: scale(12),
+    height: scale(12),
+    borderRadius: scale(2),
     borderWidth: 1.5,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: scale(4),
   },
   suggestedItemTypeIndicator: {
-    width: scale(6),
-    height: scale(6),
-    borderRadius: scale(3),
+    width: scale(5),
+    height: scale(5),
+    borderRadius: scale(2.5),
   },
   suggestedItemName: {
     fontSize: FONT.SM,
@@ -1846,7 +2265,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   suggestedItemDetails: {
-    marginBottom: verticalScale(6),
+    marginBottom: verticalScale(4),
   },
   suggestedItemFooter: {
     flexDirection: 'row',
@@ -1855,10 +2274,10 @@ const styles = StyleSheet.create({
   },
   addItemButton: {
     backgroundColor: '#E65C00',
-    paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(6),
-    borderRadius: scale(6),
-    minWidth: scale(50),
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(5),
+    borderRadius: scale(5),
+    minWidth: scale(45),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1873,23 +2292,23 @@ const styles = StyleSheet.create({
   // Detail Card inside Section
   detailCard: {
     backgroundColor: '#f8f9fa',
-    borderRadius: scale(12),
-    padding: scale(16),
-    marginTop: verticalScale(8),
+    borderRadius: scale(10),
+    padding: scale(12),
+    marginTop: verticalScale(6),
   },
   detailRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: verticalScale(12),
+    marginBottom: verticalScale(10),
   },
   detailIconContainer: {
-    width: scale(32),
-    height: scale(32),
-    borderRadius: scale(16),
+    width: scale(28),
+    height: scale(28),
+    borderRadius: scale(14),
     backgroundColor: '#fff8f0',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: scale(12),
+    marginRight: scale(10),
     borderWidth: 1,
     borderColor: '#ffe0cc',
   },
@@ -1900,18 +2319,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   detailText: {
-    fontSize: FONT.BASE,
+    fontSize: FONT.SM,
     color: '#4a4a4a',
     flex: 1,
-    marginRight: scale(12),
-    lineHeight: verticalScale(20),
+    marginRight: scale(10),
+    lineHeight: verticalScale(18),
     fontWeight: '500',
   },
   changeAddressButton: {
-    paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(4),
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(3),
     backgroundColor: '#fff0e6',
-    borderRadius: scale(6),
+    borderRadius: scale(5),
     borderWidth: 1,
     borderColor: '#ffd1b3',
   },
@@ -1923,33 +2342,37 @@ const styles = StyleSheet.create({
   // Bill Card inside Section
   billCard: {
     backgroundColor: '#f8f9fa',
-    borderRadius: scale(12),
-    padding: scale(16),
-    marginTop: verticalScale(8),
+    borderRadius: scale(10),
+    padding: scale(12),
+    marginTop: verticalScale(6),
   },
   billRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: verticalScale(12),
-    paddingBottom: verticalScale(12),
+    marginBottom: verticalScale(10),
+    paddingBottom: verticalScale(10),
     borderBottomWidth: 1,
     borderBottomColor: '#e8e8e8',
   },
   billLabel: {
-    fontSize: FONT.BASE,
+    fontSize: FONT.SM,
     color: '#666',
     fontWeight: '500',
   },
   billValue: {
-    fontSize: FONT.BASE,
+    fontSize: FONT.SM,
     color: '#333',
     fontWeight: '600',
+  },
+  eatoorMoneyDeductionBill: {
+    color: '#E65C00',
+    fontWeight: '700',
   },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: verticalScale(8),
-    paddingTop: verticalScale(12),
+    marginTop: verticalScale(6),
+    paddingTop: verticalScale(10),
     borderTopWidth: 1.5,
     borderTopColor: '#e8e8e8',
   },
@@ -1968,38 +2391,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff8e1',
-    borderRadius: scale(12),
-    padding: scale(16),
-    marginTop: verticalScale(8),
+    borderRadius: scale(10),
+    padding: scale(12),
+    marginTop: verticalScale(6),
     borderWidth: 1,
     borderColor: '#ffeaa7',
   },
   noteIconContainer: {
-    marginRight: scale(12),
+    marginRight: scale(10),
   },
   noteText: {
     fontSize: FONT.XS,
     color: '#666',
     flex: 1,
     fontWeight: '500',
-    lineHeight: verticalScale(18),
+    lineHeight: verticalScale(16),
   },
   // Cart Items List
   cartItemsList: {
     backgroundColor: '#f8f9fa',
-    borderRadius: scale(12),
-    padding: scale(12),
-    marginTop: verticalScale(8),
+    borderRadius: scale(10),
+    padding: scale(10),
+    marginTop: verticalScale(6),
   },
   emptyCartMessage: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: verticalScale(20),
+    padding: verticalScale(16),
   },
   emptyCartText: {
-    fontSize: FONT.BASE,
+    fontSize: FONT.SM,
     color: '#666',
-    marginTop: verticalScale(8),
+    marginTop: verticalScale(6),
     fontWeight: '500',
   },
   // Empty State Styles
@@ -2011,7 +2434,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: scale(16),
+    padding: scale(14),
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
@@ -2024,16 +2447,16 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: scale(24),
+    padding: scale(20),
   },
   emptyIllustration: {
-    width: scale(120),
-    height: scale(120),
-    borderRadius: scale(60),
+    width: scale(100),
+    height: scale(100),
+    borderRadius: scale(50),
     backgroundColor: '#f8f8f8',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: verticalScale(24),
+    marginBottom: verticalScale(20),
     position: 'relative',
   },
   emptyIconOverlay: {
@@ -2046,45 +2469,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyTitle: {
-    fontSize: FONT.XXL,
+    fontSize: FONT.XL,
     fontWeight: '700',
     color: '#1a1a1a',
-    marginBottom: verticalScale(8),
+    marginBottom: verticalScale(6),
     textAlign: 'center',
   },
   emptyDescription: {
-    fontSize: FONT.BASE,
+    fontSize: FONT.SM,
     color: '#666',
     textAlign: 'center',
-    marginBottom: verticalScale(24),
-    lineHeight: verticalScale(20),
-    paddingHorizontal: scale(20),
+    marginBottom: verticalScale(20),
+    lineHeight: verticalScale(18),
+    paddingHorizontal: scale(16),
     fontWeight: '500',
   },
   suggestionTitle: {
     fontSize: FONT.LG,
     fontWeight: '700',
     color: '#1a1a1a',
-    marginTop: verticalScale(16),
-    marginBottom: verticalScale(12),
-    paddingHorizontal: scale(16),
+    marginTop: verticalScale(12),
+    marginBottom: verticalScale(10),
+    paddingHorizontal: scale(14),
   },
   exploreButton: {
     backgroundColor: '#E65C00',
-    paddingHorizontal: scale(32),
-    paddingVertical: verticalScale(14),
-    borderRadius: scale(25),
+    paddingHorizontal: scale(28),
+    paddingVertical: verticalScale(12),
+    borderRadius: scale(20),
     flexDirection: 'row',
     alignItems: 'center',
     ...Platform.select({
       ios: {
         shadowColor: '#E65C00',
-        shadowOffset: { width: 0, height: 4 },
+        shadowOffset: { width: 0, height: 3 },
         shadowOpacity: 0.3,
-        shadowRadius: 6,
+        shadowRadius: 5,
       },
       android: {
-        elevation: 4,
+        elevation: 3,
       },
     }),
   },
@@ -2092,10 +2515,10 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: FONT.LG,
     fontWeight: '700',
-    marginRight: scale(8),
+    marginRight: scale(6),
   },
   emptySuggestionsContainer: {
-    marginBottom: verticalScale(20),
+    marginBottom: verticalScale(16),
   },
   // Error State Styles
   errorContainer: {
@@ -2106,27 +2529,27 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: scale(24),
+    padding: scale(20),
   },
   errorIcon: {
-    marginBottom: verticalScale(16),
+    marginBottom: verticalScale(12),
   },
   errorText: {
     fontSize: FONT.LG,
     color: '#E65C00',
-    marginBottom: verticalScale(24),
+    marginBottom: verticalScale(20),
     textAlign: 'center',
     fontWeight: '600',
-    lineHeight: verticalScale(20),
+    lineHeight: verticalScale(18),
   },
   primaryButton: {
     backgroundColor: '#E65C00',
-    paddingHorizontal: scale(32),
-    paddingVertical: verticalScale(14),
-    borderRadius: scale(25),
+    paddingHorizontal: scale(28),
+    paddingVertical: verticalScale(12),
+    borderRadius: scale(20),
     width: '80%',
     alignItems: 'center',
-    marginBottom: verticalScale(12),
+    marginBottom: verticalScale(10),
   },
   primaryButtonText: {
     color: '#fff',
@@ -2134,9 +2557,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   secondaryButton: {
-    paddingHorizontal: scale(32),
-    paddingVertical: verticalScale(14),
-    borderRadius: scale(25),
+    paddingHorizontal: scale(28),
+    paddingVertical: verticalScale(12),
+    borderRadius: scale(20),
     width: '80%',
     alignItems: 'center',
     borderWidth: 2,
@@ -2155,20 +2578,20 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: '#fff',
-    borderTopLeftRadius: scale(20),
-    borderTopRightRadius: scale(20),
-    padding: scale(16),
+    borderTopLeftRadius: scale(16),
+    borderTopRightRadius: scale(16),
+    paddingTop: verticalScale(8),
     borderTopWidth: 1,
     borderColor: '#f0f0f0',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 12,
+        shadowOffset: { width: 0, height: -3 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
       },
       android: {
-        elevation: 8,
+        elevation: 6,
       },
     }),
   },
@@ -2176,6 +2599,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: scale(12),
+    paddingBottom: verticalScale(10),
   },
   totalAmountContainer: {
     flex: 1,
@@ -2186,35 +2611,47 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: verticalScale(2),
   },
+  totalAmountValueContainer: {
+    flexDirection: 'column',
+  },
   totalAmountValue: {
     fontSize: FONT.XL,
     fontWeight: '800',
     color: '#E65C00',
   },
+  walletUsageFooter: {
+    fontSize: FONT.XS,
+    color: '#666',
+    fontWeight: '500',
+    marginTop: verticalScale(1),
+  },
   payButton: {
     backgroundColor: '#E65C00',
-    borderRadius: scale(25),
-    paddingVertical: verticalScale(14),
-    paddingHorizontal: scale(24),
+    borderRadius: scale(20),
+    paddingVertical: verticalScale(12),
+    paddingHorizontal: scale(20),
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: scale(140),
+    minWidth: scale(130),
+  },
+  payButtonPaid: {
+    backgroundColor: '#4CAF50',
   },
   payButtonText: {
     color: '#fff',
     fontSize: FONT.LG,
     fontWeight: '700',
-    marginRight: scale(6),
+    marginRight: scale(4),
   },
   payButtonIcon: {
     marginLeft: scale(2),
   },
   addAddressButton: {
     backgroundColor: '#E65C00',
-    borderRadius: scale(25),
-    paddingVertical: verticalScale(14),
-    paddingHorizontal: scale(20),
+    borderRadius: scale(20),
+    paddingVertical: verticalScale(12),
+    paddingHorizontal: scale(16),
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2224,7 +2661,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: FONT.LG,
     fontWeight: '700',
-    marginLeft: scale(6),
+    marginLeft: scale(4),
   },
   addAddressIcon: {
     marginRight: scale(4),
@@ -2233,12 +2670,12 @@ const styles = StyleSheet.create({
   verificationContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: scale(20),
+    padding: scale(16),
   },
   verificationText: {
     fontSize: FONT.LG,
     color: '#333',
-    marginTop: verticalScale(8),
+    marginTop: verticalScale(6),
     textAlign: 'center',
     fontWeight: '600',
   },
@@ -2271,7 +2708,7 @@ const styles = StyleSheet.create({
     zIndex: 1001,
   },
   blurLoadingText: {
-    marginTop: verticalScale(12),
+    marginTop: verticalScale(10),
     fontSize: FONT.LG,
     color: '#333',
     fontWeight: '600',
@@ -2286,19 +2723,19 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     width: width * 0.8,
-    borderRadius: scale(20),
-    padding: scale(24),
+    borderRadius: scale(16),
+    padding: scale(20),
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
+        shadowOffset: { width: 0, height: 3 },
         shadowOpacity: 0.3,
-        shadowRadius: 8,
+        shadowRadius: 6,
       },
       android: {
-        elevation: 8,
+        elevation: 6,
       },
     }),
     overflow: 'hidden',
@@ -2325,41 +2762,41 @@ const styles = StyleSheet.create({
     fontSize: FONT.LG,
     fontWeight: '600',
     textAlign: 'center',
-    marginTop: verticalScale(16),
-    marginBottom: verticalScale(16),
-    lineHeight: verticalScale(20),
+    marginTop: verticalScale(12),
+    marginBottom: verticalScale(12),
+    lineHeight: verticalScale(18),
   },
   loadingIcon: {
-    marginBottom: verticalScale(16),
+    marginBottom: verticalScale(12),
   },
   successAnimation: {
-    width: scale(80),
-    height: scale(80),
+    width: scale(70),
+    height: scale(70),
     backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: scale(40),
+    borderRadius: scale(35),
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: verticalScale(16),
+    marginBottom: verticalScale(12),
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.3)',
   },
   verificationLoader: {
-    marginTop: verticalScale(8),
-    marginBottom: verticalScale(8),
+    marginTop: verticalScale(6),
+    marginBottom: verticalScale(6),
   },
   modalCloseButton: {
     backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: scale(24),
-    paddingVertical: verticalScale(10),
-    borderRadius: scale(20),
-    marginTop: verticalScale(12),
+    paddingHorizontal: scale(20),
+    paddingVertical: verticalScale(8),
+    borderRadius: scale(16),
+    marginTop: verticalScale(10),
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.3)',
   },
   modalCloseButtonText: {
     color: '#fff',
     fontWeight: '700',
-    fontSize: FONT.BASE,
+    fontSize: FONT.SM,
   },
 });
 

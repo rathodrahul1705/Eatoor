@@ -32,7 +32,7 @@ const { width, height } = Dimensions.get('window');
 
 // Constants (keep outside component)
 const QUICK_AMOUNTS = [100, 200, 500, 1000, 2000, 5000];
-const MIN_AMOUNT = 100;
+const MIN_AMOUNT = 0;
 const MAX_AMOUNT = 100000;
 const TRANSACTION_FILTERS = [
   { id: 'all', label: 'All', icon: 'grid-outline' },
