@@ -59,21 +59,27 @@ const getResponsiveFontSize = (baseSize: number) => {
 
 // Delivery status constants
 const DELIVERY_STATUS = {
-  ORDERED: 'Pending',
+  PENDING: 'Pending',
+  ORDERED: 'Ordered',
+  CONFIRMED: 'Confirmed',
   PREPARING: 'Preparing',
   ON_THE_WAY: 'On the Way',
   DELIVERED: 'Delivered'
 };
 
 const STATUS_COLORS = {
+  [DELIVERY_STATUS.PENDING]: '#FF6B35',
   [DELIVERY_STATUS.ORDERED]: '#FF6B35',
+  [DELIVERY_STATUS.CONFIRMED]: '#4A90E2',
   [DELIVERY_STATUS.PREPARING]: '#FFA726',
   [DELIVERY_STATUS.ON_THE_WAY]: '#4A90E2',
   [DELIVERY_STATUS.DELIVERED]: '#2ECC71'
 };
 
 const STATUS_GRADIENTS = {
+  [DELIVERY_STATUS.PENDING]: ['#FF6B35', '#FF8A65'],
   [DELIVERY_STATUS.ORDERED]: ['#FF6B35', '#FF8A65'],
+  [DELIVERY_STATUS.CONFIRMED]: ['#4A90E2', '#64B5F6'],
   [DELIVERY_STATUS.PREPARING]: ['#FFA726', '#FFB74D'],
   [DELIVERY_STATUS.ON_THE_WAY]: ['#4A90E2', '#64B5F6'],
   [DELIVERY_STATUS.DELIVERED]: ['#2ECC71', '#4CD964']
@@ -95,6 +101,68 @@ interface LiveTrackingData {
   estimated_time_minutes: number | null;
   porter_agent_assign_status: string | null;
   porter_tracking_details: any | null;
+}
+
+interface OrderItem {
+  item_name: string;
+  quantity: number;
+  unit_price: string;
+  total_price: string;
+  buy_one_get_one_free: boolean;
+  image?: string;
+  description?: string;
+}
+
+interface PaymentMethodChecks {
+  eatoor_wallet_used: boolean;
+  wallet_payment_amount: number;
+  wallet_payment_method: string;
+  online_payment_method: string;
+  online_payment_amount: number;
+  online_transaction_id: string;
+}
+
+interface DeliveryAddress {
+  full_name: string;
+  address: string;
+  landmark: string;
+  home_type: string;
+  phone_number: string;
+}
+
+interface RestaurantDetails {
+  restaurant_id: string;
+  restaurant_name: string;
+  restaurant_address_line: string;
+  restaurant_image: string;
+  restaurant_contact: string;
+}
+
+interface PaymentDetails {
+  subtotal: string;
+  delivery_fee: number;
+  total: string;
+  payment_status: string;
+  order_status: string;
+}
+
+interface CouponDetails {
+  coupon_code: string | null;
+  coupon_discount: number;
+  coupon_code_text: string;
+}
+
+interface Order {
+  order_number: string;
+  placed_on: string;
+  estimated_delivery: string;
+  review_present: boolean;
+  items: OrderItem[];
+  delivery_address: DeliveryAddress;
+  restaurant_details: RestaurantDetails;
+  payment_details: PaymentDetails;
+  coupon_details_details: CouponDetails;
+  payment_method_checks: PaymentMethodChecks;
 }
 
 // Haptic feedback helper function
@@ -300,11 +368,11 @@ const TrackOrder = () => {
   const [scaleAnim] = useState(new Animated.Value(0.95));
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [order, setOrder] = useState(null);
+  const [order, setOrder] = useState<Order | null>(null);
   const [error, setError] = useState(null);
   const [user, setUser] = useState(null);
   const [distance, setDistance] = useState('');
-  const [deliveryStatus, setDeliveryStatus] = useState(DELIVERY_STATUS.ORDERED);
+  const [deliveryStatus, setDeliveryStatus] = useState(DELIVERY_STATUS.PENDING);
   const [eta, setEta] = useState('30-40 mins');
   const [coordinates, setCoordinates] = useState<{
     restaurant: { latitude: number; longitude: number; title: string };
@@ -577,19 +645,38 @@ const TrackOrder = () => {
         const orderData = response.data.orders[0];
         setOrder(orderData);
 
-        if (orderData.status == DELIVERY_STATUS.PREPARING) {
-          setDeliveryStatus(DELIVERY_STATUS.PREPARING);
-        } else if (orderData.status == DELIVERY_STATUS.ON_THE_WAY) {
-          setDeliveryStatus(DELIVERY_STATUS.ON_THE_WAY);
-        } else if (orderData.status == DELIVERY_STATUS.DELIVERED) {
-          setDeliveryStatus(DELIVERY_STATUS.DELIVERED);
-        } else {
-          setDeliveryStatus(DELIVERY_STATUS.PREPARING);
+        // Map API order status to delivery status
+        const orderStatus = orderData.payment_details?.order_status;
+        
+        switch (orderStatus?.toLowerCase()) {
+          case 'pending':
+            setDeliveryStatus(DELIVERY_STATUS.PENDING);
+            break;
+          case 'confirmed':
+            setDeliveryStatus(DELIVERY_STATUS.CONFIRMED);
+            break;
+          case 'preparing':
+            setDeliveryStatus(DELIVERY_STATUS.PREPARING);
+            break;
+          case 'on the way':
+          case 'out for delivery':
+            setDeliveryStatus(DELIVERY_STATUS.ON_THE_WAY);
+            break;
+          case 'delivered':
+            setDeliveryStatus(DELIVERY_STATUS.DELIVERED);
+            break;
+          default:
+            setDeliveryStatus(DELIVERY_STATUS.PENDING);
         }
         
+        // Calculate ETA
         const placedTime = moment(orderData.placed_on);
         const estimatedTime = moment(orderData.estimated_delivery);
         const diffMinutes = estimatedTime.diff(placedTime, 'minutes');
+        
+        if (!isNaN(diffMinutes)) {
+          setEta(`${diffMinutes} mins`);
+        }
       } else {
         throw new Error('No order data available');
       }
@@ -716,20 +803,30 @@ const TrackOrder = () => {
     const currentGradient = STATUS_GRADIENTS[deliveryStatus] || ['#666', '#999'];
     
     switch(deliveryStatus) {
-      case DELIVERY_STATUS.ORDERED:
+      case DELIVERY_STATUS.PENDING:
         return {
           title: 'Order placed',
           subtitle: 'Your order has been received',
           icon: 'receipt-outline',
           step: 1,
-          color: STATUS_COLORS[DELIVERY_STATUS.ORDERED],
+          color: STATUS_COLORS[DELIVERY_STATUS.PENDING],
           gradient: currentGradient,
           bgColor: 'rgba(255, 107, 53, 0.1)'
+        };
+      case DELIVERY_STATUS.CONFIRMED:
+        return {
+          title: 'Order confirmed',
+          subtitle: order ? `Restaurant confirmed your order` : 'Order confirmed',
+          icon: 'checkmark-circle-outline',
+          step: 1.5,
+          color: STATUS_COLORS[DELIVERY_STATUS.CONFIRMED],
+          gradient: currentGradient,
+          bgColor: 'rgba(74, 144, 226, 0.1)'
         };
       case DELIVERY_STATUS.PREPARING:
         return {
           title: 'Preparing your order',
-          subtitle: order ? `At ${order.restaurant_name}` : 'Being prepared',
+          subtitle: order ? `At ${order.restaurant_details?.restaurant_name || 'Restaurant'}` : 'Being prepared',
           icon: 'restaurant-outline',
           step: 2,
           color: STATUS_COLORS[DELIVERY_STATUS.PREPARING],
@@ -813,9 +910,56 @@ const TrackOrder = () => {
   };
 
   // Format time
-  const placedTime = moment(order?.placed_on).format('h:mm A');
+  const placedTime = order ? moment(order.placed_on).format('h:mm A') : '';
   const estimatedTime = order?.estimated_delivery ? 
     moment(order.estimated_delivery).format('h:mm A') : '';
+
+  // Get payment method details
+  const getPaymentMethodDetails = () => {
+    if (!order?.payment_method_checks) {
+      return {
+        method: 'Cash',
+        color: '#FF6B35',
+        bgColor: 'rgba(255, 107, 53, 0.1)',
+        icon: 'cash-outline'
+      };
+    }
+
+    const paymentCheck = order.payment_method_checks;
+    
+    if (paymentCheck.eatoor_wallet_used) {
+      return {
+        method: paymentCheck.wallet_payment_method || 'Eatoor Money',
+        color: '#9C27B0',
+        bgColor: 'rgba(156, 39, 176, 0.1)',
+        icon: 'wallet-outline',
+        walletAmount: paymentCheck.wallet_payment_amount,
+        onlinePayment: paymentCheck.online_payment_method ? {
+          method: paymentCheck.online_payment_method,
+          amount: paymentCheck.online_payment_amount,
+          transactionId: paymentCheck.online_transaction_id
+        } : null
+      };
+    }
+
+    if (paymentCheck.online_payment_method) {
+      return {
+        method: paymentCheck.online_payment_method,
+        color: '#4CAF50',
+        bgColor: 'rgba(76, 175, 80, 0.1)',
+        icon: 'card-outline'
+      };
+    }
+
+    return {
+      method: 'Cash',
+      color: '#FF6B35',
+      bgColor: 'rgba(255, 107, 53, 0.1)',
+      icon: 'cash-outline'
+    };
+  };
+
+  const paymentDetails = getPaymentMethodDetails();
 
   // Loading state
   if (loading) {
@@ -941,7 +1085,7 @@ const TrackOrder = () => {
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Track Order</Text>
-          <Text style={styles.headerOrderNumber}>#{order_number}</Text>
+          <Text style={styles.headerOrderNumber}>#{order.order_number}</Text>
         </View>
         <View style={styles.headerRight} />
       </Animated.View>
@@ -1111,13 +1255,13 @@ const TrackOrder = () => {
                 <View style={styles.restaurantInfo}>
                   <View style={styles.restaurantInfoLeft}>
                     <Image 
-                      source={{ uri: order.restaurant_image || 'https://via.placeholder.com/60' }} 
+                      source={{ uri: order.restaurant_details?.restaurant_image || 'https://via.placeholder.com/60' }} 
                       style={styles.restaurantImage}
                     />
                     <View style={styles.restaurantDetails}>
                       <View style={styles.restaurantNameContainer}>
                         <Text style={styles.restaurantName} numberOfLines={1}>
-                          {order.restaurant_name || 'Restaurant'}
+                          {order.restaurant_details?.restaurant_name || 'Restaurant'}
                         </Text>
                       </View>
                       <View style={styles.statusIndicator}>
@@ -1126,7 +1270,6 @@ const TrackOrder = () => {
                       </View>
                     </View>
                   </View>
-
                 </View>
                 
                 <View style={styles.deliveryStats}>
@@ -1346,7 +1489,7 @@ const TrackOrder = () => {
                 </View>
                 <View style={styles.itemPriceContainer}>
                   <Text style={styles.itemQuantity}>x{item.quantity}</Text>
-                  <Text style={styles.itemPrice}>₹{(item.unit_price * item.quantity).toFixed(2)}</Text>
+                  <Text style={styles.itemPrice}>₹{(parseFloat(item.unit_price) * item.quantity).toFixed(2)}</Text>
                 </View>
               </View>
             ))}
@@ -1355,33 +1498,74 @@ const TrackOrder = () => {
           <View style={styles.orderTotal}>
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Subtotal</Text>
-              <Text style={styles.totalValue}>₹{parseFloat(order.subtotal || 0).toFixed(2)}</Text>
+              <Text style={styles.totalValue}>₹{parseFloat(order.payment_details?.subtotal || '0').toFixed(2)}</Text>
             </View>
             
-            {order.coupon_discount > 0 && (
+            {order.coupon_details_details?.coupon_discount > 0 && (
               <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>{order.coupon_code_text || 'Discount'}</Text>
-                <Text style={[styles.totalValue, styles.discountValue]}>-₹{parseFloat(order.coupon_discount || 0).toFixed(2)}</Text>
+                <Text style={styles.totalLabel}>{order.coupon_details_details?.coupon_code_text || 'Discount'}</Text>
+                <Text style={[styles.totalValue, styles.discountValue]}>-₹{parseFloat(order.coupon_details_details?.coupon_discount.toString() || '0').toFixed(2)}</Text>
               </View>
             )}
             
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Delivery Fee</Text>
-              <Text style={styles.totalValue}>₹{parseFloat(order.delivery_fee || 0).toFixed(2)}</Text>
+              <Text style={styles.totalValue}>₹{parseFloat(order.payment_details?.delivery_fee?.toString() || '0').toFixed(2)}</Text>
             </View>
+            
+            {/* Wallet Payment Information */}
+            {order.payment_method_checks?.eatoor_wallet_used && (
+              <>
+                <View style={styles.totalRow}>
+                  <Text style={[styles.totalLabel, { color: paymentDetails.color }]}>
+                    {order.payment_method_checks.wallet_payment_method}
+                  </Text>
+                  <Text style={[styles.totalValue, { color: paymentDetails.color }]}>
+                    -₹{parseFloat(order.payment_method_checks.wallet_payment_amount.toString() || '0').toFixed(2)}
+                  </Text>
+                </View>
+                
+                {paymentDetails.onlinePayment && (
+                  <View style={styles.totalRow}>
+                    <Text style={[styles.totalLabel, { color: '#4CAF50' }]}>
+                      {paymentDetails.onlinePayment.method}
+                    </Text>
+                    <Text style={[styles.totalValue, { color: '#4CAF50' }]}>
+                      -₹{parseFloat(paymentDetails.onlinePayment.amount.toString() || '0').toFixed(2)}
+                    </Text>
+                  </View>
+                )}
+              </>
+            )}
             
             <View style={styles.totalDivider} />
             
             <View style={styles.totalRow}>
               <Text style={styles.grandTotalLabel}>Total Paid</Text>
-              <Text style={styles.grandTotalValue}>₹{parseFloat(order.total || 0).toFixed(2)}</Text>
+              <Text style={styles.grandTotalValue}>₹{parseFloat(order.payment_details?.total || '0').toFixed(2)}</Text>
             </View>
             
             <View style={styles.paymentMethod}>
-              <View style={[styles.paymentIcon, { backgroundColor: statusDetails.bgColor }]}>
-                <Icon name="card-outline" size={20} color={statusDetails.color} />
+              <View style={[styles.paymentIcon, { backgroundColor: paymentDetails.bgColor }]}>
+                <Icon name={paymentDetails.icon} size={20} color={paymentDetails.color} />
               </View>
-              <Text style={styles.paymentMethodText}>{order.payment_method || 'Cash'}</Text>
+              <View style={styles.paymentMethodDetails}>
+                <Text style={[styles.paymentMethodText, { color: paymentDetails.color }]}>
+                  {order.payment_method_checks?.wallet_payment_method || 
+                   order.payment_method_checks?.online_payment_method || 
+                   'Cash'}
+                </Text>
+                {order.payment_method_checks?.eatoor_wallet_used && (
+                  <Text style={styles.paymentMethodSubtext}>
+                    Paid via Eatoor Wallet {paymentDetails.onlinePayment ? '+ Online' : ''}
+                  </Text>
+                )}
+                {order.payment_method_checks?.online_transaction_id && (
+                  <Text style={styles.paymentMethodSubtext}>
+                    Transaction ID: {order.payment_method_checks.online_transaction_id}
+                  </Text>
+                )}
+              </View>
             </View>
           </View>
         </Animated.View>
@@ -1427,6 +1611,12 @@ const TrackOrder = () => {
                   <Text style={styles.addressLandmark}> {order.delivery_address.landmark}</Text>
                 </View>
               )}
+              <View style={styles.addressContact}>
+                <Icon name="person-outline" size={18} color="#666" />
+                <Text style={styles.addressPhone}>
+                  {order.delivery_address?.full_name || 'Name not available'}
+                </Text>
+              </View>
               <View style={styles.addressContact}>
                 <Icon name="call-outline" size={18} color="#666" />
                 <Text style={styles.addressPhone}>
@@ -2233,10 +2423,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 10
   },
+  paymentMethodDetails: {
+    flex: 1
+  },
   paymentMethodText: {
     fontSize: getResponsiveFontSize(14),
     color: '#666',
     fontWeight: '600'
+  },
+  paymentMethodSubtext: {
+    fontSize: getResponsiveFontSize(12),
+    color: '#888',
+    marginTop: 2
   },
   addressCard: {
     // Inherits card styles

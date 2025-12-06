@@ -69,7 +69,7 @@ const OrderDetailsScreen = () => {
 
     try {
       const newPastKitchenDetails = {
-        id: order.restaurant_id,
+        id: order.restaurant_details.restaurant_id,
       };
 
       savePastKitchenDetails(newPastKitchenDetails);
@@ -101,10 +101,10 @@ const OrderDetailsScreen = () => {
   const formatDate = (dateString: string) => {
     try {
       if (!dateString) return '';
-      const isoString = dateString.replace(' ', 'T') + 'Z'; // add Z to mark UTC
+      const isoString = dateString.replace(' ', 'T') + 'Z';
       const date = new Date(isoString);
       const formatted = date.toLocaleString('en-IN', {
-        timeZone: 'Asia/Kolkata', // ✅ Force IST
+        timeZone: 'Asia/Kolkata',
         day: '2-digit',
         month: 'long',
         year: 'numeric',
@@ -121,9 +121,9 @@ const OrderDetailsScreen = () => {
   };
 
   const handleCallRestaurant = () => {
-    if (orderDetails?.restaurant_contact) {
-      // Make a phone call
-      Linking.openURL(`tel:${orderDetails.restaurant_contact}`)
+    const contactNumber = orderDetails?.restaurant_details?.restaurant_contact;
+    if (contactNumber) {
+      Linking.openURL(`tel:${contactNumber}`)
         .catch(err => {
           console.error('Error opening phone app:', err);
           Alert.alert('Error', 'Could not make a call. Please check if your device supports calling.');
@@ -131,6 +131,85 @@ const OrderDetailsScreen = () => {
     } else {
       Alert.alert('Info', 'Contact number not available for this restaurant.');
     }
+  };
+
+  // Calculate items subtotal
+  const calculateItemsSubtotal = () => {
+    if (!orderDetails?.items) return 0;
+    return orderDetails.items.reduce((sum, item) => {
+      return sum + (parseFloat(item.total_price) || 0);
+    }, 0);
+  };
+
+  // Calculate the complete bill breakdown
+  const calculateBillDetails = () => {
+    if (!orderDetails) return null;
+
+    const itemsSubtotal = calculateItemsSubtotal();
+    const paymentDetails = orderDetails.payment_details || {};
+    const couponDetails = orderDetails.coupon_details_details || {};
+    
+    // All possible charges
+    const deliveryFee = parseFloat(paymentDetails.delivery_fee || '0');
+    const taxAmount = parseFloat(paymentDetails.tax_amount || '0');
+    const serviceFee = parseFloat(paymentDetails.service_fee || '0');
+    const packagingFee = parseFloat(paymentDetails.packaging_fee || '0');
+    const convenienceFee = parseFloat(paymentDetails.convenience_fee || '0');
+    const insuranceFee = parseFloat(paymentDetails.insurance_fee || '0');
+    const additionalCharges = parseFloat(paymentDetails.additional_charges || '0');
+    const donationAmount = parseFloat(paymentDetails.donation_amount || '0');
+    const tipAmount = parseFloat(paymentDetails.tip_amount || '0');
+    
+    // All possible discounts
+    const couponDiscount = parseFloat(couponDetails.coupon_discount || '0');
+    const additionalDiscount = parseFloat(paymentDetails.additional_discount || '0');
+    
+    // Calculate subtotal (Items + Delivery)
+    const subtotalBeforeCharges = itemsSubtotal + deliveryFee;
+    
+    // Calculate total charges
+    const totalCharges = taxAmount + serviceFee + packagingFee + convenienceFee + 
+                        insuranceFee + additionalCharges + donationAmount + tipAmount;
+    
+    // Calculate total discounts
+    const totalDiscounts = couponDiscount + additionalDiscount;
+    
+    // Calculate final total
+    const finalTotal = subtotalBeforeCharges + totalCharges - totalDiscounts;
+    
+    // Payment method breakdown
+    const paymentChecks = orderDetails.payment_method_checks || {};
+    const walletPayment = parseFloat(paymentChecks.wallet_payment_amount || '0');
+    const onlinePayment = parseFloat(paymentChecks.online_payment_amount || '0');
+    const cashPayment = parseFloat(paymentChecks.cash_payment_amount || '0');
+    
+    return {
+      itemsSubtotal: itemsSubtotal.toFixed(2),
+      deliveryFee: deliveryFee.toFixed(2),
+      taxAmount: taxAmount.toFixed(2),
+      serviceFee: serviceFee.toFixed(2),
+      packagingFee: packagingFee.toFixed(2),
+      convenienceFee: convenienceFee.toFixed(2),
+      insuranceFee: insuranceFee.toFixed(2),
+      additionalCharges: additionalCharges.toFixed(2),
+      donationAmount: donationAmount.toFixed(2),
+      tipAmount: tipAmount.toFixed(2),
+      couponDiscount: couponDiscount.toFixed(2),
+      additionalDiscount: additionalDiscount.toFixed(2),
+      subtotalBeforeCharges: subtotalBeforeCharges.toFixed(2),
+      totalCharges: totalCharges.toFixed(2),
+      totalDiscounts: totalDiscounts.toFixed(2),
+      finalTotal: finalTotal.toFixed(2),
+      walletPayment: walletPayment.toFixed(2),
+      onlinePayment: onlinePayment.toFixed(2),
+      cashPayment: cashPayment.toFixed(2),
+      hasWalletPayment: walletPayment > 0,
+      hasOnlinePayment: onlinePayment > 0,
+      hasCashPayment: cashPayment > 0,
+      walletMethod: paymentChecks.wallet_payment_method || 'Wallet',
+      onlineMethod: paymentChecks.online_payment_method || 'Online Payment',
+      transactionId: paymentChecks.online_transaction_id,
+    };
   };
 
   if (loading) {
@@ -175,6 +254,14 @@ const OrderDetailsScreen = () => {
     );
   }
 
+  const restaurantDetails = orderDetails.restaurant_details || {};
+  const paymentDetails = orderDetails.payment_details || {};
+  const deliveryAddress = orderDetails.delivery_address || {};
+  const couponDetails = orderDetails.coupon_details_details || {};
+  const paymentChecks = orderDetails.payment_method_checks || {};
+  
+  const billDetails = calculateBillDetails();
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header with back button and title */}
@@ -195,18 +282,18 @@ const OrderDetailsScreen = () => {
           <View style={styles.kitchenHeader}>
             <Image 
               source={{ 
-                uri: orderDetails.restaurant_image || 'https://via.placeholder.com/56',
+                uri: restaurantDetails.restaurant_image || 'https://via.placeholder.com/56',
                 cache: 'force-cache'
               }}
               style={styles.kitchenImage} 
             />
             <View style={styles.kitchenInfo}>
-              <Text style={styles.kitchenName}>{orderDetails.restaurant_name}</Text>
+              <Text style={styles.kitchenName}>{restaurantDetails.restaurant_name}</Text>
               <Text style={styles.kitchenAddress}>
-                {orderDetails?.restaurant_address_line || 'Address not available'}
+                {restaurantDetails.restaurant_address_line || 'Address not available'}
               </Text>
             </View>
-            {orderDetails.restaurant_contact && (
+            {restaurantDetails.restaurant_contact && (
               <TouchableOpacity 
                 style={styles.callButton}
                 onPress={handleCallRestaurant}
@@ -223,11 +310,12 @@ const OrderDetailsScreen = () => {
             <Text style={styles.orderIdText}>Order ID: {orderDetails.order_number}</Text>
             <View style={[
               styles.statusBadge,
-              orderDetails.status === 'Delivered' ? styles.deliveredBadge : 
-              orderDetails.status === 'Pending' ? styles.pendingBadge : 
-              orderDetails.status === 'Cancelled' ? styles.cancelledBadge : styles.onthewayBadge
+              paymentDetails.order_status === 'Delivered' ? styles.deliveredBadge : 
+              paymentDetails.order_status === 'Pending' ? styles.pendingBadge : 
+              paymentDetails.order_status === 'Cancelled' ? styles.cancelledBadge : 
+              paymentDetails.order_status === 'Confirmed' ? styles.confirmedBadge : styles.onthewayBadge
             ]}>
-              <Text style={styles.statusText}>{orderDetails.status}</Text>
+              <Text style={styles.statusText}>{paymentDetails.order_status || 'Processing'}</Text>
             </View>
           </View>
           <Text style={styles.orderDate}>Placed on: {formatDate(orderDetails.placed_on)}</Text>
@@ -246,74 +334,264 @@ const OrderDetailsScreen = () => {
           </View>
         </View>
 
-        {/* Bill Summary Card */}
+        {/* Bill Summary Card - Complete Breakdown */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Bill Summary</Text>
+          
+          {/* Items Subtotal */}
           <View style={styles.billRow}>
-            <Text style={styles.billLabel}>Item Total</Text>
-            <Text style={styles.billValue}>₹{orderDetails.subtotal || '0.00'}</Text>
+            <Text style={styles.billLabel}>Items Total</Text>
+            <Text style={styles.billValue}>₹{billDetails.itemsSubtotal}</Text>
           </View>
           
-          {orderDetails.coupon_discount > 0 && (
+          {/* Delivery Fee */}
+          {parseFloat(billDetails.deliveryFee) > 0 && (
             <View style={styles.billRow}>
-              <Text style={styles.billLabel}>{orderDetails.coupon_code_text || 'Discount'}</Text>
-              <Text style={[styles.billValue, styles.discountValue]}>-₹{orderDetails.coupon_discount}</Text>
+              <Text style={styles.billLabel}>Delivery Fee</Text>
+              <Text style={styles.billValue}>₹{billDetails.deliveryFee}</Text>
             </View>
           )}
           
-          <View style={styles.billRow}>
-            <Text style={styles.billLabel}>Delivery Fee</Text>
-            <Text style={styles.billValue}>₹{orderDetails.delivery_fee || '0.00'}</Text>
+          {/* Subtotal before additional charges */}
+          <View style={[styles.billRow, styles.subtotalRow]}>
+            <Text style={[styles.billLabel, styles.subtotalLabel]}>Subtotal</Text>
+            <Text style={[styles.billValue, styles.subtotalValue]}>₹{billDetails.subtotalBeforeCharges}</Text>
           </View>
           
-          <View style={styles.divider} />
+          {/* Additional Charges Section */}
+          {(parseFloat(billDetails.taxAmount) > 0 || 
+            parseFloat(billDetails.serviceFee) > 0 || 
+            parseFloat(billDetails.packagingFee) > 0 ||
+            parseFloat(billDetails.convenienceFee) > 0 ||
+            parseFloat(billDetails.insuranceFee) > 0 ||
+            parseFloat(billDetails.additionalCharges) > 0 ||
+            parseFloat(billDetails.donationAmount) > 0 ||
+            parseFloat(billDetails.tipAmount) > 0) && (
+            <>
+              <View style={styles.sectionDivider}>
+                <Text style={styles.sectionDividerText}>Additional Charges</Text>
+              </View>
+              
+              {/* Tax */}
+              {parseFloat(billDetails.taxAmount) > 0 && (
+                <View style={styles.billRow}>
+                  <Text style={styles.billLabel}>Tax</Text>
+                  <Text style={styles.billValue}>₹{billDetails.taxAmount}</Text>
+                </View>
+              )}
+              
+              {/* Service Fee */}
+              {parseFloat(billDetails.serviceFee) > 0 && (
+                <View style={styles.billRow}>
+                  <Text style={styles.billLabel}>Service Fee</Text>
+                  <Text style={styles.billValue}>₹{billDetails.serviceFee}</Text>
+                </View>
+              )}
+              
+              {/* Packaging Fee */}
+              {parseFloat(billDetails.packagingFee) > 0 && (
+                <View style={styles.billRow}>
+                  <Text style={styles.billLabel}>Packaging Fee</Text>
+                  <Text style={styles.billValue}>₹{billDetails.packagingFee}</Text>
+                </View>
+              )}
+              
+              {/* Convenience Fee */}
+              {parseFloat(billDetails.convenienceFee) > 0 && (
+                <View style={styles.billRow}>
+                  <Text style={styles.billLabel}>Convenience Fee</Text>
+                  <Text style={styles.billValue}>₹{billDetails.convenienceFee}</Text>
+                </View>
+              )}
+              
+              {/* Insurance Fee */}
+              {parseFloat(billDetails.insuranceFee) > 0 && (
+                <View style={styles.billRow}>
+                  <Text style={styles.billLabel}>Insurance Fee</Text>
+                  <Text style={styles.billValue}>₹{billDetails.insuranceFee}</Text>
+                </View>
+              )}
+              
+              {/* Additional Charges */}
+              {parseFloat(billDetails.additionalCharges) > 0 && (
+                <View style={styles.billRow}>
+                  <Text style={styles.billLabel}>Additional Charges</Text>
+                  <Text style={styles.billValue}>₹{billDetails.additionalCharges}</Text>
+                </View>
+              )}
+              
+              {/* Donation */}
+              {parseFloat(billDetails.donationAmount) > 0 && (
+                <View style={styles.billRow}>
+                  <Text style={styles.billLabel}>Donation</Text>
+                  <Text style={styles.billValue}>₹{billDetails.donationAmount}</Text>
+                </View>
+              )}
+              
+              {/* Tip */}
+              {parseFloat(billDetails.tipAmount) > 0 && (
+                <View style={styles.billRow}>
+                  <Text style={styles.billLabel}>Tip</Text>
+                  <Text style={styles.billValue}>₹{billDetails.tipAmount}</Text>
+                </View>
+              )}
+              
+              {/* Total Charges */}
+              <View style={[styles.billRow, styles.chargesTotalRow]}>
+                <Text style={[styles.billLabel, styles.chargesTotalLabel]}>Total Additional Charges</Text>
+                <Text style={[styles.billValue, styles.chargesTotalValue]}>₹{billDetails.totalCharges}</Text>
+              </View>
+            </>
+          )}
+          
+          {/* Discounts Section */}
+          {(parseFloat(billDetails.couponDiscount) > 0 || parseFloat(billDetails.additionalDiscount) > 0) && (
+            <>
+              <View style={styles.sectionDivider}>
+                <Text style={styles.sectionDividerText}>Discounts Applied</Text>
+              </View>
+              
+              {/* Coupon Discount */}
+              {parseFloat(billDetails.couponDiscount) > 0 && (
+                <View style={styles.billRow}>
+                  <Text style={styles.billLabel}>
+                    {couponDetails.coupon_code_text || 'Coupon Discount'}
+                  </Text>
+                  <Text style={[styles.billValue, styles.discountValue]}>-₹{billDetails.couponDiscount}</Text>
+                </View>
+              )}
+              
+              {/* Additional Discount */}
+              {parseFloat(billDetails.additionalDiscount) > 0 && (
+                <View style={styles.billRow}>
+                  <Text style={styles.billLabel}>Additional Discount</Text>
+                  <Text style={[styles.billValue, styles.discountValue]}>-₹{billDetails.additionalDiscount}</Text>
+                </View>
+              )}
+              
+              {/* Total Discounts */}
+              <View style={[styles.billRow, styles.discountTotalRow]}>
+                <Text style={[styles.billLabel, styles.discountTotalLabel]}>Total Discounts</Text>
+                <Text style={[styles.billValue, styles.discountTotalValue]}>-₹{billDetails.totalDiscounts}</Text>
+              </View>
+            </>
+          )}
+          
+          {/* Final Total */}
+          <View style={styles.totalDivider} />
           <View style={[styles.billRow, styles.totalRow]}>
-            <Text style={[styles.billLabel, styles.totalLabel]}>Total Paid</Text>
-            <Text style={[styles.billValue, styles.totalValue]}>₹{orderDetails.total || '0.00'}</Text>
+            <Text style={[styles.billLabel, styles.totalLabel]}>Final Amount Paid</Text>
+            <Text style={[styles.billValue, styles.totalValue]}>₹{billDetails.finalTotal}</Text>
           </View>
+          
+          {/* Payment Method Breakdown */}
+          {(billDetails.hasWalletPayment || billDetails.hasOnlinePayment || billDetails.hasCashPayment) && (
+            <>
+              <View style={styles.paymentDivider} />
+              <Text style={[styles.sectionTitle, styles.paymentSectionTitle]}>Payment Method Breakdown</Text>
+              
+              {/* Wallet Payment */}
+              {billDetails.hasWalletPayment && (
+                <View style={styles.paymentMethodRow}>
+                  <View style={styles.paymentMethodIconContainer}>
+                    <Icon name="wallet-outline" size={16} color="#FF6B35" />
+                  </View>
+                  <Text style={styles.paymentMethodLabel}>{billDetails.walletMethod}</Text>
+                  <Text style={styles.paymentMethodAmount}>₹{billDetails.walletPayment}</Text>
+                </View>
+              )}
+              
+              {/* Online Payment */}
+              {billDetails.hasOnlinePayment && (
+                <View style={styles.paymentMethodRow}>
+                  <View style={styles.paymentMethodIconContainer}>
+                    <Icon name="card-outline" size={16} color="#4CAF50" />
+                  </View>
+                  <Text style={styles.paymentMethodLabel}>{billDetails.onlineMethod}</Text>
+                  <Text style={styles.paymentMethodAmount}>₹{billDetails.onlinePayment}</Text>
+                </View>
+              )}
+              
+              {/* Cash Payment */}
+              {billDetails.hasCashPayment && (
+                <View style={styles.paymentMethodRow}>
+                  <View style={styles.paymentMethodIconContainer}>
+                    <Icon name="cash-outline" size={16} color="#2196F3" />
+                  </View>
+                  <Text style={styles.paymentMethodLabel}>Cash on Delivery</Text>
+                  <Text style={styles.paymentMethodAmount}>₹{billDetails.cashPayment}</Text>
+                </View>
+              )}
+              
+              {/* Payment Total */}
+              <View style={[styles.paymentMethodRow, styles.paymentTotalRow]}>
+                <Text style={[styles.paymentMethodLabel, styles.paymentTotalLabel]}>Total Paid</Text>
+                <Text style={[styles.paymentMethodAmount, styles.paymentTotalAmount]}>
+                  ₹{billDetails.finalTotal}
+                </Text>
+              </View>
+              
+              {/* Transaction ID if available */}
+              {billDetails.transactionId && (
+                <View style={styles.transactionContainer}>
+                  <Text style={styles.transactionLabel}>Transaction ID:</Text>
+                  <Text style={styles.transactionValue}>{billDetails.transactionId}</Text>
+                </View>
+              )}
+            </>
+          )}
         </View>
 
-        {/* Payment Method Card */}
+        {/* Payment Status Card */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Payment Information</Text>
           <View style={styles.detailRow}>
             <Icon name="card-outline" size={16} color="#666" style={styles.detailIcon} />
-            <Text style={styles.detailText}>{orderDetails.payment_method || 'Not specified'}</Text>
+            <Text style={styles.detailText}>
+              Status: <Text style={[
+                styles.paymentStatus,
+                paymentDetails.payment_status === 'Paid' ? styles.paidStatus :
+                paymentDetails.payment_status === 'Pending' ? styles.pendingStatus :
+                paymentDetails.payment_status === 'Failed' ? styles.failedStatus :
+                styles.otherStatus
+              ]}>
+                {paymentDetails.payment_status || 'Not specified'}
+              </Text>
+            </Text>
           </View>
-          <View style={styles.detailRow}>
-            <Icon name="time-outline" size={16} color="#666" style={styles.detailIcon} />
-            <Text style={styles.detailText}>Status: {orderDetails.payment_status || 'Not specified'}</Text>
-          </View>
+          
+          {paymentDetails.payment_method && (
+            <View style={styles.detailRow}>
+              <Icon name="receipt-outline" size={16} color="#666" style={styles.detailIcon} />
+              <Text style={styles.detailText}>
+                Method: {paymentDetails.payment_method}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Delivery Details Card */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Delivery Details</Text>
-          {orderDetails.delivery_address ? (
-            <>
-              <View style={styles.detailRow}>
-                <Icon name="person-outline" size={16} color="#666" style={styles.detailIcon} />
-                <Text style={styles.detailText}>{orderDetails.delivery_address.full_name || 'Not specified'}</Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Icon name="call-outline" size={16} color="#666" style={styles.detailIcon} />
-                <Text style={styles.detailText}>{orderDetails.delivery_address.phone_number || 'Not specified'}</Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Icon name="location-outline" size={16} color="#666" style={styles.detailIcon} />
-                <Text style={styles.detailText}>
-                  {orderDetails.delivery_address.address || 'Address not available'}
-                  {orderDetails.delivery_address.landmark && ` (${orderDetails.delivery_address.landmark})`}
-                </Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Icon name="home-outline" size={16} color="#666" style={styles.detailIcon} />
-                <Text style={styles.detailText}>{orderDetails.delivery_address.home_type || 'Not specified'}</Text>
-              </View>
-            </>
-          ) : (
-            <Text style={styles.detailText}>Delivery address not available</Text>
-          )}
+          <View style={styles.detailRow}>
+            <Icon name="person-outline" size={16} color="#666" style={styles.detailIcon} />
+            <Text style={styles.detailText}>{deliveryAddress.full_name || 'Not specified'}</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Icon name="call-outline" size={16} color="#666" style={styles.detailIcon} />
+            <Text style={styles.detailText}>{deliveryAddress.phone_number || 'Not specified'}</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Icon name="location-outline" size={16} color="#666" style={styles.detailIcon} />
+            <Text style={styles.detailText}>
+              {deliveryAddress.address || 'Address not available'}
+              {deliveryAddress.landmark && ` (${deliveryAddress.landmark})`}
+            </Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Icon name="home-outline" size={16} color="#666" style={styles.detailIcon} />
+            <Text style={styles.detailText}>{deliveryAddress.home_type || 'Not specified'}</Text>
+          </View>
         </View>
 
         {/* Estimated Delivery */}
@@ -327,9 +605,20 @@ const OrderDetailsScreen = () => {
           </View>
         )}
 
+        {/* Review Button */}
+        {orderDetails.review_present === false && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Share Your Experience</Text>
+            <Text style={styles.reviewText}>How was your order from {restaurantDetails.restaurant_name}?</Text>
+            <TouchableOpacity style={styles.reviewButton}>
+              <Text style={styles.reviewButtonText}>Write a Review</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Restaurant ID */}
         <View style={styles.licenseContainer}>
-          <Text style={styles.licenseText}>Restaurant ID: {orderDetails.restaurant_id || 'Not available'}</Text>
+          <Text style={styles.licenseText}>Restaurant ID: {restaurantDetails.restaurant_id || 'Not available'}</Text>
         </View>
       </ScrollView>
 
@@ -338,7 +627,7 @@ const OrderDetailsScreen = () => {
         <TouchableOpacity 
           style={styles.reorderButton}
           onPress={() => handleReorder(orderDetails)}
-          disabled={orderDetails.status === 'Cancelled'}
+          disabled={paymentDetails.order_status === 'Cancelled'}
         >
           <Text style={styles.reorderButtonText}>Reorder</Text>
         </TouchableOpacity>
@@ -450,6 +739,9 @@ const styles = StyleSheet.create({
   cancelledBadge: {
     backgroundColor: '#ffebee',
   },
+  confirmedBadge: {
+    backgroundColor: '#e3f2fd',
+  },
   statusText: {
     fontSize: 12,
     fontWeight: '600',
@@ -513,10 +805,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
   },
+  // Bill Summary Styles
   billRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
   billLabel: {
     fontSize: 14,
@@ -528,24 +821,151 @@ const styles = StyleSheet.create({
   },
   discountValue: {
     color: '#4CAF50',
+    fontWeight: '600',
   },
-  divider: {
+  subtotalRow: {
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  subtotalLabel: {
+    fontWeight: '600',
+    color: '#333',
+  },
+  subtotalValue: {
+    fontWeight: '600',
+    color: '#333',
+  },
+  totalDivider: {
     height: 1,
-    backgroundColor: '#f0f0f0',
-    marginVertical: 8,
+    backgroundColor: '#e0e0e0',
+    marginVertical: 12,
   },
   totalRow: {
     marginTop: 4,
   },
   totalLabel: {
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#333',
+    fontSize: 15,
   },
   totalValue: {
     fontWeight: '700',
     color: '#FF6B35',
-    fontSize: 15,
+    fontSize: 16,
   },
+  // Section Dividers
+  sectionDivider: {
+    backgroundColor: '#f8f8f8',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    marginVertical: 8,
+  },
+  sectionDividerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    textTransform: 'uppercase',
+  },
+  // Charges and Discounts
+  chargesTotalRow: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  chargesTotalLabel: {
+    fontWeight: '600',
+    color: '#333',
+  },
+  chargesTotalValue: {
+    fontWeight: '600',
+    color: '#333',
+  },
+  discountTotalRow: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  discountTotalLabel: {
+    fontWeight: '600',
+    color: '#333',
+  },
+  discountTotalValue: {
+    fontWeight: '600',
+    color: '#4CAF50',
+  },
+  // Payment Method Styles
+  paymentDivider: {
+    height: 1,
+    backgroundColor: '#e0e0e0',
+    marginVertical: 16,
+  },
+  paymentSectionTitle: {
+    marginBottom: 12,
+  },
+  paymentMethodRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f5f5f5',
+  },
+  paymentMethodIconContainer: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#f8f8f8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  paymentMethodLabel: {
+    flex: 1,
+    fontSize: 14,
+    color: '#555',
+  },
+  paymentMethodAmount: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  paymentTotalRow: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+    borderBottomWidth: 0,
+  },
+  paymentTotalLabel: {
+    fontWeight: '700',
+    fontSize: 15,
+    color: '#333',
+  },
+  paymentTotalAmount: {
+    fontWeight: '700',
+    fontSize: 15,
+    color: '#FF6B35',
+  },
+  transactionContainer: {
+    marginTop: 12,
+    padding: 8,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 6,
+  },
+  transactionLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
+  transactionValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#333',
+    fontFamily: 'monospace',
+  },
+  // Detail Rows
   detailRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -560,6 +980,40 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#555',
   },
+  // Payment Status
+  paymentStatus: {
+    fontWeight: '600',
+  },
+  paidStatus: {
+    color: '#4CAF50',
+  },
+  pendingStatus: {
+    color: '#FF9800',
+  },
+  failedStatus: {
+    color: '#F44336',
+  },
+  otherStatus: {
+    color: '#666',
+  },
+  // Review Section
+  reviewButton: {
+    backgroundColor: '#FF6B35',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  reviewButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  reviewText: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
+  },
   licenseContainer: {
     padding: 12,
   },
@@ -568,6 +1022,7 @@ const styles = StyleSheet.create({
     color: '#888',
     textAlign: 'center',
   },
+  // Action Bar
   actionBar: {
     position: 'absolute',
     bottom: 16,
@@ -596,6 +1051,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 14,
   },
+  // Loading & Error
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
