@@ -27,6 +27,7 @@ import {
   walletAddMoneySuccess,
   getWalletTransactions,
 } from '../../../api/wallet';
+import { useRoute } from '@react-navigation/native';
 
 const { width, height } = Dimensions.get('window');
 
@@ -71,6 +72,7 @@ const formatTransactionDate = (created_at) => {
 
 const EatoorMoneyScreen = ({ navigation }) => {
   // State Management
+  const route = useRoute();
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [selectedFilter, setSelectedFilter] = useState('all');
@@ -89,6 +91,7 @@ const EatoorMoneyScreen = ({ navigation }) => {
     id: '',
   });
   
+  console.log("route==",route?.params?.prevScreen)
   // Refs
   const scrollY = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -469,6 +472,10 @@ const EatoorMoneyScreen = ({ navigation }) => {
             `₹${validation.amount.toFixed(2)} added successfully 🎉`,
             [{ text: 'Awesome!', style: 'cancel' }]
           );
+
+          if (route?.params?.prevScreen == "CartScreen"){
+            navigation.navigate(route?.params?.prevScreen);
+          }
         } else {
           throw new Error('Payment verification failed');
         }

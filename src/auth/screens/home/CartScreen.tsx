@@ -22,7 +22,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { getCartDetails, updateCart, createPayment, verifyPayment, updatePyamentData } from '../../../api/cart';
-import { getWalletBalance } from '../../../api/wallet'; // You'll need to create this API function
+import { getWalletBalance, debitWallet } from '../../../api/wallet';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BlurView } from '@react-native-community/blur';
 import RazorpayCheckout from 'react-native-razorpay';
@@ -49,7 +49,7 @@ const FONT = {
 };
 
 // Minimum order value constant
-const MINIMUM_ORDER_VALUE = 50;
+const MINIMUM_ORDER_VALUE = 5;
 
 // Type definitions (updated with new fields)
 type CartItem = {
@@ -505,6 +505,34 @@ const CartScreen = ({ route, navigation }) => {
     return Math.min(walletAmount, totalAmount);
   };
 
+  // Function to debit amount from wallet
+  const debitWalletAmount = async (amount: number, orderId?: number) => {
+    if (!userId) {
+      throw new Error('User ID is required to debit wallet');
+    }
+
+    try {
+      const payload = {
+        amount: amount,
+        order_id: orderId // Optional, only if available
+      };
+
+      const response = await debitWallet(payload);
+
+      if (response.status === 200) {
+        console.log(`Successfully debited ₹${amount} from wallet`);
+        // Refresh wallet balance after debit
+        await fetchWalletBalance();
+        return response.data;
+      } else {
+        throw new Error(response.data.message || 'Failed to debit wallet');
+      }
+    } catch (error) {
+      console.error('Error debiting wallet:', error);
+      throw error;
+    }
+  };
+
   const showPaymentStatusModal = (status: PaymentStatus, message: string, orderNumber?: string) => {
     setPaymentStatus(status);
     setPaymentMessage(message);
@@ -568,7 +596,19 @@ const CartScreen = ({ route, navigation }) => {
       // Step 1: Update order details with payment info
       const updateResponse = await updateOrderDetails(paymentResponse.razorpay_payment_id);
 
-      // Step 2: Prepare verification payload
+      // Step 2: Debit wallet amount if wallet is used
+      if (useWallet && calculateWalletUsage() > 0) {
+        try {
+          await debitWalletAmount(calculateWalletUsage(), updateResponse.order_id);
+          console.log(`Wallet debited: ₹${calculateWalletUsage().toFixed(2)}`);
+        } catch (walletError) {
+          console.error('Wallet debit failed:', walletError);
+          // Continue with payment verification even if wallet debit fails
+          // The order is already placed, wallet debit can be retried
+        }
+      }
+
+      // Step 3: Prepare verification payload
       const payload = {
         razorpay_order_id: paymentResponse.razorpay_order_id,
         razorpay_payment_id: paymentResponse.razorpay_payment_id,
@@ -583,7 +623,7 @@ const CartScreen = ({ route, navigation }) => {
         wallet_amount: useWallet ? calculateWalletUsage() : 0
       };
 
-      // Step 3: Verify with backend
+      // Step 4: Verify with backend
       const response = await verifyPayment(payload);
 
       if (response.status === 200) {
@@ -631,7 +671,7 @@ const CartScreen = ({ route, navigation }) => {
       const payload = {
         user_id: userId,
         restaurant_id: kitchenId,
-        payment_method: 2, // Online payment
+        payment_method: 6, // Online payment
         payment_type: 2, // Online payment
         delivery_address_id: addressId,
         is_takeaway: false,
@@ -792,6 +832,17 @@ const CartScreen = ({ route, navigation }) => {
       const updateResponse = await updateOrderDetails('');
       
       if (updateResponse.status === 'success') {
+        // Debit wallet amount for wallet-only payment
+        try {
+          const walletUsage = calculateWalletUsage();
+          await debitWalletAmount(walletUsage, updateResponse.order_id);
+          console.log(`Wallet debited: ₹${walletUsage.toFixed(2)}`);
+        } catch (walletError) {
+          console.error('Wallet debit failed:', walletError);
+          // Continue even if wallet debit fails
+          // The order is already placed, wallet debit can be retried
+        }
+        
         // Simulate payment verification for wallet
         setPaymentVerification({
           verifying: false,
@@ -1406,7 +1457,7 @@ const CartScreen = ({ route, navigation }) => {
                 <Text style={styles.billValue}>
                   ₹{safeFormatNumber(cartData.billing_details.delivery_amount, 2)}
                 </Text>
-              </View>
+            </View>
             )}
 
             {cartData?.billing_details?.tax != null && (
@@ -2636,7 +2687,7 @@ const styles = StyleSheet.create({
     minWidth: scale(130),
   },
   payButtonPaid: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#E65C00',
   },
   payButtonText: {
     color: '#fff',
