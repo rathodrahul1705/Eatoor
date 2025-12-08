@@ -115,11 +115,12 @@ interface OrderItem {
 
 interface PaymentMethodChecks {
   eatoor_wallet_used: boolean;
+  online_payment_used: boolean;
   wallet_payment_amount: number;
-  wallet_payment_method: string;
-  online_payment_method: string;
+  wallet_payment_method: string | null;
+  online_payment_method: string | null;
   online_payment_amount: number;
-  online_transaction_id: string;
+  online_transaction_id: string | null;
 }
 
 interface DeliveryAddress {
@@ -188,6 +189,170 @@ const triggerHaptic = (type: 'light' | 'medium' | 'heavy' = 'medium') => {
     }
   } catch (error) {
     console.log('Haptic feedback not available');
+  }
+};
+
+// Date formatting function for IST
+const formatDate = (dateString: string, formatType: 'full' | 'date' | 'time' | 'datetime' = 'full') => {
+  try {
+    if (!dateString) return '';
+    
+    // Convert the date string to ISO format
+    const isoString = dateString.replace(' ', 'T') + 'Z';
+    const date = new Date(isoString);
+    
+    // Options for different formats
+    const options: any = {
+      timeZone: 'Asia/Kolkata',
+      hour12: true,
+    };
+    
+    // Set options based on format type
+    switch (formatType) {
+      case 'full':
+        options.day = '2-digit';
+        options.month = 'long';
+        options.year = 'numeric';
+        options.hour = '2-digit';
+        options.minute = '2-digit';
+        options.second = '2-digit';
+        break;
+      case 'date':
+        options.day = '2-digit';
+        options.month = 'short';
+        options.year = 'numeric';
+        break;
+      case 'time':
+        options.hour = '2-digit';
+        options.minute = '2-digit';
+        break;
+      case 'datetime':
+        options.day = '2-digit';
+        options.month = 'short';
+        options.year = 'numeric';
+        options.hour = '2-digit';
+        options.minute = '2-digit';
+        break;
+      default:
+        options.day = '2-digit';
+        options.month = 'long';
+        options.year = 'numeric';
+        options.hour = '2-digit';
+        options.minute = '2-digit';
+    }
+    
+    const formatted = date.toLocaleString('en-IN', options);
+    return formatted;
+  } catch (e) {
+    console.error('Date formatting error:', e);
+    return dateString;
+  }
+};
+
+// Format date for header display (shorter version)
+const formatHeaderDate = (dateString: string) => {
+  try {
+    if (!dateString) return '';
+    
+    const isoString = dateString.replace(' ', 'T') + 'Z';
+    const date = new Date(isoString);
+    
+    // Format: "DD MMM, hh:mm AM/PM"
+    const formatted = date.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+    
+    return formatted;
+  } catch (e) {
+    console.error('Date formatting error:', e);
+    return '';
+  }
+};
+
+// Format time only
+const formatTime = (dateString: string) => {
+  try {
+    if (!dateString) return '';
+    
+    const isoString = dateString.replace(' ', 'T') + 'Z';
+    const date = new Date(isoString);
+    
+    const formatted = date.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+    
+    return formatted;
+  } catch (e) {
+    console.error('Time formatting error:', e);
+    return '';
+  }
+};
+
+// Format date and time without seconds
+const formatDateTime = (dateString: string) => {
+  try {
+    if (!dateString) return '';
+    
+    const isoString = dateString.replace(' ', 'T') + 'Z';
+    const date = new Date(isoString);
+    
+    const formatted = date.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+    
+    return formatted;
+  } catch (e) {
+    console.error('DateTime formatting error:', e);
+    return '';
+  }
+};
+
+// Get relative time (e.g., "5 min ago")
+const getRelativeTime = (dateString: string) => {
+  try {
+    if (!dateString) return '';
+    
+    const isoString = dateString.replace(' ', 'T') + 'Z';
+    const pastDate = new Date(isoString);
+    const currentDate = new Date();
+    
+    // Convert both dates to IST
+    const istPastDate = new Date(pastDate.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    const istCurrentDate = new Date(currentDate.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    
+    const diffMs = istCurrentDate.getTime() - istPastDate.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHour / 24);
+    
+    if (diffMin < 1) {
+      return 'Just now';
+    } else if (diffMin < 60) {
+      return `${diffMin} min${diffMin > 1 ? 's' : ''} ago`;
+    } else if (diffHour < 24) {
+      return `${diffHour} hour${diffHour > 1 ? 's' : ''} ago`;
+    } else if (diffDay < 7) {
+      return `${diffDay} day${diffDay > 1 ? 's' : ''} ago`;
+    } else {
+      return formatDateTime(dateString);
+    }
+  } catch (e) {
+    console.error('Relative time error:', e);
+    return '';
   }
 };
 
@@ -381,7 +546,7 @@ const TrackOrder = () => {
   } | null>(null);
   const [liveTrackingData, setLiveTrackingData] = useState<LiveTrackingData | null>(null);
   const [trackingInterval, setTrackingInterval] = useState<NodeJS.Timeout | null>(null);
-  const [lastUpdated, setLastUpdated] = useState(moment());
+  const [lastUpdated, setLastUpdated] = useState(new Date());
   const [rotationAngleValue, setRotationAngleValue] = useState(0);
   const [pulseAnim] = useState(new Animated.Value(1));
   const [routeCoordinates, setRouteCoordinates] = useState([]);
@@ -546,6 +711,42 @@ const TrackOrder = () => {
     setRotationAngleValue(angle);
   }, [coordinates]);
 
+  // Function to handle phone calls
+  const handleAddressCall = (phoneNumber: string) => {
+    triggerHaptic('medium');
+    
+    if (!phoneNumber) {
+      Alert.alert('Error', 'Phone number not available');
+      return;
+    }
+
+    // Clean phone number - remove any non-digit characters
+    const cleanPhoneNumber = phoneNumber.replace(/\D/g, '');
+    
+    if (cleanPhoneNumber.length < 10) {
+      Alert.alert('Error', 'Invalid phone number');
+      return;
+    }
+
+    const phoneUrl = Platform.select({
+      android: `tel:${cleanPhoneNumber}`,
+      ios: `telprompt:${cleanPhoneNumber}`
+    });
+
+    Linking.canOpenURL(phoneUrl)
+      .then(supported => {
+        if (supported) {
+          Linking.openURL(phoneUrl);
+        } else {
+          Alert.alert('Error', 'Unable to make a call on this device');
+        }
+      })
+      .catch(err => {
+        console.error('Error making call:', err);
+        Alert.alert('Error', 'Failed to make call');
+      });
+  };
+
   // Fetch live tracking data
   const fetchLiveTrackingData = useCallback(async (showLoader = false) => {
     try {
@@ -670,9 +871,9 @@ const TrackOrder = () => {
         }
         
         // Calculate ETA
-        const placedTime = moment(orderData.placed_on);
-        const estimatedTime = moment(orderData.estimated_delivery);
-        const diffMinutes = estimatedTime.diff(placedTime, 'minutes');
+        const placedTime = new Date(orderData.placed_on.replace(' ', 'T') + 'Z');
+        const estimatedTime = new Date(orderData.estimated_delivery.replace(' ', 'T') + 'Z');
+        const diffMinutes = Math.floor((estimatedTime.getTime() - placedTime.getTime()) / (1000 * 60));
         
         if (!isNaN(diffMinutes)) {
           setEta(`${diffMinutes} mins`);
@@ -701,7 +902,7 @@ const TrackOrder = () => {
         fetchLiveTrackingData(showLoader)
       ]);
       
-      setLastUpdated(moment());
+      setLastUpdated(new Date());
     } catch (err) {
       console.error('Error fetching all data:', err);
       if (showLoader) {
@@ -909,57 +1110,179 @@ const TrackOrder = () => {
     }
   };
 
-  // Format time
-  const placedTime = order ? moment(order.placed_on).format('h:mm A') : '';
-  const estimatedTime = order?.estimated_delivery ? 
-    moment(order.estimated_delivery).format('h:mm A') : '';
+  // Function to render payment breakdown based on payment_method_checks
+  const renderPaymentBreakdown = () => {
+    if (!order?.payment_method_checks) return null;
 
-  // Get payment method details
-  const getPaymentMethodDetails = () => {
-    if (!order?.payment_method_checks) {
-      return {
-        method: 'Cash',
-        color: '#FF6B35',
-        bgColor: 'rgba(255, 107, 53, 0.1)',
-        icon: 'cash-outline'
-      };
-    }
+    const { 
+      eatoor_wallet_used, 
+      online_payment_used, 
+      wallet_payment_amount, 
+      wallet_payment_method, 
+      online_payment_method, 
+      online_payment_amount,
+      online_transaction_id 
+    } = order.payment_method_checks;
 
-    const paymentCheck = order.payment_method_checks;
+    const totalAmount = parseFloat(order.payment_details?.total || '0');
     
-    if (paymentCheck.eatoor_wallet_used) {
-      return {
-        method: paymentCheck.wallet_payment_method || 'Eatoor Money',
-        color: '#9C27B0',
-        bgColor: 'rgba(156, 39, 176, 0.1)',
-        icon: 'wallet-outline',
-        walletAmount: paymentCheck.wallet_payment_amount,
-        onlinePayment: paymentCheck.online_payment_method ? {
-          method: paymentCheck.online_payment_method,
-          amount: paymentCheck.online_payment_amount,
-          transactionId: paymentCheck.online_transaction_id
-        } : null
-      };
+    // Case 1: Only Wallet Payment
+    if (eatoor_wallet_used && !online_payment_used) {
+      return (
+        <>
+          <View style={styles.paymentMethodRow}>
+            <View style={[styles.paymentMethodIconContainer, { backgroundColor: 'rgba(156, 39, 176, 0.1)' }]}>
+              <Icon name="wallet-outline" size={20} color="#9C27B0" />
+            </View>
+            <View style={styles.paymentMethodInfo}>
+              <Text style={styles.paymentMethodName}>
+                {wallet_payment_method || 'Eatoor Money'}
+              </Text>
+              <Text style={styles.paymentMethodDescription}>
+                Wallet payment
+              </Text>
+            </View>
+            <Text style={[styles.paymentAmount, { color: '#9C27B0' }]}>
+              ₹{parseFloat(wallet_payment_amount.toString() || '0').toFixed(2)}
+            </Text>
+          </View>
+          
+          <View style={styles.paidIndicator}>
+            <Icon name="checkmark-circle" size={18} color="#2ECC71" />
+            <Text style={styles.paidText}>Paid via Wallet</Text>
+          </View>
+        </>
+      );
     }
-
-    if (paymentCheck.online_payment_method) {
-      return {
-        method: paymentCheck.online_payment_method,
-        color: '#4CAF50',
-        bgColor: 'rgba(76, 175, 80, 0.1)',
-        icon: 'card-outline'
-      };
+    
+    // Case 2: Only Online Payment
+    if (!eatoor_wallet_used && online_payment_used) {
+      return (
+        <>
+          <View style={styles.paymentMethodRow}>
+            <View style={[styles.paymentMethodIconContainer, { backgroundColor: 'rgba(76, 175, 80, 0.1)' }]}>
+              <Icon name="card-outline" size={20} color="#4CAF50" />
+            </View>
+            <View style={styles.paymentMethodInfo}>
+              <Text style={styles.paymentMethodName}>
+                {online_payment_method || 'Online Payment'}
+              </Text>
+              <Text style={styles.paymentMethodDescription}>
+                Online payment
+                {online_transaction_id && (
+                  <Text style={styles.transactionIdText}>
+                    ID: {online_transaction_id}
+                  </Text>
+                )}
+              </Text>
+            </View>
+            <Text style={[styles.paymentAmount, { color: '#4CAF50' }]}>
+              ₹{parseFloat(online_payment_amount.toString() || '0').toFixed(2)}
+            </Text>
+          </View>
+          
+          <View style={styles.paidIndicator}>
+            <Icon name="checkmark-circle" size={18} color="#2ECC71" />
+            <Text style={styles.paidText}>
+              Paid via {online_payment_method || 'Online Payment'}
+            </Text>
+          </View>
+        </>
+      );
     }
-
-    return {
-      method: 'Cash',
-      color: '#FF6B35',
-      bgColor: 'rgba(255, 107, 53, 0.1)',
-      icon: 'cash-outline'
-    };
+    
+    // Case 3: Both Wallet and Online Payment
+    if (eatoor_wallet_used && online_payment_used) {
+      return (
+        <>
+          {/* Wallet Payment Row */}
+          <View style={styles.paymentMethodRow}>
+            <View style={[styles.paymentMethodIconContainer, { backgroundColor: 'rgba(156, 39, 176, 0.1)' }]}>
+              <Icon name="wallet-outline" size={20} color="#9C27B0" />
+            </View>
+            <View style={styles.paymentMethodInfo}>
+              <Text style={styles.paymentMethodName}>
+                {wallet_payment_method || 'Eatoor Money'}
+              </Text>
+              <Text style={styles.paymentMethodDescription}>
+                Wallet payment
+              </Text>
+            </View>
+            <Text style={[styles.paymentAmount, { color: '#9C27B0' }]}>
+              ₹{parseFloat(wallet_payment_amount.toString() || '0').toFixed(2)}
+            </Text>
+          </View>
+          
+          {/* Online Payment Row */}
+          <View style={styles.paymentMethodRow}>
+            <View style={[styles.paymentMethodIconContainer, { backgroundColor: 'rgba(76, 175, 80, 0.1)' }]}>
+              <Icon name="card-outline" size={20} color="#4CAF50" />
+            </View>
+            <View style={styles.paymentMethodInfo}>
+              <Text style={styles.paymentMethodName}>
+                {online_payment_method || 'Online Payment'}
+              </Text>
+              <Text style={styles.paymentMethodDescription}>
+                Online payment
+                {online_transaction_id && (
+                  <Text style={styles.transactionIdText}>
+                    • ID: {online_transaction_id}
+                  </Text>
+                )}
+              </Text>
+            </View>
+            <Text style={[styles.paymentAmount, { color: '#4CAF50' }]}>
+              ₹{parseFloat(online_payment_amount.toString() || '0').toFixed(2)}
+            </Text>
+          </View>
+          
+          <View style={styles.paidIndicator}>
+            <Icon name="checkmark-circle" size={18} color="#2ECC71" />
+            <Text style={styles.paidText}>
+              Paid via Wallet + {online_payment_method || 'Online'}
+            </Text>
+          </View>
+        </>
+      );
+    }
+    
+    // Case 4: Cash on Delivery (No wallet, no online payment)
+    if (!eatoor_wallet_used && !online_payment_used) {
+      return (
+        <View style={styles.paymentMethodRow}>
+          <View style={[styles.paymentMethodIconContainer, { backgroundColor: 'rgba(255, 107, 53, 0.1)' }]}>
+            <Icon name="cash-outline" size={20} color="#FF6B35" />
+          </View>
+          <View style={styles.paymentMethodInfo}>
+            <Text style={styles.paymentMethodName}>Cash on Delivery</Text>
+            <Text style={styles.paymentMethodDescription}>
+              Pay when order arrives
+            </Text>
+          </View>
+          <Text style={[styles.paymentAmount, { color: '#FF6B35' }]}>
+            ₹{totalAmount.toFixed(2)}
+          </Text>
+        </View>
+      );
+    }
+    
+    return null;
   };
 
-  const paymentDetails = getPaymentMethodDetails();
+  // Format last updated time in IST
+  const formatLastUpdated = () => {
+    try {
+      return lastUpdated.toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (e) {
+      console.error('Error formatting last updated time:', e);
+      return '';
+    }
+  };
 
   // Loading state
   if (loading) {
@@ -1085,7 +1408,12 @@ const TrackOrder = () => {
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Track Order</Text>
-          <Text style={styles.headerOrderNumber}>#{order.order_number}</Text>
+          <View style={styles.headerDateTimeContainer}>
+            <Text style={styles.headerOrderNumber}>#{order.order_number}</Text>
+            <Text style={styles.headerDateTime}>
+              • {formatHeaderDate(order.placed_on)}
+            </Text>
+          </View>
         </View>
         <View style={styles.headerRight} />
       </Animated.View>
@@ -1287,7 +1615,7 @@ const TrackOrder = () => {
                   <View style={styles.statDivider} />
                   <View style={styles.statItem}>
                     <Icon name="refresh" size={16} color="#888" />
-                    <Text style={styles.statValue}>{lastUpdated.format('h:mm')}</Text>
+                    <Text style={styles.statValue}>{formatLastUpdated()}</Text>
                     <Text style={styles.statLabel}>Updated</Text>
                   </View>
                 </View>
@@ -1457,8 +1785,11 @@ const TrackOrder = () => {
         ]}>
           <View style={styles.orderSummaryHeader}>
             <Text style={styles.sectionTitle}>Order Summary</Text>
-            <Text style={styles.orderTime}>
-              Ordered at {placedTime} • Est. delivery {estimatedTime}
+            <Text style={styles.orderDateTime}>
+              Ordered: {formatDateTime(order.placed_on)}
+            </Text>
+            <Text style={styles.estimatedDateTime}>
+              Estimated delivery: {formatDateTime(order.estimated_delivery)}
             </Text>
           </View>
           
@@ -1489,88 +1820,61 @@ const TrackOrder = () => {
                 </View>
                 <View style={styles.itemPriceContainer}>
                   <Text style={styles.itemQuantity}>x{item.quantity}</Text>
-                  <Text style={styles.itemPrice}>₹{(parseFloat(item.unit_price) * item.quantity).toFixed(2)}</Text>
+                  <Text style={styles.itemPrice}>₹{(parseFloat(item.unit_price)).toFixed(2)}</Text>
                 </View>
               </View>
             ))}
           </View>
           
-          <View style={styles.orderTotal}>
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Subtotal</Text>
-              <Text style={styles.totalValue}>₹{parseFloat(order.payment_details?.subtotal || '0').toFixed(2)}</Text>
+          {/* Bill Details Section */}
+          <View style={styles.sectionDivider}>
+            <Text style={styles.sectionDividerText}>Bill Details</Text>
+          </View>
+          
+          <View style={styles.billDetails}>
+            <View style={styles.billRow}>
+              <Text style={styles.billLabel}>Item Total</Text>
+              <Text style={styles.billValue}>₹{parseFloat(order.payment_details?.subtotal || '0').toFixed(2)}</Text>
             </View>
             
             {order.coupon_details_details?.coupon_discount > 0 && (
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>{order.coupon_details_details?.coupon_code_text || 'Discount'}</Text>
-                <Text style={[styles.totalValue, styles.discountValue]}>-₹{parseFloat(order.coupon_details_details?.coupon_discount.toString() || '0').toFixed(2)}</Text>
-              </View>
-            )}
-            
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Delivery Fee</Text>
-              <Text style={styles.totalValue}>₹{parseFloat(order.payment_details?.delivery_fee?.toString() || '0').toFixed(2)}</Text>
-            </View>
-            
-            {/* Wallet Payment Information */}
-            {order.payment_method_checks?.eatoor_wallet_used && (
-              <>
-                <View style={styles.totalRow}>
-                  <Text style={[styles.totalLabel, { color: paymentDetails.color }]}>
-                    {order.payment_method_checks.wallet_payment_method}
-                  </Text>
-                  <Text style={[styles.totalValue, { color: paymentDetails.color }]}>
-                    -₹{parseFloat(order.payment_method_checks.wallet_payment_amount.toString() || '0').toFixed(2)}
-                  </Text>
+              <View style={styles.billRow}>
+                <View style={styles.billLabelContainer}>
+                  <Text style={styles.billLabel}>Discount</Text>
+                  {order.coupon_details_details?.coupon_code && (
+                    <Text style={styles.couponCode}>{order.coupon_details_details.coupon_code}</Text>
+                  )}
                 </View>
-                
-                {paymentDetails.onlinePayment && (
-                  <View style={styles.totalRow}>
-                    <Text style={[styles.totalLabel, { color: '#4CAF50' }]}>
-                      {paymentDetails.onlinePayment.method}
-                    </Text>
-                    <Text style={[styles.totalValue, { color: '#4CAF50' }]}>
-                      -₹{parseFloat(paymentDetails.onlinePayment.amount.toString() || '0').toFixed(2)}
-                    </Text>
-                  </View>
-                )}
-              </>
+                <Text style={[styles.billValue, styles.discountValue]}>
+                  -₹{parseFloat(order.coupon_details_details?.coupon_discount.toString() || '0').toFixed(2)}
+                </Text>
+              </View>
             )}
             
-            <View style={styles.totalDivider} />
-            
-            <View style={styles.totalRow}>
-              <Text style={styles.grandTotalLabel}>Total Paid</Text>
-              <Text style={styles.grandTotalValue}>₹{parseFloat(order.payment_details?.total || '0').toFixed(2)}</Text>
+            <View style={styles.billRow}>
+              <Text style={styles.billLabel}>Delivery Fee</Text>
+              <Text style={styles.billValue}>₹{parseFloat(order.payment_details?.delivery_fee?.toString() || '0').toFixed(2)}</Text>
             </View>
             
-            <View style={styles.paymentMethod}>
-              <View style={[styles.paymentIcon, { backgroundColor: paymentDetails.bgColor }]}>
-                <Icon name={paymentDetails.icon} size={20} color={paymentDetails.color} />
-              </View>
-              <View style={styles.paymentMethodDetails}>
-                <Text style={[styles.paymentMethodText, { color: paymentDetails.color }]}>
-                  {order.payment_method_checks?.wallet_payment_method || 
-                   order.payment_method_checks?.online_payment_method || 
-                   'Cash'}
-                </Text>
-                {order.payment_method_checks?.eatoor_wallet_used && (
-                  <Text style={styles.paymentMethodSubtext}>
-                    Paid via Eatoor Wallet {paymentDetails.onlinePayment ? '+ Online' : ''}
-                  </Text>
-                )}
-                {order.payment_method_checks?.online_transaction_id && (
-                  <Text style={styles.paymentMethodSubtext}>
-                    Transaction ID: {order.payment_method_checks.online_transaction_id}
-                  </Text>
-                )}
-              </View>
+            <View style={styles.billTotalDivider} />
+            
+            <View style={styles.billRow}>
+              <Text style={styles.billTotalLabel}>Grand Total</Text>
+              <Text style={styles.billTotalValue}>₹{parseFloat(order.payment_details?.total || '0').toFixed(2)}</Text>
             </View>
+          </View>
+          
+          {/* Payment Breakdown Section */}
+          <View style={styles.sectionDivider}>
+            <Text style={styles.sectionDividerText}>Payment Breakdown</Text>
+          </View>
+          
+          <View style={styles.paymentBreakdown}>
+            {renderPaymentBreakdown()}
           </View>
         </Animated.View>
 
-        {/* Delivery Address Card */}
+        {/* Delivery Address Card - IMPROVED DESIGN */}
         <Animated.View style={[
           styles.card,
           styles.addressCard,
@@ -1585,43 +1889,91 @@ const TrackOrder = () => {
             ]
           }
         ]}>
-          <View style={styles.addressHeader}>
-            <Text style={styles.sectionTitle}>Delivery Address</Text>
-            <TouchableOpacity 
-              style={styles.navigateButton} 
-              onPress={handleNavigate}
-              activeOpacity={0.7}
-            >
-              <Icon name="navigate-outline" size={20} color="#FF6B35" />
-              <Text style={styles.navigateText}>Navigate</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.addressContent}>
-            <View style={[styles.addressIcon, { backgroundColor: statusDetails.bgColor }]}>
-              <Icon name="location" size={26} color={statusDetails.color} />
-            </View>
-            <View style={styles.addressDetails}>
-              <Text style={styles.addressType}>{order.delivery_address?.home_type || 'Home'}</Text>
-              <Text style={styles.addressText}>
-                {order.delivery_address?.address || 'Address not available'}
-              </Text>
-              {order.delivery_address?.landmark && (
-                <View style={styles.addressLandmarkContainer}>
-                  <Icon name="flag-outline" size={16} color="#888" />
-                  <Text style={styles.addressLandmark}> {order.delivery_address.landmark}</Text>
-                </View>
-              )}
-              <View style={styles.addressContact}>
-                <Icon name="person-outline" size={18} color="#666" />
-                <Text style={styles.addressPhone}>
-                  {order.delivery_address?.full_name || 'Name not available'}
+          {/* Header with gradient background */}
+          <View style={[styles.addressHeader, { backgroundColor: statusDetails.bgColor }]}>
+            <View style={styles.addressHeaderContent}>
+              <View style={styles.addressTitleContainer}>
+                <Icon name="location-outline" size={24} color={statusDetails.color} />
+                <Text style={[styles.sectionTitle, { color: '#1A1A1A', marginLeft: 8 }]}>
+                  Delivery Address
                 </Text>
               </View>
-              <View style={styles.addressContact}>
-                <Icon name="call-outline" size={18} color="#666" />
-                <Text style={styles.addressPhone}>
-                  {order.delivery_address?.phone_number || 'Phone not available'}
+              <View style={styles.addressTypeBadgeContainer}>
+                <View style={[styles.addressTypeBadge, { backgroundColor: statusDetails.color }]}>
+                  <Text style={styles.addressTypeText}>
+                    {order.delivery_address?.home_type || 'Home'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+            
+            {/* Action Buttons */}
+            <View style={styles.addressActions}>
+              <TouchableOpacity 
+                style={[styles.addressActionButton, { backgroundColor: statusDetails.color }]} 
+                onPress={() => handleAddressCall(order.delivery_address?.phone_number)}
+                activeOpacity={0.8}
+              >
+                <Icon name="call-outline" size={20} color="#fff" />
+                <Text style={styles.addressActionText}>Call</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.addressActionButton, { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: statusDetails.color }]} 
+                onPress={handleNavigate}
+                activeOpacity={0.8}
+              >
+                <Icon name="navigate-outline" size={20} color={statusDetails.color} />
+                <Text style={[styles.addressActionText, { color: statusDetails.color }]}>
+                  Navigate
                 </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          
+          {/* Address Content */}
+          <View style={styles.addressContent}>
+            {/* Recipient Info */}
+            <View style={styles.recipientInfo}>
+              <View style={styles.recipientIconContainer}>
+                <View style={[styles.recipientIcon, { backgroundColor: statusDetails.bgColor }]}>
+                  <Icon name="person" size={20} color={statusDetails.color} />
+                </View>
+              </View>
+              <View style={styles.recipientDetails}>
+                <Text style={styles.recipientName}>
+                  {order.delivery_address?.full_name || 'Name not available'}
+                </Text>
+                <TouchableOpacity 
+                  style={styles.phoneContainer}
+                  onPress={() => handleAddressCall(order.delivery_address?.phone_number)}
+                  activeOpacity={0.7}
+                >
+                  <Icon name="call-outline" size={18} color="#666" />
+                  <Text style={styles.recipientPhone}>
+                    {order.delivery_address?.phone_number || 'Phone not available'}
+                  </Text>
+                  <Icon name="chevron-forward" size={16} color="#888" />
+                </TouchableOpacity>
+              </View>
+            </View>
+            
+            {/* Address Details */}
+            <View style={styles.addressDetailsSection}>
+              <View style={styles.addressIconContainer}>
+                <Icon name="location-sharp" size={24} color="#FF6B35" />
+              </View>
+              <View style={styles.addressTextContainer}>
+                <Text style={styles.addressText}>
+                  {order.delivery_address?.address || 'Address not available'}
+                </Text>
+                {order.delivery_address?.landmark && (
+                  <View style={styles.landmarkContainer}>
+                    <Icon name="flag-outline" size={16} color="#888" />
+                    <Text style={styles.landmarkText}>
+                      Near {order.delivery_address.landmark}
+                    </Text>
+                  </View>
+                )}
               </View>
             </View>
           </View>
@@ -1633,7 +1985,7 @@ const TrackOrder = () => {
             <Icon name="time-outline" size={18} color="#888" />
             <View style={styles.footerTextContainer}>
               <Text style={styles.footerText}>
-                Last updated {lastUpdated.format('h:mm A')}
+                Last updated {formatLastUpdated()} IST
               </Text>
               <Text style={styles.footerSubtext}>
                 Auto-refreshes every 60 seconds
@@ -1837,11 +2189,23 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
     marginBottom: 2
   },
+  headerDateTimeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap'
+  },
   headerOrderNumber: {
     fontSize: getResponsiveFontSize(14),
     color: '#666',
     fontWeight: '600',
     letterSpacing: 0.5
+  },
+  headerDateTime: {
+    fontSize: getResponsiveFontSize(13),
+    color: '#888',
+    fontWeight: '500',
+    marginLeft: 4
   },
   backButton: {
     width: 48,
@@ -2088,7 +2452,7 @@ const styles = StyleSheet.create({
     marginBottom: 24
   },
   sectionTitle: {
-    fontSize: getResponsiveFontSize(18),
+    fontSize: getResponsiveFontSize(16),
     fontWeight: '800',
     color: '#1A1A1A',
     letterSpacing: -0.3,
@@ -2097,11 +2461,18 @@ const styles = StyleSheet.create({
   orderSummaryHeader: {
     marginBottom: 20
   },
-  orderTime: {
+  orderDateTime: {
     fontSize: getResponsiveFontSize(13),
     color: '#888',
     fontWeight: '500',
     marginTop: 6,
+    lineHeight: 18
+  },
+  estimatedDateTime: {
+    fontSize: getResponsiveFontSize(13),
+    color: '#FF6B35',
+    fontWeight: '600',
+    marginTop: 4,
     lineHeight: 18
   },
   statusBadge: {
@@ -2367,147 +2738,329 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#1A1A1A'
   },
-  orderTotal: {
-    backgroundColor: '#F8FAFD',
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#F0F0F0'
-  },
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10
-  },
-  totalLabel: {
-    fontSize: getResponsiveFontSize(14),
-    color: '#666',
-    fontWeight: '600'
-  },
-  totalValue: {
-    fontSize: getResponsiveFontSize(14),
-    fontWeight: '700',
-    color: '#1A1A1A'
-  },
-  discountValue: {
-    color: '#2ECC71'
-  },
-  totalDivider: {
-    height: 1,
-    backgroundColor: '#E8E8E8',
-    marginVertical: 12
-  },
-  grandTotalLabel: {
-    fontSize: getResponsiveFontSize(18),
-    fontWeight: '800',
-    color: '#1A1A1A'
-  },
-  grandTotalValue: {
-    fontSize: getResponsiveFontSize(18),
-    fontWeight: '900',
-    color: '#1A1A1A'
-  },
-  paymentMethod: {
+  sectionDivider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#E8E8E8'
+    marginVertical: 20,
+    marginTop: 25,
   },
-  paymentIcon: {
+  sectionDividerText: {
+    fontSize: getResponsiveFontSize(16),
+    fontWeight: '800',
+    color: '#1A1A1A',
+    backgroundColor: '#F8FAFD',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 8,
+    overflow: 'hidden',
+    letterSpacing: 0.3,
+  },
+  billDetails: {
+    backgroundColor: '#F8FAFD',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+    marginBottom: 5,
+  },
+  billRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  billLabelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  billLabel: {
+    fontSize: getResponsiveFontSize(14),
+    color: '#666',
+    fontWeight: '600',
+  },
+  couponCode: {
+    fontSize: getResponsiveFontSize(11),
+    color: '#FF6B35',
+    fontWeight: '700',
+    backgroundColor: 'rgba(255, 107, 53, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginLeft: 8,
+    overflow: 'hidden',
+  },
+  billValue: {
+    fontSize: getResponsiveFontSize(14),
+    fontWeight: '700',
+    color: '#1A1A1A',
+  },
+  discountValue: {
+    color: '#2ECC71',
+  },
+  billTotalDivider: {
+    height: 1,
+    backgroundColor: '#E8E8E8',
+    marginVertical: 14,
+    marginHorizontal: 4,
+  },
+  billTotalLabel: {
+    fontSize: getResponsiveFontSize(16),
+    fontWeight: '800',
+    color: '#1A1A1A',
+  },
+  billTotalValue: {
+    fontSize: getResponsiveFontSize(18),
+    fontWeight: '900',
+    color: '#1A1A1A',
+  },
+  paymentBreakdown: {
+    backgroundColor: '#F8FAFD',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+  },
+  paymentMethodRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    padding: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  paymentMethodIconContainer: {
     width: 40,
     height: 40,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 10
+    marginRight: 12,
+    backgroundColor: 'rgba(156, 39, 176, 0.1)',
   },
-  paymentMethodDetails: {
-    flex: 1
+  paymentMethodInfo: {
+    flex: 1,
+    marginRight: 12,
   },
-  paymentMethodText: {
-    fontSize: getResponsiveFontSize(14),
-    color: '#666',
-    fontWeight: '600'
+  paymentMethodName: {
+    fontSize: getResponsiveFontSize(15),
+    fontWeight: '700',
+    color: '#1A1A1A',
+    marginBottom: 2,
   },
-  paymentMethodSubtext: {
+  paymentMethodDescription: {
     fontSize: getResponsiveFontSize(12),
     color: '#888',
-    marginTop: 2
+    fontWeight: '500',
+    lineHeight: 16,
   },
+  transactionIdText: {
+    fontSize: getResponsiveFontSize(10),
+    color: '#666',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  paymentAmount: {
+    fontSize: getResponsiveFontSize(16),
+    fontWeight: '800',
+    color: '#1A1A1A',
+  },
+  paidIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(46, 204, 113, 0.1)',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(46, 204, 113, 0.2)',
+    marginTop: 8,
+  },
+  paidText: {
+    fontSize: getResponsiveFontSize(14),
+    fontWeight: '700',
+    color: '#2ECC71',
+    marginLeft: 8,
+    flex: 1,
+  },
+  paidSubtext: {
+    fontSize: getResponsiveFontSize(12),
+    color: '#2ECC71',
+    fontWeight: '600',
+    opacity: 0.8,
+  },
+  
+  // IMPROVED ADDRESS CARD STYLES
   addressCard: {
-    // Inherits card styles
+    overflow: 'hidden',
+    padding: 0,
   },
   addressHeader: {
+    padding: CARD_PADDING,
+    borderTopLeftRadius: CARD_RADIUS,
+    borderTopRightRadius: CARD_RADIUS,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  addressHeaderContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16
+    marginBottom: 16,
+  },
+  addressTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  addressTypeBadgeContainer: {
+    marginLeft: 8,
+  },
+  addressTypeBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  addressTypeText: {
+    fontSize: getResponsiveFontSize(12),
+    color: '#FFFFFF',
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  addressActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  addressActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    flex: 1,
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  addressActionText: {
+    fontSize: getResponsiveFontSize(14),
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginLeft: 8,
   },
   addressContent: {
-    flexDirection: 'row'
+    padding: CARD_PADDING,
   },
-  addressIcon: {
+  recipientInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  recipientIconContainer: {
+    marginRight: 16,
+  },
+  recipientIcon: {
     width: 48,
     height: 48,
-    borderRadius: 14,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
   },
-  addressDetails: {
-    flex: 1
+  recipientDetails: {
+    flex: 1,
   },
-  addressType: {
-    fontSize: getResponsiveFontSize(15),
+  recipientName: {
+    fontSize: getResponsiveFontSize(18),
     fontWeight: '800',
     color: '#1A1A1A',
-    marginBottom: 8
+    marginBottom: 8,
   },
-  navigateButton: {
+  phoneContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF5F0',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    backgroundColor: '#F8FAFD',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#FFE0D2'
+    borderColor: '#F0F0F0',
   },
-  navigateText: {
-    fontSize: getResponsiveFontSize(13),
-    color: '#FF6B35',
-    fontWeight: '700',
-    marginLeft: 6
+  recipientPhone: {
+    fontSize: getResponsiveFontSize(15),
+    color: '#666',
+    fontWeight: '600',
+    marginLeft: 10,
+    flex: 1,
+  },
+  addressDetailsSection: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 20,
+  },
+  addressIconContainer: {
+    marginRight: 16,
+    marginTop: 4,
+  },
+  addressTextContainer: {
+    flex: 1,
   },
   addressText: {
-    fontSize: getResponsiveFontSize(14),
+    fontSize: getResponsiveFontSize(15),
     color: '#666',
-    lineHeight: 20,
-    marginBottom: 10,
-    fontWeight: '500'
+    lineHeight: 22,
+    fontWeight: '500',
+    marginBottom: 12,
   },
-  addressLandmarkContainer: {
+  landmarkContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12
+    backgroundColor: '#F8FAFD',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
   },
-  addressLandmark: {
-    fontSize: getResponsiveFontSize(13),
-    color: '#888',
-    fontWeight: '500'
-  },
-  addressContact: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2
-  },
-  addressPhone: {
+  landmarkText: {
     fontSize: getResponsiveFontSize(14),
     color: '#666',
+    fontWeight: '500',
     marginLeft: 8,
-    fontWeight: '600'
+    flex: 1,
+  },
+  deliveryInstructions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 107, 53, 0.05)',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 53, 0.1)',
+  },
+  instructionsText: {
+    fontSize: getResponsiveFontSize(13),
+    color: '#666',
+    fontWeight: '500',
+    marginLeft: 12,
+    flex: 1,
+    fontStyle: 'italic',
   },
   footer: {
     flexDirection: 'row',

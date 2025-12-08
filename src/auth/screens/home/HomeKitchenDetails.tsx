@@ -326,13 +326,14 @@ const HomeKitchenDetails = ({ route }) => {
 
   // Auto change offers
   useEffect(() => {
-    if (offers.length > 1) {
+    const offersList = kitchenData?.active_offer_list || [];
+    if (offersList.length > 1) {
       const interval = setInterval(() => {
-        setCurrentOfferIndex((prev) => (prev + 1) % offers.length);
+        setCurrentOfferIndex((prev) => (prev + 1) % offersList.length);
       }, 5000);
       return () => clearInterval(interval);
     }
-  }, []);
+  }, [kitchenData?.active_offer_list]);
 
   // Show cart summary when items are added
   useEffect(() => {
@@ -424,7 +425,56 @@ const HomeKitchenDetails = ({ route }) => {
 
   const filters = ["All", "Veg", "Non-Veg", "Offers", "Bestseller"];
 
-  const offers = [];
+  // Get offers from API response or use empty array
+  const offers = useMemo(() => {
+    if (!kitchenData?.active_offer_list) return [];
+    
+    return kitchenData.active_offer_list.map((offer) => {
+      let description = "";
+      let code = "";
+      
+      // Generate description and code based on offer type
+      switch (offer.offer_type) {
+        case "free_delivery":
+          description = offer.details?.sub_filter === "new_user" 
+            ? "Free delivery for new users" 
+            : "Free delivery on all orders";
+          code = `FREE${offer.id}`;
+          break;
+        case "credit":
+          description = `Get ₹${offer.details?.credit_amount || 0} credit for new users`;
+          code = `CREDIT${offer.id}`;
+          break;
+        case "percentage_discount":
+          description = `${offer.details?.discount_percent || 0}% off on your order`;
+          code = `OFF${offer.id}`;
+          break;
+        case "flat_discount":
+          description = `Flat ₹${offer.details?.discount_amount || 0} off on your order`;
+          code = `FLAT${offer.id}`;
+          break;
+        default:
+          description = offer.title || "Special offer";
+          code = `OFFER${offer.id}`;
+      }
+      
+      // Add validity period if available
+      if (offer.details?.valid_from && offer.details?.valid_to) {
+        const validFrom = new Date(offer.details.valid_from).toLocaleDateString();
+        const validTo = new Date(offer.details.valid_to).toLocaleDateString();
+        description += '';
+      }
+      
+      return {
+        id: offer.id.toString(),
+        title: offer.title,
+        description,
+        code,
+        offer_type: offer.offer_type,
+        details: offer.details,
+      };
+    });
+  }, [kitchenData?.active_offer_list]);
 
   // Transform API data to menu items format
   const transformMenuItems = (itemlist) => {
@@ -729,6 +779,17 @@ const HomeKitchenDetails = ({ route }) => {
     });
   }, [navigation, kitchenData, cartItems, pastKitchenDetails, user?.id]);
 
+  // Copy offer code to clipboard
+  const copyToClipboard = useCallback((code) => {
+    // You'll need to install and use @react-native-clipboard/clipboard
+    // For now, let's show a message
+    showMessage({
+      message: "Offer code copied!",
+      description: `Code: ${code}`,
+      type: "success",
+    });
+  }, []);
+
   const renderFilterChip = (filter) => (
     <TouchableOpacity
       key={filter}
@@ -768,7 +829,7 @@ const HomeKitchenDetails = ({ route }) => {
         </Text>
         <View style={styles.kitchenDetails__offerCodeContainer}>
           <Text style={styles.kitchenDetails__offerCodeText}>
-            Use code: {item.code}
+            {/* Code: {item.code} */}
           </Text>
         </View>
       </View>
@@ -966,6 +1027,26 @@ const HomeKitchenDetails = ({ route }) => {
       </View>
     );
   };
+
+  const renderOfferModalItem = ({ item }) => (
+    <View style={styles.offersModal__item}>
+      <View style={styles.offersModal__icon}>
+        <Icon 
+          name={item.offer_type === "free_delivery" ? "bicycle" : "pricetag"} 
+          size={20} 
+          color={COLORS.primary} 
+        />
+      </View>
+      <View style={styles.offersModal__itemContent}>
+        <Text style={styles.offersModal__itemTitle}>
+          {item.title}
+        </Text>
+        <Text style={styles.offersModal__itemDescription}>
+          {item.description}
+        </Text>
+      </View>
+    </View>
+  );
 
   if (loading) {
     return (
@@ -1530,34 +1611,9 @@ const HomeKitchenDetails = ({ route }) => {
               {offers.length > 0 ? (
                 <FlatList
                   data={offers}
-                  renderItem={({ item }) => (
-                    <View style={styles.offersModal__item}>
-                      <View style={styles.offersModal__icon}>
-                        <Icon name="pricetag" size={20} color={COLORS.primary} />
-                      </View>
-                      <View style={styles.offersModal__itemContent}>
-                        <Text style={styles.offersModal__itemTitle}>
-                          {item.title}
-                        </Text>
-                        <Text style={styles.offersModal__itemDescription}>
-                          {item.description}
-                        </Text>
-                        <View style={styles.offersModal__codeContainer}>
-                          <Text style={styles.offersModal__codeText}>
-                            Use code: {item.code}
-                          </Text>
-                          <TouchableOpacity
-                            style={styles.offersModal__copyButton}
-                          >
-                            <Text style={styles.offersModal__copyButtonText}>
-                              COPY
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    </View>
-                  )}
+                  renderItem={renderOfferModalItem}
                   keyExtractor={(item) => item.id}
+                  contentContainerStyle={styles.offersModal__listContent}
                 />
               ) : (
                 <View style={styles.offersModal__noOffersContent}>
@@ -1896,6 +1952,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: 10,
+    marginHorizontal: 20,
+    marginVertical: 10,
     backgroundColor: COLORS.surface,
     borderRadius: 16,
     borderWidth: 1,
@@ -1903,12 +1961,11 @@ const styles = StyleSheet.create({
     borderStyle: "dashed",
   },
   kitchenDetails__noOffersText: {
-    fontSize: FONT.LG,
-    fontWeight: "600",
+    fontSize: FONT.SM,
+    fontWeight: "500",
     color: COLORS.text.disabled,
     textAlign: "center",
-    marginBottom: 8,
-    lineHeight: 24,
+    marginTop: 8,
   },
   kitchenDetails__offersHeader: {
     flexDirection: "row",
@@ -1979,6 +2036,7 @@ const styles = StyleSheet.create({
     fontSize: FONT.SM,
     color: COLORS.text.secondary,
     marginBottom: 6,
+    lineHeight: 18,
   },
   kitchenDetails__offerCodeContainer: {
     backgroundColor: "#fff0e0",
@@ -2637,7 +2695,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
-    maxHeight: "60%",
+    maxHeight: "80%",
   },
   offersModal__header: {
     flexDirection: "row",
@@ -2658,10 +2716,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  offersModal__listContent: {
+    paddingBottom: 20,
+  },
   offersModal__item: {
     flexDirection: "row",
     alignItems: "flex-start",
-    paddingVertical: 12,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.divider,
   },
@@ -2676,12 +2737,13 @@ const styles = StyleSheet.create({
     fontSize: FONT.BASE,
     fontWeight: "600",
     color: COLORS.text.primary,
-    marginBottom: 2,
+    marginBottom: 4,
   },
   offersModal__itemDescription: {
     fontSize: FONT.SM,
     color: COLORS.text.secondary,
-    marginBottom: 6,
+    marginBottom: 8,
+    lineHeight: 20,
   },
   offersModal__codeContainer: {
     flexDirection: "row",
@@ -2689,15 +2751,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   offersModal__codeText: {
-    fontSize: FONT.XS,
+    fontSize: FONT.SM,
     color: COLORS.primary,
     fontWeight: "500",
   },
   offersModal__copyButton: {
     backgroundColor: COLORS.primary,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
   },
   offersModal__copyButtonText: {
     color: COLORS.text.light,

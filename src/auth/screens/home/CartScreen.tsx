@@ -51,7 +51,7 @@ const FONT = {
 // Minimum order value constant
 const MINIMUM_ORDER_VALUE = 5;
 
-// Type definitions (updated with new fields)
+// Type definitions
 type CartItem = {
   item_id: number;
   id: number;
@@ -117,6 +117,8 @@ type CartApiResponse = {
   billing_details: BillingDetails;
   distance_km: number;
   estimated_delivery_cost: number;
+  delivery_offer_exist: boolean;
+  order_count: number;
 };
 
 type UserData = {
@@ -133,7 +135,7 @@ interface PastKitchenDetails {
   itemCount: number;
 }
 
-type PaymentStatus = 'idle' | 'processing' | 'success' | 'failed' | 'cancelled';
+type PaymentStatus = 'idle' | 'processing' | 'success' | 'failed' | 'cancelled' | 'network_error';
 
 interface RazorpayOrderResponse {
   status: string;
@@ -183,15 +185,46 @@ type PaymentVerificationState = {
   success: boolean;
 };
 
-// Wallet related types
 type WalletBalance = {
   balance: number;
   currency: string;
 };
 
-type PaymentMethod = 'online';
+// Payment constants
+const PAYMENT_METHODS = {
+  CREDIT_CARD: 1,
+  DEBIT_CARD: 2,
+  UPI: 3,
+  NET_BANKING: 4,
+  COD: 5,
+  EATOOR_MONEY: 6,
+} as const;
 
-// Helper function to safely format prices and text
+const PAYMENT_TYPES = {
+  ONLINE: 1,
+  COD: 2,
+} as const;
+
+const PAYMENT_STATUS = {
+  IN_PROGRESS: 1,
+  PENDING: 2,
+  REFUNDED: 3,
+  FAILED: 4,
+  COMPLETED: 5,
+} as const;
+
+const ORDER_STATUS = {
+  PENDING: 1,
+  CONFIRMED: 2,
+  PREPARING: 3,
+  READY_FOR_DELIVERY: 4,
+  ON_THE_WAY: 5,
+  DELIVERED: 6,
+  CANCELLED: 7,
+  REFUNDED: 8,
+} as const;
+
+// Helper functions
 const safeText = (text: any, fallback: string = ''): string => {
   if (text === null || text === undefined || text === '') {
     return fallback;
@@ -202,6 +235,34 @@ const safeText = (text: any, fallback: string = ''): string => {
 const safePrice = (price: any): number => {
   const num = parseFloat(price);
   return isNaN(num) ? 0 : num;
+};
+
+const calculateTotalQuantity = (cartItems: CartItem[] = []): number => {
+  return cartItems.reduce((total, item) => total + (item.quantity || 0), 0);
+};
+
+const determinePaymentStatus = (
+  paymentMethod: number,
+  isPaymentSuccessful: boolean,
+  isWalletOnly: boolean = false
+): number => {
+  if (!isPaymentSuccessful) {
+    return PAYMENT_STATUS.FAILED;
+  }
+
+  switch (paymentMethod) {
+    case PAYMENT_METHODS.COD:
+      return PAYMENT_STATUS.IN_PROGRESS;
+    case PAYMENT_METHODS.EATOOR_MONEY:
+      return PAYMENT_STATUS.COMPLETED;
+    case PAYMENT_METHODS.CREDIT_CARD:
+    case PAYMENT_METHODS.DEBIT_CARD:
+    case PAYMENT_METHODS.UPI:
+    case PAYMENT_METHODS.NET_BANKING:
+      return PAYMENT_STATUS.COMPLETED;
+    default:
+      return PAYMENT_STATUS.IN_PROGRESS;
+  }
 };
 
 const CartScreen = ({ route, navigation }) => {
@@ -238,14 +299,28 @@ const CartScreen = ({ route, navigation }) => {
   const [walletLoading, setWalletLoading] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
   
+  // Payment tracking states
+  const [isPaymentInProgress, setIsPaymentInProgress] = useState(false);
+  const [paymentAttemptId, setPaymentAttemptId] = useState<string | null>(null);
+  
+  // Refs
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const rotationAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
   const slideAnim = useRef(new Animated.Value(height)).current;
+  
+  // Refs for payment state
+  const paymentInProgressRef = useRef(false);
+  const razorpayOrderIdRef = useRef<string | null>(null);
 
   const userId = user?.id;
   const sessionId = "";
   const kitchenId = pastKitchenDetails?.id;
+
+  // Initialize refs
+  useEffect(() => {
+    razorpayOrderIdRef.current = razorpayOrderId;
+  }, [razorpayOrderId]);
 
   // Fetch user data on mount
   useEffect(() => {
@@ -297,7 +372,7 @@ const CartScreen = ({ route, navigation }) => {
           useNativeDriver: true,
         })
       ).start();
-    } else if (paymentStatus === 'success' || paymentStatus === 'failed') {
+    } else if (paymentStatus === 'success' || paymentStatus === 'failed' || paymentStatus === 'cancelled' || paymentStatus === 'network_error') {
       Animated.sequence([
         Animated.timing(scaleAnim, {
           toValue: 1.2,
@@ -342,7 +417,6 @@ const CartScreen = ({ route, navigation }) => {
       setWalletLoading(true);
       setWalletError(null);
       
-      // Assuming you have an API endpoint to get wallet balance
       const response = await getWalletBalance(userId);
       
       if (response.status === 200) {
@@ -389,7 +463,19 @@ const CartScreen = ({ route, navigation }) => {
       });
       
       if (response.status === 200) {
-        const updatedResponse = response.data;
+        const updatedResponse = response.data as CartApiResponse;
+        
+        if (updatedResponse.billing_details) {
+          if (updatedResponse.delivery_offer_exist) {
+            updatedResponse.billing_details.delivery_amount = 0;
+          }
+          
+          const subtotal = safePrice(updatedResponse.billing_details.subtotal);
+          const deliveryAmount = safePrice(updatedResponse.billing_details.delivery_amount);
+          const tax = safePrice(updatedResponse.billing_details.tax);
+          
+          updatedResponse.billing_details.total = subtotal + deliveryAmount + tax;
+        }
         
         if (updatedResponse.cart_details && updatedResponse.suggestion_cart_items) {
           updatedResponse.suggestion_cart_items = updatedResponse.suggestion_cart_items.map(suggestedItem => {
@@ -439,7 +525,6 @@ const CartScreen = ({ route, navigation }) => {
         homeType = safeText(await AsyncStorage.getItem("HomeType"));
       }
 
-      // Fix: Ensure we're working with strings and handle empty cases
       const safeAddress = address || "Select Address";
       const safeHomeType = homeType || "";
       
@@ -477,7 +562,7 @@ const CartScreen = ({ route, navigation }) => {
   };
 
   // Calculate final amount after wallet deduction
-  const calculateFinalAmount = () => {
+  const calculateFinalAmount = (): number => {
     if (!cartData) return 0;
     
     const totalAmount = safePrice(cartData.billing_details.total);
@@ -486,8 +571,6 @@ const CartScreen = ({ route, navigation }) => {
       const walletAmount = safePrice(walletBalance.balance);
       const amountAfterWallet = totalAmount - walletAmount;
       
-      // If wallet covers entire amount, return 0
-      // If wallet doesn't cover entire amount, return remaining amount (minimum 0)
       return Math.max(amountAfterWallet, 0);
     }
     
@@ -495,13 +578,12 @@ const CartScreen = ({ route, navigation }) => {
   };
 
   // Calculate how much wallet will be used
-  const calculateWalletUsage = () => {
+  const calculateWalletUsage = (): number => {
     if (!cartData || !useWallet || !walletBalance) return 0;
     
     const totalAmount = safePrice(cartData.billing_details.total);
     const walletAmount = safePrice(walletBalance.balance);
     
-    // Return how much of wallet will be used (either full wallet or partial if order amount is less)
     return Math.min(walletAmount, totalAmount);
   };
 
@@ -513,15 +595,17 @@ const CartScreen = ({ route, navigation }) => {
 
     try {
       const payload = {
+        user_id: userId,
         amount: amount,
-        order_id: orderId // Optional, only if available
+        order_id: orderId,
+        description: 'Payment for order',
+        transaction_type: 'debit'
       };
 
       const response = await debitWallet(payload);
 
       if (response.status === 200) {
         console.log(`Successfully debited ₹${amount} from wallet`);
-        // Refresh wallet balance after debit
         await fetchWalletBalance();
         return response.data;
       } else {
@@ -548,10 +632,35 @@ const CartScreen = ({ route, navigation }) => {
         AsyncStorage.removeItem('pastKitchenDetails');
         setTimeout(() => {
           setShowPaymentModal(false);
-          navigation.navigate('TrackOrder', { order: { order_number: orderNumber,prev_location: 'HomeTabs', } });
+          navigation.navigate('TrackOrder', { 
+            order: { 
+              order_number: orderNumber,
+              prev_location: 'HomeTabs', 
+            } 
+          });
         }, 300);
       }
     });
+  };
+
+  // Determine payment method based on payment type
+  const getPaymentMethod = (isWalletOnly: boolean = false): number => {
+    if (isWalletOnly) {
+      return PAYMENT_METHODS.EATOOR_MONEY;
+    } else if (useWallet && calculateWalletUsage() > 0) {
+      return PAYMENT_METHODS.UPI;
+    } else {
+      return PAYMENT_METHODS.UPI;
+    }
+  };
+
+  // Determine payment type based on payment method
+  const getPaymentType = (isWalletOnly: boolean = false): number => {
+    if (isWalletOnly) {
+      return PAYMENT_TYPES.ONLINE;
+    } else {
+      return PAYMENT_TYPES.ONLINE;
+    }
   };
 
   const createRazorpayOrder = async (): Promise<string> => {
@@ -561,21 +670,31 @@ const CartScreen = ({ route, navigation }) => {
 
     try {
       const finalAmount = calculateFinalAmount();
+      const attemptId = `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      setPaymentAttemptId(attemptId);
       
       const payload = {
         user_id: userId,
         restaurant_id: kitchenId,
-        amount: finalAmount * 100, // Convert to paise
+        amount: finalAmount * 100,
         currency: 'INR',
-        receipt: `order_${Date.now()}`,
-        wallet_used: useWallet,
-        wallet_amount: useWallet ? calculateWalletUsage() : 0
+        receipt: attemptId,
+        notes: {
+          wallet_used: useWallet ? 'true' : 'false',
+          wallet_amount: useWallet ? calculateWalletUsage().toString() : '0',
+          restaurant_name: cartData.restaurant_name,
+          delivery_offer: cartData.delivery_offer_exist ? 'true' : 'false',
+          payment_attempt_id: attemptId
+        }
       };
 
       const response = await createPayment(payload);
       
       if (response.status === 200) {
-        return response.data.data.id;
+        const orderId = response.data.data.id;
+        setRazorpayOrderId(orderId);
+        razorpayOrderIdRef.current = orderId;
+        return orderId;
       } else {
         throw new Error(response.data.message || 'Failed to create Razorpay order');
       }
@@ -585,16 +704,92 @@ const CartScreen = ({ route, navigation }) => {
     }
   };
 
+  // ONLY CALL THIS FUNCTION FOR SUCCESSFUL PAYMENTS
+  const updateOrderDetails = async (
+    razorpayPaymentId: string,
+    isWalletOnly: boolean = false
+  ): Promise<UpdateOrderResponse> => {
+    if (!cartData || !kitchenId || !addressId || !userId) {
+      throw new Error('Required data missing for updating order');
+    }
+
+    try {
+      const walletUsage = useWallet ? calculateWalletUsage() : 0;
+      const finalAmount = calculateFinalAmount();
+      const isWalletPaymentOnly = isWalletOnly || (useWallet && finalAmount === 0);
+      const paymentMethod = getPaymentMethod(isWalletPaymentOnly);
+      
+      const paymentStatusValue = determinePaymentStatus(
+        paymentMethod,
+        true, // Payment is successful
+        isWalletPaymentOnly
+      );
+
+      const payload = {
+        user_id: userId,
+        restaurant_id: kitchenId,
+        delivery_address_id: addressId,
+        special_instructions: '',
+        is_takeaway: false,
+        
+        payment_method: paymentMethod,
+        payment_type: getPaymentType(isWalletPaymentOnly),
+        payment_status: paymentStatusValue,
+        
+        status: ORDER_STATUS.PENDING, // Order is pending as payment is successful
+        
+        subtotal: safePrice(cartData.billing_details.subtotal),
+        tax: safePrice(cartData.billing_details.tax),
+        delivery_fee: safePrice(cartData.billing_details.delivery_amount),
+        total_amount: safePrice(cartData.billing_details.total),
+        quantity: calculateTotalQuantity(cartData.cart_details),
+        
+        razorpay_order_id: isWalletPaymentOnly ? null : razorpayOrderIdRef.current,
+        razorpay_payment_id: isWalletPaymentOnly ? null : razorpayPaymentId,
+        
+        wallet_used: useWallet,
+        wallet_amount: walletUsage,
+        final_amount: finalAmount,
+        
+        delivery_offer_applied: cartData.delivery_offer_exist,
+        
+        code: null,
+        coupon_discount: 0,
+        discount_amount: 0,
+        
+        // Track payment attempt
+        payment_attempt_id: paymentAttemptId
+      };
+
+      console.log('Creating order for successful payment with payload:', payload);
+
+      const response = await updatePyamentData(payload);
+      if (response.status === 201) {
+        return response.data;
+      } else {
+        console.error('Failed to create order:', response.data);
+        throw new Error(response.data.message || 'Failed to create order');
+      }
+    } catch (error) {
+      console.error('Error creating order:', error);
+      throw error;
+    }
+  };
+
+  // Verify payment status (called only for successful payments)
   const verifyPaymentStatus = async (paymentResponse: PaymentResponse) => {
-    if (!cartData || !userId || !kitchenId || !addressId) {
+    if (!cartData || !userId || !kitchenId || !addressId || !paymentResponse) {
       console.error("Missing required payment data");
       showPaymentStatusModal('failed', 'Required data missing for payment verification');
       return;
     }
-
-    try {
-      // Step 1: Update order details with payment info
-      const updateResponse = await updateOrderDetails(paymentResponse.razorpay_payment_id);
+    
+    try { 
+      // Step 1: Create order in backend for successful payment
+      const updateResponse = await updateOrderDetails(
+        paymentResponse.razorpay_payment_id, 
+        false // not wallet only
+      );
 
       // Step 2: Debit wallet amount if wallet is used
       if (useWallet && calculateWalletUsage() > 0) {
@@ -603,8 +798,7 @@ const CartScreen = ({ route, navigation }) => {
           console.log(`Wallet debited: ₹${calculateWalletUsage().toFixed(2)}`);
         } catch (walletError) {
           console.error('Wallet debit failed:', walletError);
-          // Continue with payment verification even if wallet debit fails
-          // The order is already placed, wallet debit can be retried
+          // Continue even if wallet debit fails
         }
       }
 
@@ -613,38 +807,36 @@ const CartScreen = ({ route, navigation }) => {
         razorpay_order_id: paymentResponse.razorpay_order_id,
         razorpay_payment_id: paymentResponse.razorpay_payment_id,
         razorpay_signature: paymentResponse.razorpay_signature,
-        amount: calculateFinalAmount(),
-        deliveryAddressId: addressId,
-        payment_type: 2, // Online payment
         eatoor_order_id: updateResponse.order_id,
-        restaurant_id: kitchenId,
-        restaurantName: cartData.restaurant_name,
+        user_id: userId,
+        amount: calculateFinalAmount() * 100,
         wallet_used: useWallet,
-        wallet_amount: useWallet ? calculateWalletUsage() : 0
+        wallet_amount: useWallet ? calculateWalletUsage() : 0,
+        restaurant_id: kitchenId,
+        delivery_offer_applied: cartData.delivery_offer_exist
       };
 
-      // Step 4: Verify with backend
+      // Step 4: Verify payment with backend
       const response = await verifyPayment(payload);
 
       if (response.status === 200) {
         const verificationData = response.data as VerifyPaymentResponse;
 
-        // ✅ Store order details
         setOrderDetails({
           order_id: verificationData.eatoor_order_id,
           order_number: verificationData.eatoor_order_number
         });
 
-        // ✅ Update verification state
         setPaymentVerification({
           verifying: false,
           message: 'Payment verified successfully!',
           success: true
         });
 
-        // ✅ Pass order number directly to modal (avoids async state issue)
         showPaymentStatusModal('success', 'Payment successful! Redirecting to order details...', verificationData.eatoor_order_number);
       } else {
+        // If verification fails, we still have an order created
+        // But we show verification failed message
         throw new Error(response.data.message || 'Payment verification failed');
       }
     } catch (error) {
@@ -656,52 +848,209 @@ const CartScreen = ({ route, navigation }) => {
         success: false
       });
 
-      showPaymentStatusModal('failed', 'Payment verification failed');
+      // Even if verification fails, order is already created
+      // So we show appropriate message
+      showPaymentStatusModal('failed', 'Payment completed but verification failed. Please check your order history.');
     }
   };
 
-  const updateOrderDetails = async (
-    razorpayPaymentId: string
-  ): Promise<UpdateOrderResponse> => {
-    if (!cartData || !kitchenId || !addressId || !userId) {
-      throw new Error('Required data missing for updating order');
+  // Helper function to determine if error is a user cancellation
+  const isUserCancelledError = (error: any): boolean => {
+    if (!error) return false;
+    
+    const errorStr = JSON.stringify(error).toLowerCase();
+    const errorCode = error.code || error.error?.code || '';
+    const errorDescription = error.description || error.error?.description || '';
+    
+    // Check for cancellation indicators
+    const cancellationIndicators = [
+      'cancelled',
+      'user cancelled',
+      'payment cancelled',
+      'user canceled',
+      'payment canceled',
+      'user pressed back button',
+      'back pressed',
+      'modal dismissed',
+      'user closed the checkout'
+    ];
+    
+    // Check error codes
+    if (errorCode === 'USER_CANCELLED' || 
+        errorCode === 'PAYMENT_CANCELLED' ||
+        errorCode === 'USER_CANCELED') {
+      return true;
     }
-
-    try {
-      const payload = {
-        user_id: userId,
-        restaurant_id: kitchenId,
-        payment_method: 6, // Online payment
-        payment_type: 2, // Online payment
-        delivery_address_id: addressId,
-        is_takeaway: false,
-        special_instructions: '',
-        razorpay_order_id: razorpayOrderId,
-        razorpay_payment_id: razorpayPaymentId,
-        delivery_amount: cartData.billing_details.delivery_amount,
-        delivery_fee: cartData.billing_details.delivery_amount,
-        total_amount: cartData.billing_details.total,
-        wallet_used: useWallet,
-        wallet_amount: useWallet ? calculateWalletUsage() : 0,
-        final_amount: calculateFinalAmount(),
-        code: null,
-        discount_amount: cartData.billing_details.subtotal - cartData.billing_details.total
-      };
-
-      const response = await updatePyamentData(payload);
-      if (response.status === 201) {
-        return response.data;
-      } else {
-        console.error('Failed to update order details:', response.data);
-        throw new Error(response.data.message || 'Failed to update order details');
-      }
-    } catch (error) {
-      console.error('Error updating order details:', error);
-      throw error;
+    
+    // Check error description
+    if (cancellationIndicators.some(indicator => 
+      errorDescription.toLowerCase().includes(indicator))) {
+      return true;
     }
+    
+    // Check error string
+    if (cancellationIndicators.some(indicator => 
+      errorStr.includes(indicator))) {
+      return true;
+    }
+    
+    return false;
   };
-  
+
+  // Helper function to determine if error is a network error
+  const isNetworkError = (error: any): boolean => {
+    if (!error) return false;
+    
+    const errorStr = JSON.stringify(error).toLowerCase();
+    const errorCode = error.code || error.error?.code || '';
+    const errorDescription = error.description || error.error?.description || '';
+    
+    const networkIndicators = [
+      'network',
+      'internet',
+      'connection',
+      'timeout',
+      'offline',
+      'no internet',
+      'connectivity',
+      'connection error',
+      'network error'
+    ];
+    
+    if (errorCode === 'NETWORK_ERROR' || errorCode === 'CONNECTION_ERROR') {
+      return true;
+    }
+    
+    if (networkIndicators.some(indicator => 
+      errorDescription.toLowerCase().includes(indicator))) {
+      return true;
+    }
+    
+    if (networkIndicators.some(indicator => 
+      errorStr.includes(indicator))) {
+      return true;
+    }
+    
+    return false;
+  };
+
+  // Helper function to determine if error is a payment failure (not cancellation)
+  const isPaymentFailureError = (error: any): boolean => {
+    if (!error) return false;
+    
+    if (isUserCancelledError(error) || isNetworkError(error)) {
+      return false;
+    }
+    
+    // If not cancellation or network error, it's a payment failure
+    return true;
+  };
+
+  // Get user-friendly error message
+  const getUserFriendlyErrorMessage = (error: any): string => {
+    if (isUserCancelledError(error)) {
+      return 'Payment was cancelled. You can try again.';
+    }
+    
+    if (isNetworkError(error)) {
+      return 'Unable to connect. Please check your internet connection and try again.';
+    }
+    
+    // For other payment failures
+    const errorDescription = error.description || error.error?.description || error.message || '';
+    
+    if (errorDescription.toLowerCase().includes('insufficient')) {
+      return 'Insufficient balance. Please try a different payment method.';
+    }
+    
+    if (errorDescription.toLowerCase().includes('card')) {
+      return 'Card payment failed. Please check your card details or try a different card.';
+    }
+    
+    if (errorDescription.toLowerCase().includes('upi')) {
+      return 'UPI payment failed. Please try again or use a different payment method.';
+    }
+    
+    if (errorDescription.toLowerCase().includes('failed') || errorDescription.toLowerCase().includes('error')) {
+      return 'Payment could not be completed. Please try again.';
+    }
+    
+    return 'Something went wrong. Please try again.';
+  };
+
+  // Handle payment cancellation cleanly - NO ORDER CREATION
+  const handlePaymentCancellation = (error: any) => {
+    console.log('Payment cancelled by user:', error);
+    
+    // Reset all states - NO API CALLS
+    setPaymentStatus('cancelled');
+    setShowBlurOverlay(false);
+    setPaymentVerification({
+      verifying: false,
+      message: '',
+      success: false
+    });
+    
+    // Show user-friendly cancellation message
+    showPaymentStatusModal('cancelled', getUserFriendlyErrorMessage(error));
+    
+    // Reset payment attempt tracking
+    setPaymentAttemptId(null);
+    paymentInProgressRef.current = false;
+    setIsPaymentInProgress(false);
+  };
+
+  // Handle network error - NO ORDER CREATION
+  const handleNetworkError = (error: any) => {
+    console.log('Network error during payment:', error);
+    
+    // Reset all states - NO API CALLS
+    setPaymentStatus('network_error');
+    setShowBlurOverlay(false);
+    setPaymentVerification({
+      verifying: false,
+      message: '',
+      success: false
+    });
+    
+    // Show user-friendly network error message
+    showPaymentStatusModal('network_error', getUserFriendlyErrorMessage(error));
+    
+    // Reset payment attempt tracking
+    setPaymentAttemptId(null);
+    paymentInProgressRef.current = false;
+    setIsPaymentInProgress(false);
+  };
+
+  // Handle payment failure (non-cancellation, non-network) - NO ORDER CREATION
+  const handlePaymentFailure = (error: any) => {
+    console.log('Payment failed:', error);
+    
+    // Reset all states - NO API CALLS for order creation
+    setPaymentStatus('failed');
+    setShowBlurOverlay(false);
+    setPaymentVerification({
+      verifying: false,
+      message: '',
+      success: false
+    });
+    
+    // Show user-friendly error message
+    showPaymentStatusModal('failed', getUserFriendlyErrorMessage(error));
+    
+    // Reset payment attempt tracking
+    setPaymentAttemptId(null);
+    paymentInProgressRef.current = false;
+    setIsPaymentInProgress(false);
+  };
+
   const initiatePayment = async () => {
+    // Prevent multiple payment attempts
+    if (paymentInProgressRef.current) {
+      console.log('Payment already in progress');
+      return;
+    }
+    
     if (!cartData || !user) {
       Alert.alert('Error', 'Cart data or user information is missing');
       return;
@@ -745,26 +1094,26 @@ const CartScreen = ({ route, navigation }) => {
     
     // If wallet covers entire amount
     if (useWallet && calculateWalletUsage() >= cartData.billing_details.total) {
-      // Handle wallet-only payment
       handleWalletPayment();
       return;
     }
     
-    // For online payment (with or without wallet)
+    // Set payment in progress state
+    paymentInProgressRef.current = true;
+    setIsPaymentInProgress(true);
     setPaymentStatus('processing');
     setShowBlurOverlay(true);
     
     try {
       // Create Razorpay order first
       const orderId = await createRazorpayOrder();
-      setRazorpayOrderId(orderId);
-
+      
       const options = {
         description: `Order from ${cartData.restaurant_name}${useWallet ? ` (Eatoor Money used: ₹${calculateWalletUsage().toFixed(2)})` : ''}`,
         image: 'https://eatoorprod.s3.amazonaws.com/eatoor-logo/fwdeatoorlogofiles/5.png',
         currency: 'INR',
         key: RAZORPAY_API_KEY,
-        amount: finalAmount * 100, // Amount in paise
+        amount: finalAmount * 100,
         name: user.full_name,
         order_id: orderId,
         prefill: {
@@ -772,12 +1121,30 @@ const CartScreen = ({ route, navigation }) => {
           contact: user.contact_number,
           name: user.full_name
         },
-        theme: { color: '#E65C00' }
+        theme: { color: '#E65C00' },
+        notes: {
+          order_from: 'Eatoor App',
+          user_id: userId,
+          delivery_offer: cartData.delivery_offer_exist ? 'true' : 'false',
+          payment_attempt_id: paymentAttemptId
+        },
+        // Add modal configuration for better UX
+        modal: {
+          backdropclose: false, // Prevent accidental closure
+          ondismiss: () => {
+            // This gets called when modal is dismissed without payment
+            console.log('Razorpay modal dismissed');
+            handlePaymentCancellation({ description: 'Payment modal dismissed' });
+          }
+        }
       };
 
+      // Open Razorpay checkout
       RazorpayCheckout.open(options)
         .then(async (data: PaymentResponse) => {
-          // Start verification process
+          console.log('Payment successful:', data);
+          
+          // Start verification process - ONLY FOR SUCCESSFUL PAYMENTS
           setPaymentVerification({
             verifying: true,
             message: 'Verifying your payment...',
@@ -787,49 +1154,75 @@ const CartScreen = ({ route, navigation }) => {
           try {
             await verifyPaymentStatus(data);
             setVerificationComplete(true);
-          } catch (error) {
-            console.error('Payment verification error:', error);
-            setPaymentVerification({
-              verifying: false,
-              message: 'Payment verification failed',
-              success: false
-            });
-            showPaymentStatusModal('failed', 'Payment verification failed. Please check your order history.');
+          } catch (verificationError) {
+            console.error('Payment verification error:', verificationError);
+            // Even if verification fails, order was already created
+            showPaymentStatusModal('failed', 'Payment completed but verification failed. Please check your order history.');
           } finally {
+            paymentInProgressRef.current = false;
+            setIsPaymentInProgress(false);
             setShowBlurOverlay(false);
           }
         })
         .catch((error) => {
+          console.log("Payment error details:", error);
+          
+          // Reset payment in progress
+          paymentInProgressRef.current = false;
+          setIsPaymentInProgress(false);
           setShowBlurOverlay(false);
-          console.log("error===",error)
-          if (error.description == 'Payment Cancelled' || error.error.description == "undefined") {
-            showPaymentStatusModal('cancelled', 'Payment was cancelled by user');
+          
+          // Handle different types of errors - NO ORDER CREATION FOR ANY FAILURE
+          if (isUserCancelledError(error)) {
+            handlePaymentCancellation(error);
+          } else if (isNetworkError(error)) {
+            handleNetworkError(error);
           } else {
-            showPaymentStatusModal('failed', error.description || 'Payment could not be completed');
+            handlePaymentFailure(error);
           }
         });
     } catch (error) {
-      console.error('Payment error:', error);
+      console.error('Payment initiation error:', error);
+      
+      // Reset states
+      paymentInProgressRef.current = false;
+      setIsPaymentInProgress(false);
       setShowBlurOverlay(false);
-      showPaymentStatusModal('failed', error.message || 'An error occurred while processing payment');
-    } finally {
+      
+      // Handle error - NO ORDER CREATION
+      if (isUserCancelledError(error)) {
+        handlePaymentCancellation(error);
+      } else if (isNetworkError(error)) {
+        handleNetworkError(error);
+      } else {
+        showPaymentStatusModal('failed', getUserFriendlyErrorMessage(error));
+      }
+      
       setPaymentStatus('idle');
     }
   };
 
-  // Handle wallet-only payment
+  // Handle wallet-only payment - ONLY CALLED FOR SUCCESSFUL WALLET PAYMENTS
   const handleWalletPayment = async () => {
     if (!cartData || !userId || !kitchenId || !addressId) {
       Alert.alert('Error', 'Required information missing for wallet payment');
       return;
     }
     
+    // Prevent multiple payment attempts
+    if (paymentInProgressRef.current) {
+      console.log('Payment already in progress');
+      return;
+    }
+    
+    paymentInProgressRef.current = true;
+    setIsPaymentInProgress(true);
     setPaymentStatus('processing');
     setShowBlurOverlay(true);
     
     try {
-      // Update order with wallet payment
-      const updateResponse = await updateOrderDetails('');
+      // Create order with wallet payment - ONLY FOR SUCCESSFUL PAYMENTS
+      const updateResponse = await updateOrderDetails('', true);
       
       if (updateResponse.status === 'success') {
         // Debit wallet amount for wallet-only payment
@@ -840,10 +1233,8 @@ const CartScreen = ({ route, navigation }) => {
         } catch (walletError) {
           console.error('Wallet debit failed:', walletError);
           // Continue even if wallet debit fails
-          // The order is already placed, wallet debit can be retried
         }
         
-        // Simulate payment verification for wallet
         setPaymentVerification({
           verifying: false,
           message: 'Payment successful using Eatoor Money!',
@@ -861,8 +1252,12 @@ const CartScreen = ({ route, navigation }) => {
       }
     } catch (error) {
       console.error('Wallet payment error:', error);
-      showPaymentStatusModal('failed', error.message || 'Eatoor Money payment failed');
+      
+      // For wallet payment failure, we don't create an order
+      showPaymentStatusModal('failed', getUserFriendlyErrorMessage(error) || 'Eatoor Money payment failed');
     } finally {
+      paymentInProgressRef.current = false;
+      setIsPaymentInProgress(false);
       setShowBlurOverlay(false);
       setPaymentStatus('idle');
     }
@@ -901,7 +1296,11 @@ const CartScreen = ({ route, navigation }) => {
   };
 
   const BackToKitchen = () => {
-    navigation.navigate('HomeKitchenDetails', { kitchenId: kitchenId });
+    if (kitchenId) {
+      navigation.navigate('HomeKitchenDetails', { kitchenId: kitchenId });
+    } else {
+      navigation.goBack();
+    }
   };
 
   const handleClearCart = () => {
@@ -917,7 +1316,6 @@ const CartScreen = ({ route, navigation }) => {
             if (!cartData || !kitchenId || !userId) return;
             
             try {
-              // Remove all items from cart
               for (const item of cartData.cart_details) {
                 const payload = {
                   user_id: userId,
@@ -943,10 +1341,10 @@ const CartScreen = ({ route, navigation }) => {
 
   const getTotalItems = () => {
     if (!cartData?.cart_details) return 0;
-    return cartData.cart_details.reduce((total, item) => total + item.quantity, 0);
+    return calculateTotalQuantity(cartData.cart_details);
   };
 
-  // Render Eatoor Money section (above Pay button)
+  // Render Eatoor Money section
   const renderEatoorMoneySection = () => {
     if (walletLoading) {
       return (
@@ -960,8 +1358,6 @@ const CartScreen = ({ route, navigation }) => {
     }
 
     const balance = walletBalance?.balance || 0;
-    const walletUsage = calculateWalletUsage();
-    const finalAmount = calculateFinalAmount();
 
     return (
       <View style={styles.eatoorMoneyContainer}>
@@ -982,7 +1378,7 @@ const CartScreen = ({ route, navigation }) => {
               }
               setUseWallet(!useWallet);
             }}
-            disabled={showBlurOverlay}
+            disabled={showBlurOverlay || isPaymentInProgress}
           >
             <View style={[
               styles.checkbox,
@@ -1009,7 +1405,7 @@ const CartScreen = ({ route, navigation }) => {
           <TouchableOpacity 
             style={styles.addMoneyButton}
             onPress={() => navigation.navigate('EatoorMoneyScreen', { prevScreen: 'CartScreen' })}
-            disabled={showBlurOverlay}
+            disabled={showBlurOverlay || isPaymentInProgress}
           >
             <Text style={styles.addMoneyButtonText}>Add Money</Text>
             <Icon name="arrow-forward" size={scale(14)} color="#E65C00" style={styles.addMoneyIcon} />
@@ -1019,6 +1415,7 @@ const CartScreen = ({ route, navigation }) => {
     );
   };
 
+  // Render cart item
   const renderCartItem = ({ item }: { item: CartItem }) => {
     const isUpdating = updatingItems.some(i => i.id === item.item_id);
     const currentAction = isUpdating 
@@ -1070,7 +1467,7 @@ const CartScreen = ({ route, navigation }) => {
                 styles.quantityButton,
               ]} 
               onPress={() => updateItemQuantity(item.item_id, 'decrement')}
-              disabled={showBlurOverlay}
+              disabled={showBlurOverlay || isPaymentInProgress}
             >
               {isUpdating && currentAction === 'decrement' ? (
                 <ActivityIndicator size="small" color="#E65C00" />
@@ -1084,7 +1481,7 @@ const CartScreen = ({ route, navigation }) => {
             <TouchableOpacity 
               style={styles.quantityButton} 
               onPress={() => updateItemQuantity(item.item_id, 'increment')}
-              disabled={isUpdating || showBlurOverlay}
+              disabled={isUpdating || showBlurOverlay || isPaymentInProgress}
             >
               {isUpdating && currentAction === 'increment' ? (
                 <ActivityIndicator size="small" color="#E65C00" />
@@ -1098,6 +1495,7 @@ const CartScreen = ({ route, navigation }) => {
     );
   };
 
+  // Render suggested item
   const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
     const isUpdating = updatingItems.some(i => i.id === item.item_id);
     const currentAction = isUpdating 
@@ -1118,7 +1516,7 @@ const CartScreen = ({ route, navigation }) => {
           }
         }}
         activeOpacity={0.7}
-        disabled={showBlurOverlay}
+        disabled={showBlurOverlay || isPaymentInProgress}
       >
         <Image 
           source={{ uri: item.item_image || 'https://via.placeholder.com/150' }} 
@@ -1161,7 +1559,7 @@ const CartScreen = ({ route, navigation }) => {
                     quantity <= 1 && styles.disabledButton
                   ]} 
                   onPress={() => updateItemQuantity(item.item_id, 'decrement', 'SUGGESTION')}
-                  disabled={isUpdating || quantity <= 1 || showBlurOverlay}
+                  disabled={isUpdating || quantity <= 1 || showBlurOverlay || isPaymentInProgress}
                 >
                   {isUpdating && currentAction === 'decrement' ? (
                     <ActivityIndicator size="small" color="#E65C00" />
@@ -1175,7 +1573,7 @@ const CartScreen = ({ route, navigation }) => {
                 <TouchableOpacity 
                   style={styles.quantityButton} 
                   onPress={() => updateItemQuantity(item.item_id, 'increment', 'SUGGESTION')}
-                  disabled={isUpdating || showBlurOverlay}
+                  disabled={isUpdating || showBlurOverlay || isPaymentInProgress}
                 >
                   {isUpdating && currentAction === 'increment' ? (
                     <ActivityIndicator size="small" color="#E65C00" />
@@ -1191,7 +1589,7 @@ const CartScreen = ({ route, navigation }) => {
                   isUpdating && styles.addItemButtonDisabled
                 ]}
                 onPress={() => updateItemQuantity(item.item_id, 'increment', 'SUGGESTION')}
-                disabled={isUpdating || showBlurOverlay}
+                disabled={isUpdating || showBlurOverlay || isPaymentInProgress}
               >
                 {isUpdating && currentAction === 'increment' ? (
                   <ActivityIndicator size="small" color="#fff" />
@@ -1206,6 +1604,7 @@ const CartScreen = ({ route, navigation }) => {
     );
   };
   
+  // Render empty cart
   const renderEmptyCart = () => (
     <View style={styles.emptyContainer}>
       <View style={styles.emptyHeader}>
@@ -1259,12 +1658,14 @@ const CartScreen = ({ route, navigation }) => {
     </View>
   );
 
+  // Safe format number
   const safeFormatNumber = (value, decimals = 2) => {
     const num = Number(value);
     if (isNaN(num)) return "0.00";
     return num.toFixed(decimals);
   };
 
+  // Render cart content
   const renderCartContent = () => (
     <KeyboardAvoidingView 
       style={styles.scrollContainer}
@@ -1291,7 +1692,7 @@ const CartScreen = ({ route, navigation }) => {
                 <TouchableOpacity 
                   style={styles.itemCountBadge}
                   onPress={() => setShowItemCountBadge(!showItemCountBadge)}
-                  disabled={showBlurOverlay}
+                  disabled={showBlurOverlay || isPaymentInProgress}
                 >
                   <Text style={styles.itemCountText}>{getTotalItems()}</Text>
                 </TouchableOpacity>
@@ -1302,7 +1703,7 @@ const CartScreen = ({ route, navigation }) => {
               <TouchableOpacity 
                 style={styles.clearCartButton}
                 onPress={handleClearCart}
-                disabled={showBlurOverlay}
+                disabled={showBlurOverlay || isPaymentInProgress}
               >
                 <Icon name="trash-outline" size={scale(18)} color="#E65C00" />
                 <Text style={styles.clearCartText}>Clear All</Text>
@@ -1334,7 +1735,7 @@ const CartScreen = ({ route, navigation }) => {
               <TouchableOpacity 
                 style={styles.viewAllButton}
                 onPress={() => BackToKitchen()}
-                disabled={showBlurOverlay}
+                disabled={showBlurOverlay || isPaymentInProgress}
               >
                 <Text style={styles.viewAllText}>View All</Text>
                 <Icon name="chevron-forward" size={scale(16)} color="#E65C00" />
@@ -1373,7 +1774,7 @@ const CartScreen = ({ route, navigation }) => {
                 <TouchableOpacity 
                   style={styles.changeAddressButton}
                   onPress={handleAddressChange}
-                  disabled={showBlurOverlay}
+                  disabled={showBlurOverlay || isPaymentInProgress}
                 >
                   <Text style={styles.changeAddressText}>
                     {fullAddress !== "Select Address" ? "Change" : "Add"}
@@ -1412,10 +1813,21 @@ const CartScreen = ({ route, navigation }) => {
                 <View style={styles.detailIconContainer}>
                   <Icon name="pricetag-outline" size={scale(20)} color="#E65C00" />
                 </View>
-                <Text style={styles.detailText}>
-                  Estimated Delivery: ₹
-                  {safeFormatNumber(cartData.billing_details.estimated_delivery_cost, 2)}
-                </Text>
+                <View style={styles.deliveryCostContainer}>
+                  <Text style={styles.detailText}>
+                    Delivery Fee
+                  </Text>
+                  {cartData?.delivery_offer_exist ? (
+                    <View style={styles.deliveryOfferBadge}>
+                      <Icon name="checkmark-circle" size={scale(12)} color="#fff" />
+                      <Text style={styles.deliveryOfferText}>FREE</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.deliveryFeeAmount}>
+                      ₹{safeFormatNumber(cartData.billing_details.estimated_delivery_cost, 2)}
+                    </Text>
+                  )}
+                </View>
               </View>
             )}
 
@@ -1432,6 +1844,23 @@ const CartScreen = ({ route, navigation }) => {
             )}
           </View>
         </View>
+
+        {/* Free Delivery Offer Message */}
+        {cartData?.delivery_offer_exist && (
+          <View style={styles.freeDeliveryOfferCard}>
+            <View style={styles.freeDeliveryIcon}>
+              <Icon name="gift" size={scale(20)} color="#E65C00" />
+            </View>
+            <View style={styles.freeDeliveryContent}>
+              <Text style={styles.freeDeliveryTitle}>
+                Free Delivery Offer Applied!
+              </Text>
+              <Text style={styles.freeDeliveryDescription}>
+                Your delivery fee has been waived for this order
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Bill Details */}
         <View style={styles.sectionCard}>
@@ -1453,11 +1882,21 @@ const CartScreen = ({ route, navigation }) => {
                   {cartData?.billing_details?.distance_km
                     ? ` | ${safeFormatNumber(cartData.billing_details.distance_km, 1)} km`
                     : ''}
+                  {cartData?.delivery_offer_exist && (
+                    <Text style={styles.freeDeliveryBadgeInline}></Text>
+                  )}
                 </Text>
-                <Text style={styles.billValue}>
-                  ₹{safeFormatNumber(cartData.billing_details.delivery_amount, 2)}
+                <Text style={[
+                  styles.billValue,
+                  cartData?.delivery_offer_exist && styles.freeDeliveryValue
+                ]}>
+                  {cartData?.delivery_offer_exist ? (
+                    <Text style={styles.freeDeliveryText}>FREE</Text>
+                  ) : (
+                    `₹${safeFormatNumber(cartData.billing_details.delivery_amount, 2)}`
+                  )}
                 </Text>
-            </View>
+              </View>
             )}
 
             {cartData?.billing_details?.tax != null && (
@@ -1469,7 +1908,7 @@ const CartScreen = ({ route, navigation }) => {
               </View>
             )}
 
-            {/* Eatoor Money Deduction Row - Show in bill details */}
+            {/* Eatoor Money Deduction Row */}
             {useWallet && walletBalance && walletBalance.balance > 0 && (
               <View style={styles.billRow}>
                 <Text style={styles.billLabel}>Eatoor Money</Text>
@@ -1504,6 +1943,7 @@ const CartScreen = ({ route, navigation }) => {
     </KeyboardAvoidingView>
   );
     
+  // Render payment footer
   const renderPaymentFooter = () => {
     if (!cartData || !cartData?.cart_details || cartData?.cart_details.length === 0) {
       return null;
@@ -1527,7 +1967,7 @@ const CartScreen = ({ route, navigation }) => {
 
     return (
       <View style={styles.paymentFooter}>
-        {/* Eatoor Money Section - Above Pay Button */}
+        {/* Eatoor Money Section */}
         {renderEatoorMoneySection()}
         
         <View style={styles.paymentFooterContent}>
@@ -1548,13 +1988,14 @@ const CartScreen = ({ route, navigation }) => {
             <TouchableOpacity 
               style={[
                 styles.payButton,
-                finalAmount === 0 && styles.payButtonPaid
+                finalAmount === 0 && styles.payButtonPaid,
+                (isPaymentInProgress || paymentStatus === 'processing') && styles.payButtonDisabled
               ]}
               onPress={initiatePayment}
-              disabled={paymentStatus === 'processing' || paymentVerification.verifying || showBlurOverlay}
+              disabled={paymentStatus === 'processing' || paymentVerification.verifying || showBlurOverlay || isPaymentInProgress}
               activeOpacity={0.8}
             >
-              {paymentStatus === 'processing' ? (
+              {paymentStatus === 'processing' || isPaymentInProgress ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <>
@@ -1577,7 +2018,7 @@ const CartScreen = ({ route, navigation }) => {
               style={styles.addAddressButton}
               onPress={handleAddressChange}
               activeOpacity={0.8}
-              disabled={showBlurOverlay}
+              disabled={showBlurOverlay || isPaymentInProgress}
             >
               <Icon name="location" size={scale(18)} color="#fff" style={styles.addAddressIcon} />
               <Text style={styles.addAddressButtonText}>Select Location</Text>
@@ -1588,8 +2029,9 @@ const CartScreen = ({ route, navigation }) => {
     );
   };
 
+  // Render payment modal
   const renderPaymentModal = () => {
-    let modalColor, iconName, iconSize, additionalContent, animationStyle;
+    let modalColor, iconName, iconSize, additionalContent, animationStyle, modalTitle;
     
     const rotateInterpolation = rotationAnim.interpolate({
       inputRange: [0, 1],
@@ -1606,6 +2048,7 @@ const CartScreen = ({ route, navigation }) => {
         </Animated.View>
       );
       animationStyle = styles.verifyingModal;
+      modalTitle = 'Verifying Payment';
     } else {
       switch(paymentStatus) {
         case 'success':
@@ -1618,6 +2061,7 @@ const CartScreen = ({ route, navigation }) => {
             </Animated.View>
           );
           animationStyle = styles.successModal;
+          modalTitle = 'Payment Successful!';
           break;
         case 'failed':
           modalColor = '#E65C00';
@@ -1629,6 +2073,7 @@ const CartScreen = ({ route, navigation }) => {
             </Animated.View>
           );
           animationStyle = styles.errorModal;
+          modalTitle = 'Payment Failed';
           break;
         case 'cancelled':
           modalColor = '#FF9800';
@@ -1640,6 +2085,19 @@ const CartScreen = ({ route, navigation }) => {
             </Animated.View>
           );
           animationStyle = styles.warningModal;
+          modalTitle = 'Payment Cancelled';
+          break;
+        case 'network_error':
+          modalColor = '#607D8B';
+          iconName = 'wifi-outline';
+          iconSize = scale(60);
+          additionalContent = (
+            <Animated.View style={[styles.successAnimation, { transform: [{ scale: scaleAnim }] }]}>
+              <Icon name={iconName} size={iconSize} color="#fff" />
+            </Animated.View>
+          );
+          animationStyle = styles.networkErrorModal;
+          modalTitle = 'Connection Error';
           break;
         case 'processing':
           modalColor = '#2196F3';
@@ -1651,6 +2109,7 @@ const CartScreen = ({ route, navigation }) => {
             </Animated.View>
           );
           animationStyle = styles.verifyingModal;
+          modalTitle = 'Processing Payment';
           break;
         default:
           return null;
@@ -1662,7 +2121,11 @@ const CartScreen = ({ route, navigation }) => {
         visible={showPaymentModal}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowPaymentModal(false)}
+        onRequestClose={() => {
+          if (paymentStatus !== 'processing' && !paymentVerification.verifying) {
+            setShowPaymentModal(false);
+          }
+        }}
       >
         <View style={styles.modalOverlay}>
           <Animated.View style={[
@@ -1674,6 +2137,9 @@ const CartScreen = ({ route, navigation }) => {
             }
           ]}>
             <View style={styles.modalContent}>
+              {modalTitle && (
+                <Text style={styles.modalTitle}>{modalTitle}</Text>
+              )}
               {additionalContent}
               <Text style={styles.modalText}>
                 {paymentVerification.verifying 
@@ -1700,7 +2166,7 @@ const CartScreen = ({ route, navigation }) => {
                   }}
                 >
                   <Text style={styles.modalCloseButtonText}>
-                    {paymentStatus === 'success' ? 'View Order' : 'Close'}
+                    {paymentStatus === 'success' ? 'View Order' : 'OK'}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -1711,6 +2177,7 @@ const CartScreen = ({ route, navigation }) => {
     );
   };
 
+  // Render blur overlay
   const renderBlurOverlay = () => {
     if (!showBlurOverlay) return null;
 
@@ -1739,6 +2206,7 @@ const CartScreen = ({ route, navigation }) => {
     );
   };
 
+  // Loading state
   if (loading && !cartData) {
     return (
       <SafeAreaView style={styles.container}>
@@ -1751,6 +2219,7 @@ const CartScreen = ({ route, navigation }) => {
     );
   }
 
+  // Error state
   if (error) {
     return (
       <SafeAreaView style={styles.container}>
@@ -1803,7 +2272,7 @@ const CartScreen = ({ route, navigation }) => {
             <TouchableOpacity 
               onPress={BackToKitchen}
               style={styles.backButton}
-              disabled={showBlurOverlay}
+              disabled={showBlurOverlay || isPaymentInProgress}
             >
               <Icon name="arrow-back" size={scale(24)} color="#333" />
             </TouchableOpacity>
@@ -1814,7 +2283,7 @@ const CartScreen = ({ route, navigation }) => {
               <TouchableOpacity 
                 onPress={handleAddressChange}
                 style={styles.headerAddressContainer}
-                disabled={showBlurOverlay}
+                disabled={showBlurOverlay || isPaymentInProgress}
               >
                 <Text style={styles.headerAddressText} numberOfLines={1}>
                   {safeText(shortAddress, 'Select Address')}
@@ -2390,6 +2859,71 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: FONT.SM,
   },
+  // Delivery Cost Container with Offer Badge
+  deliveryCostContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  deliveryOfferBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(4),
+    borderRadius: scale(6),
+    marginLeft: scale(6),
+  },
+  deliveryOfferText: {
+    color: '#fff',
+    fontSize: FONT.XS,
+    fontWeight: '700',
+    marginLeft: scale(4),
+  },
+  deliveryFeeAmount: {
+    fontSize: FONT.SM,
+    color: '#333',
+    fontWeight: '600',
+    marginLeft: scale(6),
+  },
+  // Free Delivery Offer Card (Above Bill Details)
+  freeDeliveryOfferCard: {
+    backgroundColor: '#e8f5e8',
+    borderRadius: scale(12),
+    padding: scale(12),
+    marginBottom: verticalScale(12),
+    marginTop: verticalScale(8),
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#c8e6c9',
+  },
+  freeDeliveryIcon: {
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(18),
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: scale(10),
+    borderWidth: 1.5,
+    borderColor: '#E65C00',
+  },
+  freeDeliveryContent: {
+    flex: 1,
+  },
+  freeDeliveryTitle: {
+    fontSize: FONT.BASE,
+    fontWeight: '700',
+    color: '#2e7d32',
+    marginBottom: verticalScale(2),
+  },
+  freeDeliveryDescription: {
+    fontSize: FONT.SM,
+    color: '#4caf50',
+    fontWeight: '500',
+  },
   // Bill Card inside Section
   billCard: {
     backgroundColor: '#f8f9fa',
@@ -2418,6 +2952,20 @@ const styles = StyleSheet.create({
   eatoorMoneyDeductionBill: {
     color: '#E65C00',
     fontWeight: '700',
+  },
+  freeDeliveryBadgeInline: {
+    color: '#4CAF50',
+    fontWeight: '700',
+    fontSize: FONT.SM,
+  },
+  freeDeliveryValue: {
+    color: '#4CAF50',
+    fontWeight: '700',
+  },
+  freeDeliveryText: {
+    color: '#4CAF50',
+    fontWeight: '700',
+    fontSize: FONT.SM,
   },
   totalRow: {
     flexDirection: 'row',
@@ -2848,6 +3396,20 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: FONT.SM,
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: FONT.XL,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: verticalScale(10),
+  },
+  networkErrorModal: {
+    backgroundColor: '#607D8B',
+  },
+  // Add disabled button style
+  payButtonDisabled: {
+    opacity: 0.7,
   },
 });
 

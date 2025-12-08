@@ -16,6 +16,7 @@ import {
   Animated,
   Easing,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from 'react-native-vector-icons/Ionicons';
@@ -31,9 +32,9 @@ import { useRoute } from '@react-navigation/native';
 
 const { width, height } = Dimensions.get('window');
 
-// Constants (keep outside component)
+// Constants
 const QUICK_AMOUNTS = [100, 200, 500, 1000, 2000, 5000];
-const MIN_AMOUNT = 0;
+const MIN_AMOUNT = 1;
 const MAX_AMOUNT = 100000;
 const TRANSACTION_FILTERS = [
   { id: 'all', label: 'All', icon: 'grid-outline' },
@@ -41,22 +42,24 @@ const TRANSACTION_FILTERS = [
   { id: 'debit', label: 'Debits', icon: 'trending-down-outline' },
 ];
 
-// Helper functions (keep outside component)
+// Helper functions
 const mapTransactionType = (txn_type) => {
   const mapping = {
-    credit: { type: 'addition', label: 'Credit', icon: 'add-circle', color: '#10B981' },
-    debit: { type: 'deduction', label: 'Debit', icon: 'remove-circle', color: '#EF4444' },
+    credit: { type: 'addition', label: 'Credit', icon: 'add-circle', color: '#10B981', bgColor: 'rgba(16, 185, 129, 0.1)' },
+    debit: { type: 'deduction', label: 'Debit', icon: 'remove-circle', color: '#EF4444', bgColor: 'rgba(239, 68, 68, 0.1)' },
   };
-  return mapping[txn_type] || { type: 'addition', label: 'Other', icon: 'help-circle', color: '#3B82F6' };
+  return mapping[txn_type] || { type: 'addition', label: 'Other', icon: 'help-circle', color: '#3B82F6', bgColor: 'rgba(59, 130, 246, 0.1)' };
 };
 
 const mapTransactionSource = (txn_source) => {
   const mapping = {
-    add_money: { category: 'Top-up', description: 'Money Added to Wallet' },
-    order_payment: { category: 'Order Payment', description: 'Food Order Payment' },
-    refund: { category: 'Refund', description: 'Order Refund' },
+    add_money: { category: 'Wallet Top-up', description: 'Money Added', icon: 'wallet-outline' },
+    order_payment: { category: 'Order Payment', description: 'Food Order', icon: 'restaurant-outline' },
+    refund: { category: 'Refund', description: 'Order Refund', icon: 'arrow-back-outline' },
+    referral: { category: 'Referral Bonus', description: 'Referral Reward', icon: 'gift-outline' },
+    cashback: { category: 'Cashback', description: 'Reward Cashback', icon: 'cash-outline' },
   };
-  return mapping[txn_source] || { category: 'Other', description: 'Wallet Transaction' };
+  return mapping[txn_source] || { category: 'Transaction', description: 'Wallet Transaction', icon: 'swap-horizontal-outline' };
 };
 
 const formatTransactionDate = (created_at) => {
@@ -66,8 +69,18 @@ const formatTransactionDate = (created_at) => {
   
   if (diffDays === 0) return 'Today';
   if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return `${diffDays} days ago`;
   
   return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+};
+
+const formatAmount = (amount) => {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(amount);
 };
 
 const EatoorMoneyScreen = ({ navigation }) => {
@@ -78,7 +91,7 @@ const EatoorMoneyScreen = ({ navigation }) => {
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [addMoneyModalVisible, setAddMoneyModalVisible] = useState(false);
   const [amount, setAmount] = useState('');
-  const [isBalanceVisible, setIsBalanceVisible] = useState(false); // Default hidden
+  const [isBalanceVisible, setIsBalanceVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -90,8 +103,8 @@ const EatoorMoneyScreen = ({ navigation }) => {
     contact: '',
     id: '',
   });
+  const [refreshing, setRefreshing] = useState(false);
   
-  console.log("route==",route?.params?.prevScreen)
   // Refs
   const scrollY = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -109,33 +122,17 @@ const EatoorMoneyScreen = ({ navigation }) => {
   }, []);
 
   // Animation interpolations
-  const headerHeight = useMemo(() => 
-    scrollY.interpolate({
-      inputRange: [0, 150],
-      outputRange: [height * 0.35, height * 0.2],
-      extrapolate: 'clamp',
-    }), [scrollY]);
+  const headerOpacity = scrollY.interpolate({
+    inputRange: [0, 100, 150],
+    outputRange: [1, 0.8, 0],
+    extrapolate: 'clamp',
+  });
 
-  const balanceScale = useMemo(() =>
-    scrollY.interpolate({
-      inputRange: [0, 100],
-      outputRange: [1, 0.8],
-      extrapolate: 'clamp',
-    }), [scrollY]);
-
-  const balanceTranslateY = useMemo(() =>
-    scrollY.interpolate({
-      inputRange: [0, 100],
-      outputRange: [0, -30],
-      extrapolate: 'clamp',
-    }), [scrollY]);
-
-  // Eye icon animation
-  const eyeScale = useMemo(() =>
-    eyeScaleAnim.interpolate({
-      inputRange: [0, 1],
-      outputRange: [1, 1.2],
-    }), []);
+  const headerScale = scrollY.interpolate({
+    inputRange: [0, 100],
+    outputRange: [1, 0.95],
+    extrapolate: 'clamp',
+  });
 
   // Fetch user data from AsyncStorage
   const fetchUserData = useCallback(async () => {
@@ -146,7 +143,6 @@ const EatoorMoneyScreen = ({ navigation }) => {
       if (userData) {
         const parsedUser = JSON.parse(userData);
         
-        // Extract user details with fallbacks
         const userDetails = {
           name: parsedUser.full_name || parsedUser.name || 'Eatoor User',
           email: parsedUser.email || 'user@example.com',
@@ -157,15 +153,12 @@ const EatoorMoneyScreen = ({ navigation }) => {
         
         setUser(userDetails);
         
-        // Update balance from user data if available
         if (parsedUser.wallet_balance !== undefined) {
           setBalance(parseFloat(parsedUser.wallet_balance));
         }
       }
     } catch (error) {
-      console.error('Error fetching user data from AsyncStorage:', error);
-      
-      // Set default values if AsyncStorage fails
+      console.error('Error fetching user data:', error);
       setUser({
         name: 'Eatoor User',
         email: 'user@example.com',
@@ -179,13 +172,13 @@ const EatoorMoneyScreen = ({ navigation }) => {
   const toggleBalanceVisibility = useCallback(() => {
     Animated.sequence([
       Animated.timing(eyeScaleAnim, {
-        toValue: 1,
-        duration: 150,
+        toValue: 0,
+        duration: 100,
         useNativeDriver: true,
       }),
       Animated.timing(eyeScaleAnim, {
-        toValue: 0,
-        duration: 150,
+        toValue: 1,
+        duration: 100,
         useNativeDriver: true,
       }),
     ]).start();
@@ -215,8 +208,9 @@ const EatoorMoneyScreen = ({ navigation }) => {
         }),
         description: transaction.note || sourceInfo.description,
         category: sourceInfo.category,
-        icon: typeInfo.icon,
+        icon: sourceInfo.icon || typeInfo.icon,
         color: typeInfo.color,
+        bgColor: typeInfo.bgColor,
         orderId: transaction.order_number,
         status: transaction.status,
         created_at: transaction.created_at,
@@ -226,29 +220,36 @@ const EatoorMoneyScreen = ({ navigation }) => {
   }, []);
 
   // Load wallet data
-  const fetchWalletData = useCallback(async () => {
+  const fetchWalletData = useCallback(async (isRefresh = false) => {
     if (!isMounted.current) return;
     
     try {
-      setLoading(true);
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      
       const balanceResponse = await getWalletBalance();
       
       if (balanceResponse.data?.balance) {
         setBalance(parseFloat(balanceResponse.data.balance));
         
-        // Process transactions from API response
         const processedTransactions = processTransactionData(
           balanceResponse.data.transactions
         );
         
         setTransactions(processedTransactions);
+        setCurrentPage(1);
+        setHasMore(true);
       }
     } catch (error) {
       console.error('Error fetching wallet data:', error);
-      Alert.alert('Error', 'Failed to load wallet data');
+      Alert.alert('Oops!', 'Failed to load wallet data. Please try again.');
     } finally {
       if (isMounted.current) {
         setLoading(false);
+        setRefreshing(false);
       }
     }
   }, [processTransactionData]);
@@ -256,8 +257,13 @@ const EatoorMoneyScreen = ({ navigation }) => {
   // Initial load
   useEffect(() => {
     fetchWalletData();
-    fetchUserData(); // Fetch user data on mount
+    fetchUserData();
   }, [fetchWalletData, fetchUserData]);
+
+  // Refresh handler
+  const handleRefresh = useCallback(() => {
+    fetchWalletData(true);
+  }, [fetchWalletData]);
 
   // Load more transactions
   const loadMoreTransactions = useCallback(async () => {
@@ -270,8 +276,6 @@ const EatoorMoneyScreen = ({ navigation }) => {
 
       if (response.data?.results?.length > 0) {
         const newTransactions = processTransactionData(response.data.results);
-        
-        // Append new transactions while maintaining order from API
         setTransactions(prev => [...prev, ...newTransactions]);
         setCurrentPage(nextPage);
         setHasMore(response.data.next !== null);
@@ -280,9 +284,6 @@ const EatoorMoneyScreen = ({ navigation }) => {
       }
     } catch (error) {
       console.error('Error loading more transactions:', error);
-      if (isMounted.current) {
-        Alert.alert('Error', 'Failed to load more transactions');
-      }
     } finally {
       if (isMounted.current) {
         setLoadingMore(false);
@@ -290,7 +291,7 @@ const EatoorMoneyScreen = ({ navigation }) => {
     }
   }, [loadingMore, hasMore, currentPage, processTransactionData]);
 
-  // Filtered transactions - memoized for performance
+  // Filtered transactions
   const filteredTransactions = useMemo(() => {
     if (selectedFilter === 'all') return transactions;
     if (selectedFilter === 'credit') {
@@ -309,7 +310,6 @@ const EatoorMoneyScreen = ({ navigation }) => {
 
   // Modal handlers
   const openAddMoneyModal = useCallback(async () => {
-    // Ensure user data is loaded before showing payment modal
     if (!user.email || !user.contact) {
       await fetchUserData();
     }
@@ -356,10 +356,7 @@ const EatoorMoneyScreen = ({ navigation }) => {
 
   // Amount validation
   const validateAmountInput = useCallback((text) => {
-    // Remove non-numeric characters except decimal point
     const cleanedText = text.replace(/[^0-9.]/g, '');
-    
-    // Handle multiple decimal points
     const parts = cleanedText.split('.');
     if (parts.length > 2) {
       setAmount(parts[0] + '.' + parts.slice(1).join(''));
@@ -377,12 +374,12 @@ const EatoorMoneyScreen = ({ navigation }) => {
       return { isValid: false, message: `Minimum amount is ₹${MIN_AMOUNT}` };
     }
     if (numAmount > MAX_AMOUNT) {
-      return { isValid: false, message: `Maximum amount is ₹${MAX_AMOUNT}` };
+      return { isValid: false, message: `Maximum amount is ₹${MAX_AMOUNT.toLocaleString()}` };
     }
     return { isValid: true, amount: numAmount };
   }, []);
 
-  // Payment handler with user data
+  // Payment handler
   const handleAddMoney = useCallback(async () => {
     const validation = validateAmount(amount);
     if (!validation.isValid) {
@@ -393,15 +390,13 @@ const EatoorMoneyScreen = ({ navigation }) => {
     try {
       setProcessingPayment(true);
       
-      // Get user data if not already loaded
       if (!user.email || !user.contact) {
         await fetchUserData();
       }
 
-      // Create Razorpay order with user details if needed by backend
       const orderResponse = await createWalletOrder({ 
         amount: validation.amount,
-        user_id: user.id, // Pass user ID if needed by backend
+        user_id: user.id,
         user_email: user.email,
         user_name: user.name,
       });
@@ -411,13 +406,12 @@ const EatoorMoneyScreen = ({ navigation }) => {
         throw new Error('Failed to create payment order');
       }
       
-      // Configure Razorpay options with user data
       const razorpayOptions = {
         description: 'Add Eatoor Money',
         image: 'https://eatoorprod.s3.amazonaws.com/eatoor-logo/fwdeatoorlogofiles/5.png',
         currency: 'INR',
-        key: orderData.key || 'rzp_test_Ler2HqmO4lVND1', // Use from API response or fallback
-        amount: validation.amount * 100, // Convert to paise
+        key: orderData.key || 'rzp_test_Ler2HqmO4lVND1',
+        amount: validation.amount * 100,
         name: 'Eatoor Money',
         order_id: orderData.order_id,
         prefill: {
@@ -425,7 +419,7 @@ const EatoorMoneyScreen = ({ navigation }) => {
           contact: user.contact || '9999999999',
           name: user.name || 'Eatoor User',
         },
-        theme: { color: '#E65C00' },
+        theme: { color: '#FF6B35' },
         notes: {
           source: 'eatoor_wallet',
           user_id: user.id || 'unknown',
@@ -433,11 +427,9 @@ const EatoorMoneyScreen = ({ navigation }) => {
         },
       };
 
-      // Open Razorpay checkout
       const razorpayResponse = await RazorpayCheckout.open(razorpayOptions);
       
       if (razorpayResponse) {
-        // Verify payment
         const successPayload = {
           razorpay_payment_id: razorpayResponse.razorpay_payment_id,
           razorpay_order_id: razorpayResponse.razorpay_order_id,
@@ -448,7 +440,6 @@ const EatoorMoneyScreen = ({ navigation }) => {
         const verificationResponse = await walletAddMoneySuccess(successPayload);
 
         if (verificationResponse.status === 200) {
-          // Success animation
           Animated.sequence([
             Animated.timing(rotateAnim, {
               toValue: 1,
@@ -463,18 +454,17 @@ const EatoorMoneyScreen = ({ navigation }) => {
             }),
           ]).start();
 
-          // Refresh data
           await fetchWalletData();
           closeAddMoneyModal();
 
           Alert.alert(
-            'Success!',
-            `₹${validation.amount.toFixed(2)} added successfully 🎉`,
+            'Success! 🎉',
+            `₹${validation.amount.toFixed(2)} added to your wallet`,
             [{ text: 'Awesome!', style: 'cancel' }]
           );
 
-          if (route?.params?.prevScreen == "CartScreen"){
-            navigation.navigate(route?.params?.prevScreen);
+          if (route?.params?.prevScreen === "CartScreen") {
+            navigation.navigate(route.params.prevScreen);
           }
         } else {
           throw new Error('Payment verification failed');
@@ -484,7 +474,7 @@ const EatoorMoneyScreen = ({ navigation }) => {
       console.error('Payment error:', error);
       
       if (error.code === 2) {
-        Alert.alert('Payment Cancelled', 'Payment was cancelled by user');
+        Alert.alert('Payment Cancelled', 'Payment was cancelled');
       } else {
         Alert.alert(
           'Payment Failed',
@@ -498,20 +488,18 @@ const EatoorMoneyScreen = ({ navigation }) => {
     }
   }, [amount, validateAmount, fetchWalletData, closeAddMoneyModal, user, fetchUserData]);
 
-  // Render transaction item - memoized
-  const renderTransactionItem = useCallback(({ item }) => {
+  // Render transaction item
+  const renderTransactionItem = useCallback(({ item, index }) => {
     const isCredit = item.txn_type === 'credit';
-    
+    console.log("filteredTransactions===",item)
     return (
-      <View style={styles.transactionCard}>
-        <LinearGradient
-          colors={[item.color + '15', item.color + '08']}
-          style={styles.transactionIconContainer}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <Icon name={item.icon} size={22} color={item.color} />
-        </LinearGradient>
+      <TouchableOpacity
+        style={styles.transactionCard}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.transactionIconContainer, { backgroundColor: item.bgColor }]}>
+          <Icon name={item.icon} size={18} color={item.color} />
+        </View>
         
         <View style={styles.transactionContent}>
           <View style={styles.transactionHeader}>
@@ -520,40 +508,34 @@ const EatoorMoneyScreen = ({ navigation }) => {
                 {item.title}
               </Text>
               <Text style={styles.transactionDescription} numberOfLines={1}>
-                {item.description}
+                {item.description} | {item.orderId}
               </Text>
-              {item.orderId && (
-                <View style={styles.restaurantBadge}>
-                  <Icon name="receipt" size={12} color="#666" />
-                  <Text style={styles.restaurantText}>Order {item.orderId}</Text>
-                </View>
-              )}
             </View>
             <View style={styles.amountContainer}>
               <Text style={[
                 styles.transactionAmount,
                 { color: isCredit ? '#10B981' : '#EF4444' }
               ]}>
-                {isCredit ? '+' : '-'}₹{Math.abs(item.amount).toFixed(2)}
-              </Text>
-              <Text style={styles.transactionTime}>
-                {item.time}
+                {isCredit ? '+' : '-'} {formatAmount(item.amount)}
               </Text>
             </View>
           </View>
           
           <View style={styles.transactionFooter}>
-            <View style={[styles.categoryBadge, { backgroundColor: item.color + '10' }]}>
-              <Text style={[styles.categoryText, { color: item.color }]}>
-                {item.status === 'success' ? 'Completed' : item.status}
+            <View style={styles.transactionMeta}>
+              <Icon name="time-outline" size={12} color="#9CA3AF" />
+              <Text style={styles.transactionTime}>
+                {item.time} • {item.date}
               </Text>
             </View>
-            <Text style={styles.transactionDate}>
-              {item.date}
-            </Text>
+            <View style={[styles.statusBadge, { backgroundColor: item.color + '15' }]}>
+              <Text style={[styles.statusText, { color: item.color }]}>
+                {item.status === 'success' ? '✓' : item.status}
+              </Text>
+            </View>
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   }, []);
 
@@ -570,16 +552,27 @@ const EatoorMoneyScreen = ({ navigation }) => {
   }, [loadingMore]);
 
   // Loading state
-  if (loading) {
+  if (loading && !refreshing) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <LinearGradient
-          colors={['#FF6B35', '#FF8E53']}
-          style={StyleSheet.absoluteFill}
-        />
-        <View style={styles.loadingContent}>
-          <ActivityIndicator size="large" color="#FFF" />
-          <Text style={styles.loadingTextWhite}>Loading your wallet...</Text>
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#FF6B35" />
+        <View style={styles.skeletonHeader}>
+          <View style={styles.skeletonBackButton} />
+          <View style={styles.skeletonTitle} />
+          <View style={styles.skeletonEyeButton} />
+        </View>
+        <View style={styles.skeletonContent}>
+          <View style={styles.skeletonBalance} />
+          <View style={styles.skeletonStats}>
+            <View style={styles.skeletonStat} />
+            <View style={styles.skeletonStat} />
+            <View style={styles.skeletonStat} />
+          </View>
+          <View style={styles.skeletonTransactions}>
+            {[1, 2, 3, 4].map((i) => (
+              <View key={i} style={styles.skeletonTransaction} />
+            ))}
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -587,47 +580,32 @@ const EatoorMoneyScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#FF6B35" translucent />
-      
-      {/* Header Background */}
-      <Animated.View style={[styles.headerBackground, { height: headerHeight }]}>
-        <LinearGradient
-          colors={['#FF6B35', '#FF8E53', '#FFA726']}
-          style={styles.gradientBackground}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <View style={styles.foodDecoration}>
-            <Icon name="pizza" size={60} color="rgba(255,255,255,0.1)" style={styles.foodIcon1} />
-            <Icon name="fast-food" size={50} color="rgba(255,255,255,0.1)" style={styles.foodIcon2} />
-            <Icon name="ice-cream" size={70} color="rgba(255,255,255,0.1)" style={styles.foodIcon3} />
-          </View>
-        </LinearGradient>
-      </Animated.View>
+      <StatusBar barStyle="light-content" backgroundColor="#FF6B35" />
       
       {/* Fixed Header */}
-      <View style={styles.headerFixedContent}>
-        <View style={styles.headerTop}>
+      <View style={styles.header}>
+        <View style={styles.headerRow}>
           <TouchableOpacity 
             style={styles.backButton}
             onPress={handleBackPress}
-            activeOpacity={0.7}
+            activeOpacity={0.8}
           >
-            <Icon name="chevron-back" size={28} color="#FFF" />
+            <Icon name="chevron-back" size={24} color="#FFF" />
           </TouchableOpacity>
-          <Animated.View style={{ transform: [{ scale: eyeScale }] }}>
-            <TouchableOpacity 
-              style={styles.viewToggle}
-              onPress={toggleBalanceVisibility}
-              activeOpacity={0.7}
-            >
+          <Text style={styles.headerTitle}>Eatoor Money</Text>
+          <TouchableOpacity 
+            style={styles.eyeButton}
+            onPress={toggleBalanceVisibility}
+            activeOpacity={0.8}
+          >
+            <Animated.View style={{ transform: [{ scale: eyeScaleAnim }] }}>
               <Icon 
                 name={isBalanceVisible ? 'eye-off-outline' : 'eye-outline'} 
-                size={24} 
+                size={20} 
                 color="#FFF" 
               />
-            </TouchableOpacity>
-          </Animated.View>
+            </Animated.View>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -639,160 +617,167 @@ const EatoorMoneyScreen = ({ navigation }) => {
           { useNativeDriver: false }
         )}
         scrollEventThrottle={16}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={['#FF6B35']}
+            tintColor="#FF6B35"
+          />
+        }
       >
-        {/* Balance Section */}
+        {/* Animated Balance Section */}
         <Animated.View style={[
           styles.balanceContainer,
           {
+            opacity: headerOpacity,
             transform: [
-              { translateY: balanceTranslateY },
-              { scale: balanceScale }
+              { scale: headerScale }
             ],
           },
         ]}>
-          <View style={styles.balanceLabelContainer}>
-            <Text style={styles.balanceLabel}>Available Balance</Text>
-            <View style={styles.balanceVisibilityHint}>
-              <Icon 
-                name={isBalanceVisible ? 'eye-off-outline' : 'eye-outline'} 
-                size={14} 
-                color="rgba(255,255,255,0.7)" 
-              />
-              <Text style={styles.balanceVisibilityText}>
-                {isBalanceVisible ? 'Tap to hide' : 'Tap to show'}
-              </Text>
-            </View>
-          </View>
-          <Animated.View
-            style={{
-              transform: [
-                {
-                  rotate: rotateAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ['0deg', '360deg']
-                  })
-                }
-              ]
-            }}
+          <LinearGradient
+            colors={['#FF6B35', '#FF8E53']}
+            style={styles.balanceGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
           >
+            <Text style={styles.balanceLabel}>Wallet Balance</Text>
+            
             {isBalanceVisible ? (
-              <View style={styles.balanceAmountContainer}>
-                <Text style={styles.currencySymbol}>₹</Text>
+              <Animated.View
+                style={[
+                  styles.visibleBalance,
+                  {
+                    transform: [
+                      {
+                        rotate: rotateAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ['0deg', '360deg']
+                        })
+                      }
+                    ]
+                  }
+                ]}
+              >
                 <Text style={styles.balanceAmount}>
-                  {balance.toLocaleString('en-IN', {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                  })}
+                  {formatAmount(balance)}
                 </Text>
-              </View>
+                <Text style={styles.balanceSubtitle}>
+                  Available to spend on Eatoor
+                </Text>
+              </Animated.View>
             ) : (
               <TouchableOpacity 
                 onPress={toggleBalanceVisibility}
-                activeOpacity={0.8}
-                style={styles.hiddenBalanceContainer}
+                activeOpacity={0.9}
+                style={styles.hiddenBalance}
               >
-                <View style={styles.hiddenBalance}>
-                  <Icon name="lock-closed" size={20} color="rgba(255,255,255,0.7)" />
-                  <Text style={styles.hiddenBalanceText}>●●●●●●</Text>
-                  <Icon name="chevron-forward" size={20} color="rgba(255,255,255,0.7)" />
+                <View style={styles.hiddenBalanceRow}>
+                  <Icon name="lock-closed" size={16} color="rgba(255,255,255,0.8)" />
+                  <Text style={styles.hiddenBalanceText}>●●●●●</Text>
                 </View>
-                <Text style={styles.showBalanceText}>Tap to show balance</Text>
+                <Text style={styles.showBalanceHint}>Tap to reveal balance</Text>
               </TouchableOpacity>
             )}
-          </Animated.View>
-          
-          <View style={styles.balanceStats}>
-            <TouchableOpacity 
-              style={styles.addMoneyButtonSmall}
-              onPress={openAddMoneyModal}
-              activeOpacity={0.8}
-              disabled={processingPayment}
-            >
-              <LinearGradient
-                colors={['#FF6B35', '#FF8E53']}
-                style={styles.addMoneyButtonSmallGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                {processingPayment ? (
-                  <ActivityIndicator size="small" color="#FFF" />
-                ) : (
-                  <>
-                    <Icon name="add" size={18} color="#FFF" />
-                    <Text style={styles.addMoneyButtonSmallText}>Add Money</Text>
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
+          </LinearGradient>
         </Animated.View>
 
-        {/* Transaction History */}
+        {/* Quick Action Button */}
+        <View style={styles.quickActionContainer}>
+          <TouchableOpacity 
+            style={styles.addMoneyButton}
+            onPress={openAddMoneyModal}
+            activeOpacity={0.8}
+            disabled={processingPayment}
+          >
+            <LinearGradient
+              colors={['#FF6B35', '#FF8E53']}
+              style={styles.addMoneyGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              {processingPayment ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <>
+                  <Icon name="add-circle" size={20} color="#FFF" />
+                  <Text style={styles.addMoneyText}>Add Money</Text>
+                </>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+
+        {/* Stats Overview */}
+        <View style={styles.statsContainer}>
+          <View style={styles.statCard}>
+            <View style={[styles.statIcon, { backgroundColor: 'rgba(255, 107, 53, 0.1)' }]}>
+              <Icon name="swap-horizontal" size={16} color="#FF6B35" />
+            </View>
+            <Text style={styles.statValue}>{transactions.length}</Text>
+            <Text style={styles.statLabel}>Total</Text>
+          </View>
+          
+          <View style={styles.statCard}>
+            <View style={[styles.statIcon, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}>
+              <Icon name="trending-up" size={16} color="#10B981" />
+            </View>
+            <Text style={[styles.statValue, { color: '#10B981' }]}>
+              {transactions.filter(t => t.txn_type === 'credit').length}
+            </Text>
+            <Text style={styles.statLabel}>Credits</Text>
+          </View>
+          
+          <View style={styles.statCard}>
+            <View style={[styles.statIcon, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
+              <Icon name="trending-down" size={16} color="#EF4444" />
+            </View>
+            <Text style={[styles.statValue, { color: '#EF4444' }]}>
+              {transactions.filter(t => t.txn_type === 'debit').length}
+            </Text>
+            <Text style={styles.statLabel}>Debits</Text>
+          </View>
+        </View>
+
+        {/* Transaction Section */}
         <View style={styles.transactionSection}>
           <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleContainer}>
-              <Icon name="receipt-outline" size={24} color="#FF6B35" />
-              <Text style={styles.sectionTitle}>Transaction History</Text>
-            </View>
-            <TouchableOpacity 
-              style={styles.refreshButton}
-              onPress={fetchWalletData} 
-              disabled={loading}
-              activeOpacity={0.7}
-            >
-              <Icon name="refresh-outline" size={22} color="#666" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Filter Chips - Improved Design */}
-          <View style={styles.filterContainer}>
-            <View style={styles.filterScrollContainer}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.filterContent}
-              >
-                {TRANSACTION_FILTERS.map((filter) => (
-                  <TouchableOpacity
-                    key={filter.id}
-                    style={[
-                      styles.filterChip,
-                      selectedFilter === filter.id && styles.filterChipActive,
-                    ]}
-                    onPress={() => setSelectedFilter(filter.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Icon
-                      name={filter.icon}
-                      size={16}
-                      color={selectedFilter === filter.id ? '#FFF' : '#666'}
-                      style={styles.filterIcon}
-                    />
-                    <Text style={[
-                      styles.filterText,
-                      selectedFilter === filter.id && styles.filterTextActive,
-                    ]}>
-                      {filter.label}
-                    </Text>
-                    {selectedFilter === filter.id && (
-                      <View style={styles.activeIndicator} />
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+            <View style={styles.sectionTitleRow}>
+              <Icon name="time-outline" size={20} color="#374151" />
+              <Text style={styles.sectionTitle}>Recent Transactions</Text>
             </View>
             
-            {/* Active filter stats */}
-            <View style={styles.filterStats}>
-              <Text style={styles.filterStatsText}>
-                {selectedFilter === 'all' && 'All Transactions'}
-                {selectedFilter === 'credit' && 'Credit Transactions'}
-                {selectedFilter === 'debit' && 'Debit Transactions'}
-              </Text>
-              <Text style={styles.filterCount}>
-                {filteredTransactions.length} {filteredTransactions.length === 1 ? 'item' : 'items'}
-              </Text>
-            </View>
+            {/* Filter Chips */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterContainer}
+            >
+              {TRANSACTION_FILTERS.map((filter) => (
+                <TouchableOpacity
+                  key={filter.id}
+                  style={[
+                    styles.filterChip,
+                    selectedFilter === filter.id && styles.filterChipActive,
+                  ]}
+                  onPress={() => setSelectedFilter(filter.id)}
+                  activeOpacity={0.7}
+                >
+                  <Icon
+                    name={filter.icon}
+                    size={14}
+                    color={selectedFilter === filter.id ? '#FFF' : '#6B7280'}
+                  />
+                  <Text style={[
+                    styles.filterText,
+                    selectedFilter === filter.id && styles.filterTextActive,
+                  ]}>
+                    {filter.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
 
           {/* Transactions List */}
@@ -819,74 +804,50 @@ const EatoorMoneyScreen = ({ navigation }) => {
                   onPress={loadMoreTransactions}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.loadMoreText}>Load More Transactions</Text>
-                  <Icon name="chevron-down" size={18} color="#666" />
+                  <Text style={styles.loadMoreText}>Load More</Text>
+                  <Icon name="chevron-down" size={14} color="#666" />
                 </TouchableOpacity>
               )}
             </>
           ) : (
             <View style={styles.emptyState}>
-              <View style={styles.emptyStateIconContainer}>
-                <Icon name="receipt-outline" size={64} color="#E5E7EB" />
+              <View style={styles.emptyStateIcon}>
+                <Icon name="receipt-outline" size={48} color="#D1D5DB" />
               </View>
               <Text style={styles.emptyStateTitle}>No transactions yet</Text>
               <Text style={styles.emptyStateSubtitle}>
                 {selectedFilter !== 'all' 
                   ? `No ${selectedFilter} transactions found`
-                  : 'Start ordering food or add money to see transactions here'}
+                  : 'Make your first transaction to get started!'}
               </Text>
-              <TouchableOpacity 
-                style={styles.emptyStateButton} 
-                onPress={openAddMoneyModal}
-                disabled={processingPayment}
-                activeOpacity={0.8}
-              >
-                <LinearGradient
-                  colors={['#FF6B35', '#FF8E53']}
-                  style={styles.emptyStateButtonGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  <Icon name="wallet-outline" size={20} color="#FFF" />
-                  <Text style={styles.emptyStateButtonText}>
-                    {processingPayment ? 'Processing...' : 'Add Money Now'}
-                  </Text>
-                </LinearGradient>
-              </TouchableOpacity>
             </View>
           )}
         </View>
         
-        <View style={{ height: 100 }} />
+        {/* Bottom Spacer */}
+        <View style={{ height: 80 }} />
       </ScrollView>
 
       {/* Floating Action Button */}
-      <View style={styles.fabContainer}>
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={openAddMoneyModal}
-          activeOpacity={0.9}
-          disabled={processingPayment}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={openAddMoneyModal}
+        activeOpacity={0.9}
+        disabled={processingPayment}
+      >
+        <LinearGradient
+          colors={['#FF6B35', '#FF8E53']}
+          style={styles.fabGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
         >
-          <LinearGradient
-            colors={['#FF6B35', '#FF8E53']}
-            style={styles.fabGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            {processingPayment ? (
-              <ActivityIndicator size="small" color="#FFF" />
-            ) : (
-              <>
-                <Icon name="add" size={28} color="#FFF" />
-                <View style={styles.fabBadge}>
-                  <Icon name="wallet-outline" size={12} color="#FF6B35" />
-                </View>
-              </>
-            )}
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
+          {processingPayment ? (
+            <ActivityIndicator size="small" color="#FFF" />
+          ) : (
+            <Icon name="add" size={24} color="#FFF" />
+          )}
+        </LinearGradient>
+      </TouchableOpacity>
 
       {/* Add Money Modal */}
       <Modal
@@ -908,18 +869,17 @@ const EatoorMoneyScreen = ({ navigation }) => {
               transform: [{ translateY: slideAnim }],
             },
           ]}>
+            {/* Modal Header */}
             <View style={styles.modalHeader}>
-              <View style={styles.modalHeaderTop}>
-                <View style={styles.modalTitleContainer}>
-                  <LinearGradient
-                    colors={['#FF6B35', '#FF8E53']}
-                    style={styles.modalIconContainer}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  >
-                    <Icon name="wallet" size={24} color="#FFF" />
-                  </LinearGradient>
-                  <Text style={styles.modalTitle}>Add Money to Wallet</Text>
+              <View style={styles.modalHeaderContent}>
+                <View style={styles.modalTitleRow}>
+                  <View style={styles.modalIcon}>
+                    <Icon name="wallet" size={20} color="#FFF" />
+                  </View>
+                  <View>
+                    <Text style={styles.modalTitle}>Add Money</Text>
+                    <Text style={styles.modalSubtitle}>Secure & Instant</Text>
+                  </View>
                 </View>
                 <TouchableOpacity 
                   onPress={() => !processingPayment && closeAddMoneyModal()} 
@@ -927,40 +887,45 @@ const EatoorMoneyScreen = ({ navigation }) => {
                   activeOpacity={0.7}
                   disabled={processingPayment}
                 >
-                  <Icon name="close" size={24} color="#666" />
+                  <Icon name="close" size={20} color="#666" />
                 </TouchableOpacity>
               </View>
-              <Text style={styles.modalSubtitle}>Securely add money using UPI, cards, or net banking</Text>
             </View>
 
+            {/* Amount Section */}
             <View style={styles.modalAmountSection}>
               <Text style={styles.amountLabel}>Enter Amount</Text>
               <View style={styles.amountInputContainer}>
                 <Text style={styles.currencySymbol}>₹</Text>
                 <TextInput
                   style={styles.amountInput}
-                  placeholder="0.00"
+                  placeholder="0"
                   value={amount}
                   onChangeText={validateAmountInput}
                   keyboardType="decimal-pad"
-                  placeholderTextColor="#999"
+                  placeholderTextColor="#9CA3AF"
                   autoFocus={!processingPayment}
                   maxLength={10}
                   editable={!processingPayment}
                 />
               </View>
               
-              {amount && parseFloat(amount) < MIN_AMOUNT && (
-                <View style={styles.minimumAmountErrorContainer}>
-                  <Icon name="alert-circle" size={16} color="#EF4444" />
-                  <Text style={styles.minimumAmountError}>
-                    Minimum amount required: ₹{MIN_AMOUNT}
+              {amount && parseFloat(amount) < MIN_AMOUNT ? (
+                <View style={styles.amountError}>
+                  <Icon name="alert-circle" size={14} color="#EF4444" />
+                  <Text style={styles.amountErrorText}>
+                    Minimum amount: ₹{MIN_AMOUNT}
                   </Text>
                 </View>
+              ) : (
+                <Text style={styles.amountHint}>
+                  Enter ₹{MIN_AMOUNT} - ₹{MAX_AMOUNT.toLocaleString()}
+                </Text>
               )}
 
-              <Text style={styles.quickAmountLabel}>Quick Select</Text>
-              <View style={styles.quickAmountsGrid}>
+              {/* Quick Amounts */}
+              <Text style={styles.quickAmountLabel}>Quick Add</Text>
+              <View style={styles.quickAmountsRow}>
                 {QUICK_AMOUNTS.map((quickAmount) => {
                   const isActive = amount === quickAmount.toString();
                   return (
@@ -974,9 +939,6 @@ const EatoorMoneyScreen = ({ navigation }) => {
                       activeOpacity={0.7}
                       disabled={processingPayment}
                     >
-                      {isActive && (
-                        <View style={styles.quickAmountActiveIndicator} />
-                      )}
                       <Text style={[
                         styles.quickAmountText,
                         isActive && styles.quickAmountTextActive,
@@ -989,11 +951,12 @@ const EatoorMoneyScreen = ({ navigation }) => {
               </View>
             </View>
 
+            {/* Action Button */}
             <TouchableOpacity
               style={[
-                styles.addMoneyButton,
+                styles.payButton,
                 (!amount || parseFloat(amount) < MIN_AMOUNT || processingPayment) && 
-                styles.addMoneyButtonDisabled
+                styles.payButtonDisabled
               ]}
               onPress={handleAddMoney}
               activeOpacity={0.8}
@@ -1003,35 +966,32 @@ const EatoorMoneyScreen = ({ navigation }) => {
                 colors={(!amount || parseFloat(amount) < MIN_AMOUNT || processingPayment) 
                   ? ['#E5E7EB', '#9CA3AF'] 
                   : ['#FF6B35', '#FF8E53']}
-                style={styles.addMoneyButtonGradient}
+                style={styles.payButtonGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
                 {processingPayment ? (
                   <>
                     <ActivityIndicator size="small" color="#FFF" />
-                    <Text style={styles.addMoneyButtonText}>Processing...</Text>
+                    <Text style={styles.payButtonText}>Processing...</Text>
                   </>
                 ) : (
                   <>
-                    <Icon name="wallet" size={22} color="#FFF" style={styles.buttonIcon} />
-                    <Text style={styles.addMoneyButtonText}>
-                      {amount ? `Add ₹${parseFloat(amount).toFixed(2)}` : 'Enter Amount'}
+                    <Icon name="lock-closed" size={16} color="#FFF" />
+                    <Text style={styles.payButtonText}>
+                      {amount ? `Add ₹${parseFloat(amount).toLocaleString('en-IN')}` : 'Enter Amount'}
                     </Text>
-                    <Icon name="arrow-forward" size={20} color="#FFF" />
                   </>
                 )}
               </LinearGradient>
             </TouchableOpacity>
             
+            {/* Modal Footer */}
             <View style={styles.modalFooter}>
-              <View style={styles.securityBadge}>
-                <Icon name="shield-checkmark" size={16} color="#10B981" />
-                <Text style={styles.securityText}>Secure & Encrypted Payment</Text>
+              <View style={styles.securityInfo}>
+                <Icon name="shield-checkmark" size={14} color="#10B981" />
+                <Text style={styles.securityText}>Secure Payment</Text>
               </View>
-              <Text style={styles.modalFooterNote}>
-                Your money is safe and instantly available for orders
-              </Text>
             </View>
           </Animated.View>
         </Animated.View>
@@ -1043,448 +1003,118 @@ const EatoorMoneyScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFD',
+    backgroundColor: '#F8FAFC',
   },
-  loadingContainer: {
-    flex: 1,
-  },
-  loadingContent: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: '#666',
-  },
-  loadingTextWhite: {
-    marginTop: 12,
-    fontSize: 16,
-    color: '#FFF',
-    fontWeight: '600',
-  },
-  headerBackground: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
+  header: {
     backgroundColor: '#FF6B35',
+    paddingTop: Platform.OS === 'ios' ? 10 : StatusBar.currentHeight + 10,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
-  gradientBackground: {
-    flex: 1,
-  },
-  foodDecoration: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    overflow: 'hidden',
-  },
-  foodIcon1: {
-    position: 'absolute',
-    top: '20%',
-    left: '10%',
-  },
-  foodIcon2: {
-    position: 'absolute',
-    bottom: '30%',
-    right: '15%',
-  },
-  foodIcon3: {
-    position: 'absolute',
-    top: '40%',
-    right: '10%',
-  },
-  headerFixedContent: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 50 : StatusBar.currentHeight + 10,
-    left: 0,
-    right: 0,
-    zIndex: 100,
-    paddingHorizontal: 20,
-  },
-  headerTop: {
+  headerRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
   backButton: {
-    padding: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 12,
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  viewToggle: {
-    padding: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 12,
-    width: 44,
-    height: 44,
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFF',
+    letterSpacing: 0.3,
+  },
+  eyeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  scrollContent: {
+    paddingBottom: 100,
   },
   balanceContainer: {
-    paddingHorizontal: 24,
-    paddingTop: height * 0.12,
-    paddingBottom: 30,
-    backgroundColor: 'transparent',
-    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 20,
   },
-  balanceLabelContainer: {
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  balanceLabel: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  },
-  balanceVisibilityHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
-    gap: 4,
-  },
-  balanceVisibilityText: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontWeight: '500',
-  },
-  balanceAmountContainer: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'center',
-    marginBottom: 24,
-  },
-  currencySymbol: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#FFF',
-    marginRight: 4,
-  },
-  balanceAmount: {
-    fontSize: 40,
-    fontWeight: '900',
-    color: '#FFF',
-    letterSpacing: -1.5,
-  },
-  hiddenBalanceContainer: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  hiddenBalance: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
+  balanceGradient: {
     borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.25)',
-    gap: 12,
-    marginBottom: 8,
-  },
-  hiddenBalanceText: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: 'rgba(255, 255, 255, 0.8)',
-    letterSpacing: 6,
-  },
-  showBalanceText: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontWeight: '600',
-  },
-  balanceStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 20,
-    padding: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  addMoneyButtonSmall: {
-    borderRadius: 16,
-    overflow: 'hidden',
+    padding: 20,
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
+        shadowColor: '#FF6B35',
+        shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.2,
-        shadowRadius: 8,
+        shadowRadius: 16,
       },
       android: {
         elevation: 8,
       },
     }),
   },
-  addMoneyButtonSmallGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 6,
+  balanceLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.9)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
   },
-  addMoneyButtonSmallText: {
-    fontSize: 14,
+  visibleBalance: {
+    alignItems: 'flex-start',
+  },
+  balanceAmount: {
+    fontSize: 32,
     fontWeight: '800',
     color: '#FFF',
-    letterSpacing: 0.5,
+    marginBottom: 4,
+    letterSpacing: -0.5,
   },
-  scrollContent: {
-    paddingBottom: 100,
+  balanceSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontWeight: '500',
   },
-  transactionSection: {
-    backgroundColor: '#FFF',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    paddingTop: 32,
-    minHeight: height * 0.5,
+  hiddenBalance: {
+    alignItems: 'flex-start',
   },
-  sectionHeader: {
+  hiddenBalanceRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    gap: 8,
+    marginBottom: 4,
+  },
+  hiddenBalanceText: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: 'rgba(255, 255, 255, 0.8)',
+    letterSpacing: 4,
+  },
+  showBalanceHint: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontWeight: '500',
+  },
+  quickActionContainer: {
+    paddingHorizontal: 16,
     marginBottom: 20,
   },
-  sectionTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#1A1A1A',
-    letterSpacing: -0.3,
-  },
-  refreshButton: {
-    padding: 8,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterContainer: {
-    marginBottom: 24,
-    paddingHorizontal: 20,
-  },
-  filterScrollContainer: {
-    marginBottom: 16,
-  },
-  filterContent: {
-    gap: 8,
-  },
-  filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    marginRight: 10,
-    minWidth: 100,
-    position: 'relative',
-  },
-  filterChipActive: {
-    backgroundColor: '#FF6B35',
-    borderColor: '#FF6B35',
-  },
-  filterIcon: {
-    marginRight: 8,
-  },
-  filterText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#6B7280',
-  },
-  filterTextActive: {
-    color: '#FFF',
-    fontWeight: '800',
-  },
-  activeIndicator: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FFF',
-    borderWidth: 1,
-    borderColor: '#FF6B35',
-  },
-  filterStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-  },
-  filterStatsText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#374151',
-  },
-  filterCount: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6B7280',
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  transactionsList: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
-  transactionCard: {
-    flexDirection: 'row',
-    backgroundColor: '#FFF',
-    padding: 16,
-    borderRadius: 20,
-    marginBottom: 12,
-    borderWidth: 1.5,
-    borderColor: '#F3F4F6',
+  addMoneyButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-      },
-    }),
-  },
-  transactionIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  transactionContent: {
-    flex: 1,
-  },
-  transactionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  transactionInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
-  transactionTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#1A1A1A',
-    marginBottom: 4,
-  },
-  transactionDescription: {
-    fontSize: 13,
-    color: '#6B7280',
-    fontWeight: '500',
-    marginBottom: 4,
-  },
-  restaurantBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  restaurantText: {
-    fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  amountContainer: {
-    alignItems: 'flex-end',
-  },
-  transactionAmount: {
-    fontSize: 18,
-    fontWeight: '900',
-    marginBottom: 4,
-  },
-  transactionTime: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    fontWeight: '600',
-  },
-  transactionFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  categoryBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-  categoryText: {
-    fontSize: 11,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  transactionDate: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    fontWeight: '600',
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 40,
-  },
-  emptyStateIconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#F9FAFB',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-    borderWidth: 2,
-    borderColor: '#F3F4F6',
-  },
-  emptyStateTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#374151',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  emptyStateSubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 32,
-    lineHeight: 20,
-  },
-  emptyStateButton: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    width: '100%',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.1,
         shadowRadius: 8,
       },
@@ -1493,64 +1123,246 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  emptyStateButtonGradient: {
+  addMoneyGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
     gap: 10,
   },
-  emptyStateButtonText: {
-    fontSize: 16,
-    fontWeight: '800',
+  addMoneyText: {
+    fontSize: 15,
+    fontWeight: '700',
     color: '#FFF',
   },
-  fabContainer: {
-    position: 'absolute',
-    bottom: 32,
-    right: 24,
+  statsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    marginBottom: 24,
+    gap: 12,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+  statIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1A1A1A',
+    marginBottom: 2,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '600',
+  },
+  transactionSection: {
+    backgroundColor: '#FFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 24,
+    minHeight: height * 0.4,
+  },
+  sectionHeader: {
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1A1A1A',
+  },
+  filterContainer: {
+    gap: 8,
+  },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginRight: 8,
+    gap: 6,
+  },
+  filterChipActive: {
+    backgroundColor: '#FF6B35',
+    borderColor: '#FF6B35',
+  },
+  filterText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  filterTextActive: {
+    color: '#FFF',
+    fontWeight: '700',
+  },
+  transactionsList: {
+    paddingHorizontal: 16,
+  },
+  transactionCard: {
+    flexDirection: 'row',
+    backgroundColor: '#FFF',
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+  },
+  transactionIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  transactionContent: {
+    flex: 1,
+  },
+  transactionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  transactionInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  transactionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    marginBottom: 2,
+  },
+  transactionDescription: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  amountContainer: {
+    alignItems: 'flex-end',
+  },
+  transactionAmount: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  transactionFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  transactionMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  transactionTime: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    fontWeight: '500',
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 16,
+  },
+  emptyStateIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#F9FAFB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: '#F3F4F6',
+  },
+  emptyStateTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#374151',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  emptyStateSubtitle: {
+    fontSize: 13,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 18,
   },
   fab: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    position: 'absolute',
+    bottom: 24,
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     ...Platform.select({
       ios: {
         shadowColor: '#FF6B35',
-        shadowOffset: { width: 0, height: 6 },
+        shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
-        shadowRadius: 12,
+        shadowRadius: 8,
       },
       android: {
-        elevation: 12,
+        elevation: 6,
       },
     }),
   },
   fabGradient: {
     width: '100%',
     height: '100%',
-    borderRadius: 32,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
-  },
-  fabBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#FFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#FF6B35',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
   modalOverlayTouchable: {
@@ -1558,63 +1370,60 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     backgroundColor: '#FFF',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    maxHeight: height * 0.85,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: height * 0.7,
   },
   modalHeader: {
-    padding: 24,
+    padding: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },
-  modalHeaderTop: {
+  modalHeaderContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
   },
-  modalTitleContainer: {
+  modalTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
-  modalIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  modalIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FF6B35',
     alignItems: 'center',
     justifyContent: 'center',
   },
   modalTitle: {
-    fontSize: 24,
-    fontWeight: '800',
+    fontSize: 18,
+    fontWeight: '700',
     color: '#1A1A1A',
-    letterSpacing: -0.5,
+    marginBottom: 2,
   },
   modalSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#6B7280',
     fontWeight: '500',
-    lineHeight: 20,
   },
   modalCloseButton: {
-    width: 44,
-    height: 44,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#F3F4F6',
-    borderRadius: 22,
+    borderRadius: 18,
   },
   modalAmountSection: {
-    padding: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    padding: 20,
   },
   amountLabel: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
     color: '#374151',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   amountInputContainer: {
     flexDirection: 'row',
@@ -1624,67 +1433,66 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     paddingVertical: 8,
   },
+  currencySymbol: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#1A1A1A',
+    marginRight: 8,
+  },
   amountInput: {
     flex: 1,
-    fontSize: 36,
-    fontWeight: '900',
+    fontSize: 28,
+    fontWeight: '800',
     color: '#1A1A1A',
     padding: 0,
-    marginLeft: 4,
   },
-  minimumAmountErrorContainer: {
+  amountError: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FEF2F2',
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 20,
-    gap: 8,
+    padding: 10,
+    borderRadius: 10,
+    marginTop: 8,
+    marginBottom: 16,
+    gap: 6,
   },
-  minimumAmountError: {
-    fontSize: 14,
+  amountErrorText: {
+    fontSize: 13,
     color: '#EF4444',
     fontWeight: '600',
-    flex: 1,
+  },
+  amountHint: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 8,
+    marginBottom: 20,
   },
   quickAmountLabel: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
     color: '#374151',
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  quickAmountsGrid: {
+  quickAmountsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
   },
   quickAmountButton: {
     paddingHorizontal: 20,
     paddingVertical: 12,
     backgroundColor: '#F9FAFB',
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1.5,
     borderColor: '#E5E7EB',
-    position: 'relative',
     minWidth: 90,
   },
   quickAmountButtonActive: {
     backgroundColor: '#FF6B35',
     borderColor: '#FF6B35',
   },
-  quickAmountActiveIndicator: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: '#FFF',
-    borderWidth: 2,
-    borderColor: '#FF6B35',
-  },
   quickAmountText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
     color: '#6B7280',
     textAlign: 'center',
@@ -1693,86 +1501,142 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontWeight: '800',
   },
-  addMoneyButton: {
-    margin: 24,
-    borderRadius: 20,
+  payButton: {
+    marginHorizontal: 20,
+    marginBottom: 20,
+    borderRadius: 16,
     overflow: 'hidden',
     ...Platform.select({
       ios: {
         shadowColor: '#FF6B35',
-        shadowOffset: { width: 0, height: 6 },
+        shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.2,
-        shadowRadius: 12,
+        shadowRadius: 8,
       },
       android: {
-        elevation: 8,
+        elevation: 6,
       },
     }),
   },
-  addMoneyButtonDisabled: {
+  payButtonDisabled: {
     opacity: 0.6,
   },
-  addMoneyButtonGradient: {
+  payButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 20,
-    gap: 12,
+    paddingVertical: 18,
+    gap: 10,
   },
-  buttonIcon: {
-    marginRight: 4,
-  },
-  addMoneyButtonText: {
-    fontSize: 18,
-    fontWeight: '800',
+  payButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
     color: '#FFF',
-    letterSpacing: -0.5,
   },
   modalFooter: {
-    padding: 24,
+    padding: 20,
     paddingTop: 0,
     alignItems: 'center',
   },
-  securityBadge: {
+  securityInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
+    gap: 6,
   },
   securityText: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#10B981',
     fontWeight: '600',
-  },
-  modalFooterNote: {
-    fontSize: 12,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 18,
   },
   loadingFooter: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 20,
+    gap: 10,
+  },
+  loadingText: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '600',
   },
   loadMoreButton: {
     backgroundColor: '#F9FAFB',
-    paddingVertical: 14,
+    paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 20,
     alignSelf: 'center',
     marginBottom: 20,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: '#E5E7EB',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   loadMoreText: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
     color: '#6B7280',
+  },
+  // Skeleton styles
+  skeletonHeader: {
+    backgroundColor: '#FF6B35',
+    paddingTop: Platform.OS === 'ios' ? 10 : StatusBar.currentHeight + 10,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  skeletonBackButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  skeletonTitle: {
+    width: 120,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  skeletonEyeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  skeletonContent: {
+    flex: 1,
+    padding: 16,
+  },
+  skeletonBalance: {
+    height: 120,
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    marginBottom: 20,
+    opacity: 0.8,
+  },
+  skeletonStats: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 24,
+  },
+  skeletonStat: {
+    flex: 1,
+    height: 80,
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    opacity: 0.8,
+  },
+  skeletonTransactions: {
+    gap: 12,
+  },
+  skeletonTransaction: {
+    height: 80,
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    opacity: 0.8,
   },
 });
 
