@@ -121,6 +121,8 @@ interface PaymentMethodChecks {
   online_payment_method: string | null;
   online_payment_amount: number;
   online_transaction_id: string | null;
+  cod_payment_used: boolean;
+  cod_payment_pending: number;
 }
 
 interface DeliveryAddress {
@@ -1121,13 +1123,15 @@ const TrackOrder = () => {
       wallet_payment_method, 
       online_payment_method, 
       online_payment_amount,
-      online_transaction_id 
+      online_transaction_id,
+      cod_payment_used,
+      cod_payment_pending
     } = order.payment_method_checks;
 
     const totalAmount = parseFloat(order.payment_details?.total || '0');
     
     // Case 1: Only Wallet Payment
-    if (eatoor_wallet_used && !online_payment_used) {
+    if (eatoor_wallet_used && !online_payment_used && !cod_payment_used) {
       return (
         <>
           <View style={styles.paymentMethodRow}>
@@ -1156,7 +1160,7 @@ const TrackOrder = () => {
     }
     
     // Case 2: Only Online Payment
-    if (!eatoor_wallet_used && online_payment_used) {
+    if (!eatoor_wallet_used && online_payment_used && !cod_payment_used) {
       return (
         <>
           <View style={styles.paymentMethodRow}>
@@ -1192,7 +1196,7 @@ const TrackOrder = () => {
     }
     
     // Case 3: Both Wallet and Online Payment
-    if (eatoor_wallet_used && online_payment_used) {
+    if (eatoor_wallet_used && online_payment_used && !cod_payment_used) {
       return (
         <>
           {/* Wallet Payment Row */}
@@ -1246,23 +1250,225 @@ const TrackOrder = () => {
       );
     }
     
-    // Case 4: Cash on Delivery (No wallet, no online payment)
-    if (!eatoor_wallet_used && !online_payment_used) {
+    // Case 4: Only Cash on Delivery
+    if (!eatoor_wallet_used && !online_payment_used && cod_payment_used) {
       return (
-        <View style={styles.paymentMethodRow}>
-          <View style={[styles.paymentMethodIconContainer, { backgroundColor: 'rgba(255, 107, 53, 0.1)' }]}>
-            <Icon name="cash-outline" size={20} color="#FF6B35" />
-          </View>
-          <View style={styles.paymentMethodInfo}>
-            <Text style={styles.paymentMethodName}>Cash on Delivery</Text>
-            <Text style={styles.paymentMethodDescription}>
-              Pay when order arrives
+        <>
+          <View style={styles.paymentMethodRow}>
+            <View style={[styles.paymentMethodIconContainer, { backgroundColor: 'rgba(255, 107, 53, 0.1)' }]}>
+              <Icon name="cash-outline" size={20} color="#FF6B35" />
+            </View>
+            <View style={styles.paymentMethodInfo}>
+              <Text style={styles.paymentMethodName}>Cash on Delivery</Text>
+              <Text style={styles.paymentMethodDescription}>
+                Pay when order arrives
+              </Text>
+            </View>
+            <Text style={[styles.paymentAmount, { color: '#FF6B35' }]}>
+              ₹{totalAmount.toFixed(2)}
             </Text>
           </View>
-          <Text style={[styles.paymentAmount, { color: '#FF6B35' }]}>
-            ₹{totalAmount.toFixed(2)}
-          </Text>
-        </View>
+          
+          <View style={styles.pendingPaymentIndicator}>
+            <Icon name="time-outline" size={18} color="#FFA726" />
+            <Text style={styles.pendingPaymentText}>
+              Payment Pending: ₹{parseFloat(cod_payment_pending?.toString() || '0').toFixed(2)}
+            </Text>
+          </View>
+        </>
+      );
+    }
+    
+    // Case 5: Wallet + Cash on Delivery
+    if (eatoor_wallet_used && !online_payment_used && cod_payment_used) {
+      return (
+        <>
+          {/* Wallet Payment Row */}
+          <View style={styles.paymentMethodRow}>
+            <View style={[styles.paymentMethodIconContainer, { backgroundColor: 'rgba(156, 39, 176, 0.1)' }]}>
+              <Icon name="wallet-outline" size={20} color="#9C27B0" />
+            </View>
+            <View style={styles.paymentMethodInfo}>
+              <Text style={styles.paymentMethodName}>
+                {wallet_payment_method || 'Eatoor Money'}
+              </Text>
+              <Text style={styles.paymentMethodDescription}>
+                Wallet payment
+              </Text>
+            </View>
+            <Text style={[styles.paymentAmount, { color: '#9C27B0' }]}>
+              ₹{parseFloat(wallet_payment_amount.toString() || '0').toFixed(2)}
+            </Text>
+          </View>
+          
+          {/* Cash on Delivery Row */}
+          <View style={styles.paymentMethodRow}>
+            <View style={[styles.paymentMethodIconContainer, { backgroundColor: 'rgba(255, 107, 53, 0.1)' }]}>
+              <Icon name="cash-outline" size={20} color="#FF6B35" />
+            </View>
+            <View style={styles.paymentMethodInfo}>
+              <Text style={styles.paymentMethodName}>Cash on Delivery</Text>
+              <Text style={styles.paymentMethodDescription}>
+                Pay remaining when order arrives
+              </Text>
+            </View>
+            <Text style={[styles.paymentAmount, { color: '#FF6B35' }]}>
+              ₹{parseFloat(cod_payment_pending?.toString() || '0').toFixed(2)}
+            </Text>
+          </View>
+          
+          <View style={styles.partialPaymentIndicator}>
+            <Icon name="checkmark-circle" size={18} color="#2ECC71" />
+            <Text style={styles.partialPaymentText}>
+              ₹{parseFloat(wallet_payment_amount.toString() || '0').toFixed(2)} paid via Wallet
+            </Text>
+          </View>
+          
+          <View style={styles.pendingPaymentIndicator}>
+            <Icon name="time-outline" size={18} color="#FFA726" />
+            <Text style={styles.pendingPaymentText}>
+              ₹{parseFloat(cod_payment_pending?.toString() || '0').toFixed(2)} pending via Cash
+            </Text>
+          </View>
+        </>
+      );
+    }
+    
+    // Case 6: Online + Cash on Delivery
+    if (!eatoor_wallet_used && online_payment_used && cod_payment_used) {
+      return (
+        <>
+          {/* Online Payment Row */}
+          <View style={styles.paymentMethodRow}>
+            <View style={[styles.paymentMethodIconContainer, { backgroundColor: 'rgba(76, 175, 80, 0.1)' }]}>
+              <Icon name="card-outline" size={20} color="#4CAF50" />
+            </View>
+            <View style={styles.paymentMethodInfo}>
+              <Text style={styles.paymentMethodName}>
+                {online_payment_method || 'Online Payment'}
+              </Text>
+              <Text style={styles.paymentMethodDescription}>
+                Online payment
+                {online_transaction_id && (
+                  <Text style={styles.transactionIdText}>
+                    ID: {online_transaction_id}
+                  </Text>
+                )}
+              </Text>
+            </View>
+            <Text style={[styles.paymentAmount, { color: '#4CAF50' }]}>
+              ₹{parseFloat(online_payment_amount.toString() || '0').toFixed(2)}
+            </Text>
+          </View>
+          
+          {/* Cash on Delivery Row */}
+          <View style={styles.paymentMethodRow}>
+            <View style={[styles.paymentMethodIconContainer, { backgroundColor: 'rgba(255, 107, 53, 0.1)' }]}>
+              <Icon name="cash-outline" size={20} color="#FF6B35" />
+            </View>
+            <View style={styles.paymentMethodInfo}>
+              <Text style={styles.paymentMethodName}>Cash on Delivery</Text>
+              <Text style={styles.paymentMethodDescription}>
+                Pay remaining when order arrives
+              </Text>
+            </View>
+            <Text style={[styles.paymentAmount, { color: '#FF6B35' }]}>
+              ₹{parseFloat(cod_payment_pending?.toString() || '0').toFixed(2)}
+            </Text>
+          </View>
+          
+          <View style={styles.partialPaymentIndicator}>
+            <Icon name="checkmark-circle" size={18} color="#2ECC71" />
+            <Text style={styles.partialPaymentText}>
+              ₹{parseFloat(online_payment_amount.toString() || '0').toFixed(2)} paid via {online_payment_method || 'Online'}
+            </Text>
+          </View>
+          
+          <View style={styles.pendingPaymentIndicator}>
+            <Icon name="time-outline" size={18} color="#FFA726" />
+            <Text style={styles.pendingPaymentText}>
+              ₹{parseFloat(cod_payment_pending?.toString() || '0').toFixed(2)} pending via Cash
+            </Text>
+          </View>
+        </>
+      );
+    }
+    
+    // Case 7: All three methods (Wallet + Online + COD)
+    if (eatoor_wallet_used && online_payment_used && cod_payment_used) {
+      return (
+        <>
+          {/* Wallet Payment Row */}
+          <View style={styles.paymentMethodRow}>
+            <View style={[styles.paymentMethodIconContainer, { backgroundColor: 'rgba(156, 39, 176, 0.1)' }]}>
+              <Icon name="wallet-outline" size={20} color="#9C27B0" />
+            </View>
+            <View style={styles.paymentMethodInfo}>
+              <Text style={styles.paymentMethodName}>
+                {wallet_payment_method || 'Eatoor Money'}
+              </Text>
+              <Text style={styles.paymentMethodDescription}>
+                Wallet payment
+              </Text>
+            </View>
+            <Text style={[styles.paymentAmount, { color: '#9C27B0' }]}>
+              ₹{parseFloat(wallet_payment_amount.toString() || '0').toFixed(2)}
+            </Text>
+          </View>
+          
+          {/* Online Payment Row */}
+          <View style={styles.paymentMethodRow}>
+            <View style={[styles.paymentMethodIconContainer, { backgroundColor: 'rgba(76, 175, 80, 0.1)' }]}>
+              <Icon name="card-outline" size={20} color="#4CAF50" />
+            </View>
+            <View style={styles.paymentMethodInfo}>
+              <Text style={styles.paymentMethodName}>
+                {online_payment_method || 'Online Payment'}
+              </Text>
+              <Text style={styles.paymentMethodDescription}>
+                Online payment
+                {online_transaction_id && (
+                  <Text style={styles.transactionIdText}>
+                    • ID: {online_transaction_id}
+                  </Text>
+                )}
+              </Text>
+            </View>
+            <Text style={[styles.paymentAmount, { color: '#4CAF50' }]}>
+              ₹{parseFloat(online_payment_amount.toString() || '0').toFixed(2)}
+            </Text>
+          </View>
+          
+          {/* Cash on Delivery Row */}
+          <View style={styles.paymentMethodRow}>
+            <View style={[styles.paymentMethodIconContainer, { backgroundColor: 'rgba(255, 107, 53, 0.1)' }]}>
+              <Icon name="cash-outline" size={20} color="#FF6B35" />
+            </View>
+            <View style={styles.paymentMethodInfo}>
+              <Text style={styles.paymentMethodName}>Cash on Delivery</Text>
+              <Text style={styles.paymentMethodDescription}>
+                Pay remaining when order arrives
+              </Text>
+            </View>
+            <Text style={[styles.paymentAmount, { color: '#FF6B35' }]}>
+              ₹{parseFloat(cod_payment_pending?.toString() || '0').toFixed(2)}
+            </Text>
+          </View>
+          
+          <View style={styles.partialPaymentIndicator}>
+            <Icon name="checkmark-circle" size={18} color="#2ECC71" />
+            <Text style={styles.partialPaymentText}>
+              ₹{(parseFloat(wallet_payment_amount.toString() || '0') + parseFloat(online_payment_amount.toString() || '0')).toFixed(2)} paid
+            </Text>
+          </View>
+          
+          <View style={styles.pendingPaymentIndicator}>
+            <Icon name="time-outline" size={18} color="#FFA726" />
+            <Text style={styles.pendingPaymentText}>
+              ₹{parseFloat(cod_payment_pending?.toString() || '0').toFixed(2)} pending via Cash
+            </Text>
+          </View>
+        </>
       );
     }
     
@@ -2889,11 +3095,41 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     flex: 1,
   },
-  paidSubtext: {
-    fontSize: getResponsiveFontSize(12),
-    color: '#2ECC71',
-    fontWeight: '600',
-    opacity: 0.8,
+  partialPaymentIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 193, 7, 0.2)',
+    marginTop: 8,
+  },
+  partialPaymentText: {
+    fontSize: getResponsiveFontSize(14),
+    fontWeight: '700',
+    color: '#FFA726',
+    marginLeft: 8,
+    flex: 1,
+  },
+  pendingPaymentIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 167, 38, 0.1)',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 167, 38, 0.2)',
+    marginTop: 8,
+  },
+  pendingPaymentText: {
+    fontSize: getResponsiveFontSize(14),
+    fontWeight: '700',
+    color: '#FF6B35',
+    marginLeft: 8,
+    flex: 1,
   },
   
   // IMPROVED ADDRESS CARD STYLES
@@ -3043,24 +3279,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginLeft: 8,
     flex: 1,
-  },
-  deliveryInstructions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 107, 53, 0.05)',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 107, 53, 0.1)',
-  },
-  instructionsText: {
-    fontSize: getResponsiveFontSize(13),
-    color: '#666',
-    fontWeight: '500',
-    marginLeft: 12,
-    flex: 1,
-    fontStyle: 'italic',
   },
   footer: {
     flexDirection: 'row',

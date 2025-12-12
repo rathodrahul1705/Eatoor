@@ -18,7 +18,8 @@ import {
   Easing,
   Platform,
   TouchableWithoutFeedback,
-  KeyboardAvoidingView
+  KeyboardAvoidingView,
+  PanResponder
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { getCartDetails, updateCart, createPayment, verifyPayment, updatePyamentData } from '../../../api/cart';
@@ -198,11 +199,14 @@ const PAYMENT_METHODS = {
   NET_BANKING: 4,
   COD: 5,
   EATOOR_MONEY: 6,
+  CASH_ON_DELIVERY: 5,
+  UPI_ON_DELIVERY: 8,
 } as const;
 
 const PAYMENT_TYPES = {
   ONLINE: 1,
   COD: 2,
+  UPI_ON_DELIVERY: 3,
 } as const;
 
 const PAYMENT_STATUS = {
@@ -223,6 +227,41 @@ const ORDER_STATUS = {
   CANCELLED: 7,
   REFUNDED: 8,
 } as const;
+
+// Payment method options - Updated with proper wallet handling
+type PaymentMethodOption = {
+  id: number;
+  title: string;
+  subtitle: string;
+  icon: string;
+  type: 'online' | 'cod' | 'wallet';
+  disabled?: boolean;
+  disabledReason?: string;
+};
+
+const PAYMENT_METHOD_OPTIONS: PaymentMethodOption[] = [
+  {
+    id: 1,
+    title: 'Online',
+    subtitle: 'UPI / Cards / Net Banking',
+    icon: 'card-outline',
+    type: 'online',
+  },
+  {
+    id: 2,
+    title: 'Pay on Delivery',
+    subtitle: 'UPI / Cash',
+    icon: 'cash-outline',
+    type: 'cod',
+  },
+  {
+    id: 3,
+    title: 'Eatoor Money',
+    subtitle: 'Use your wallet balance',
+    icon: 'wallet-outline',
+    type: 'wallet',
+  }
+];
 
 // Helper functions
 const safeText = (text: any, fallback: string = ''): string => {
@@ -252,6 +291,10 @@ const determinePaymentStatus = (
 
   switch (paymentMethod) {
     case PAYMENT_METHODS.COD:
+      return PAYMENT_STATUS.IN_PROGRESS;
+    case PAYMENT_METHODS.CASH_ON_DELIVERY:
+      return PAYMENT_STATUS.IN_PROGRESS;
+    case PAYMENT_METHODS.UPI_ON_DELIVERY:
       return PAYMENT_STATUS.IN_PROGRESS;
     case PAYMENT_METHODS.EATOOR_MONEY:
       return PAYMENT_STATUS.COMPLETED;
@@ -299,19 +342,63 @@ const CartScreen = ({ route, navigation }) => {
   const [walletLoading, setWalletLoading] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
   
+  // Payment method selection states
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethodOption | null>(null);
+  const [showPaymentMethodModal, setShowPaymentMethodModal] = useState(false);
+  const [showPaymentDropdown, setShowPaymentDropdown] = useState(false);
+  
   // Payment tracking states
   const [isPaymentInProgress, setIsPaymentInProgress] = useState(false);
   const [paymentAttemptId, setPaymentAttemptId] = useState<string | null>(null);
+  
+  // New states for enhanced modal
+  const [modalDragOffset, setModalDragOffset] = useState(new Animated.Value(0));
+  const [isDraggingModal, setIsDraggingModal] = useState(false);
   
   // Refs
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const rotationAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
   const slideAnim = useRef(new Animated.Value(height)).current;
+  const paymentMethodSlideAnim = useRef(new Animated.Value(height)).current;
   
   // Refs for payment state
   const paymentInProgressRef = useRef(false);
   const razorpayOrderIdRef = useRef<string | null>(null);
+  
+  // Ref for modal pan responder
+  const modalPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dy) > 10;
+      },
+      onPanResponderGrant: () => {
+        setIsDraggingModal(true);
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dy > 0) { // Only allow downward drag
+          modalDragOffset.setValue(gestureState.dy);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        setIsDraggingModal(false);
+        
+        // If dragged down enough, close the modal
+        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
+          closePaymentMethodModal();
+        } else {
+          // Snap back to original position
+          Animated.spring(modalDragOffset, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 50,
+            friction: 7,
+          }).start();
+        }
+      },
+    })
+  ).current;
 
   const userId = user?.id;
   const sessionId = "";
@@ -361,6 +448,30 @@ const CartScreen = ({ route, navigation }) => {
     }
   }, [userId]);
 
+  // Auto-select wallet as default payment when Eatoor Money covers full amount
+  useEffect(() => {
+    const finalAmount = calculateFinalAmount();
+    const walletBalanceAmount = walletBalance?.balance || 0;
+    const totalAmount = safePrice(cartData?.billing_details.total || 0);
+    
+    // If Eatoor Money is checked and wallet balance covers full amount
+    if (useWallet && walletBalanceAmount >= totalAmount && finalAmount === 0) {
+      // Find wallet payment method option
+      const walletOption = PAYMENT_METHOD_OPTIONS.find(option => option.type === 'wallet');
+      if (walletOption && (!selectedPaymentMethod || selectedPaymentMethod.type !== 'wallet')) {
+        setSelectedPaymentMethod(walletOption);
+      }
+    }
+    
+    // If wallet is unchecked or insufficient, and no payment method is selected, set a default
+    if (!selectedPaymentMethod) {
+      const onlineOption = PAYMENT_METHOD_OPTIONS.find(option => option.type === 'online');
+      if (onlineOption) {
+        setSelectedPaymentMethod(onlineOption);
+      }
+    }
+  }, [useWallet, walletBalance, cartData]);
+
   // Handle payment status animations
   useEffect(() => {
     if (paymentStatus === 'processing' || paymentVerification.verifying) {
@@ -409,6 +520,34 @@ const CartScreen = ({ route, navigation }) => {
     }
   }, [showPaymentModal]);
 
+  // Handle payment method modal animation with smooth entry
+  const openPaymentMethodModal = () => {
+    setShowPaymentMethodModal(true);
+    Animated.timing(paymentMethodSlideAnim, {
+      toValue: 0,
+      duration: 350,
+      easing: Easing.bezier(0.25, 0.46, 0.45, 0.94),
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closePaymentMethodModal = () => {
+    Animated.timing(paymentMethodSlideAnim, {
+      toValue: height,
+      duration: 250,
+      easing: Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => {
+      setShowPaymentMethodModal(false);
+      modalDragOffset.setValue(0); // Reset drag offset
+    });
+  };
+
+  // Toggle payment dropdown
+  const togglePaymentDropdown = () => {
+    openPaymentMethodModal();
+  };
+
   // Fetch wallet balance
   const fetchWalletBalance = async () => {
     if (!userId) return;
@@ -420,10 +559,19 @@ const CartScreen = ({ route, navigation }) => {
       const response = await getWalletBalance(userId);
       
       if (response.status === 200) {
-        setWalletBalance({
+        const balanceData = {
           balance: safePrice(response.data.balance),
           currency: response.data.currency || 'INR'
-        });
+        };
+        setWalletBalance(balanceData);
+        
+        // If wallet has balance, check if it should be auto-selected
+        if (balanceData.balance > 0 && !selectedPaymentMethod) {
+          const walletOption = PAYMENT_METHOD_OPTIONS.find(option => option.type === 'wallet');
+          if (walletOption) {
+            setSelectedPaymentMethod(walletOption);
+          }
+        }
       } else {
         setWalletError('Failed to load wallet balance');
         setWalletBalance({
@@ -643,23 +791,39 @@ const CartScreen = ({ route, navigation }) => {
     });
   };
 
-  // Determine payment method based on payment type
-  const getPaymentMethod = (isWalletOnly: boolean = false): number => {
-    if (isWalletOnly) {
-      return PAYMENT_METHODS.EATOOR_MONEY;
-    } else if (useWallet && calculateWalletUsage() > 0) {
-      return PAYMENT_METHODS.UPI;
-    } else {
-      return PAYMENT_METHODS.UPI;
+  // Get payment method ID based on selected option
+  const getPaymentMethodId = (): number => {
+    if (!selectedPaymentMethod) {
+      return PAYMENT_METHODS.UPI; // Default to UPI
+    }
+
+    switch (selectedPaymentMethod.type) {
+      case 'online':
+        return PAYMENT_METHODS.UPI;
+      case 'cod':
+        return PAYMENT_METHODS.CASH_ON_DELIVERY;
+      case 'wallet':
+        return PAYMENT_METHODS.EATOOR_MONEY;
+      default:
+        return PAYMENT_METHODS.UPI;
     }
   };
 
-  // Determine payment type based on payment method
-  const getPaymentType = (isWalletOnly: boolean = false): number => {
-    if (isWalletOnly) {
+  // Get payment type based on selected option
+  const getPaymentType = (): number => {
+    if (!selectedPaymentMethod) {
       return PAYMENT_TYPES.ONLINE;
-    } else {
-      return PAYMENT_TYPES.ONLINE;
+    }
+
+    switch (selectedPaymentMethod.type) {
+      case 'online':
+        return PAYMENT_TYPES.ONLINE;
+      case 'cod':
+        return PAYMENT_TYPES.COD;
+      case 'wallet':
+        return PAYMENT_TYPES.ONLINE;
+      default:
+        return PAYMENT_TYPES.ONLINE;
     }
   };
 
@@ -707,7 +871,8 @@ const CartScreen = ({ route, navigation }) => {
   // ONLY CALL THIS FUNCTION FOR SUCCESSFUL PAYMENTS
   const updateOrderDetails = async (
     razorpayPaymentId: string,
-    isWalletOnly: boolean = false
+    isWalletOnly: boolean = false,
+    isCOD: boolean = false
   ): Promise<UpdateOrderResponse> => {
     if (!cartData || !kitchenId || !addressId || !userId) {
       throw new Error('Required data missing for updating order');
@@ -717,13 +882,15 @@ const CartScreen = ({ route, navigation }) => {
       const walletUsage = useWallet ? calculateWalletUsage() : 0;
       const finalAmount = calculateFinalAmount();
       const isWalletPaymentOnly = isWalletOnly || (useWallet && finalAmount === 0);
-      const paymentMethod = getPaymentMethod(isWalletPaymentOnly);
+      const paymentMethod = getPaymentMethodId();
       
-      const paymentStatusValue = determinePaymentStatus(
-        paymentMethod,
-        true, // Payment is successful
-        isWalletPaymentOnly
-      );
+      const paymentStatusValue = isCOD ? 
+        PAYMENT_STATUS.IN_PROGRESS : // For COD, payment is in progress
+        determinePaymentStatus(
+          paymentMethod,
+          true, // Payment is successful
+          isWalletPaymentOnly
+        );
 
       const payload = {
         user_id: userId,
@@ -733,7 +900,7 @@ const CartScreen = ({ route, navigation }) => {
         is_takeaway: false,
         
         payment_method: paymentMethod,
-        payment_type: getPaymentType(isWalletPaymentOnly),
+        payment_type: getPaymentType(),
         payment_status: paymentStatusValue,
         
         status: ORDER_STATUS.PENDING, // Order is pending as payment is successful
@@ -744,8 +911,8 @@ const CartScreen = ({ route, navigation }) => {
         total_amount: safePrice(cartData.billing_details.total),
         quantity: calculateTotalQuantity(cartData.cart_details),
         
-        razorpay_order_id: isWalletPaymentOnly ? null : razorpayOrderIdRef.current,
-        razorpay_payment_id: isWalletPaymentOnly ? null : razorpayPaymentId,
+        razorpay_order_id: isCOD || isWalletPaymentOnly ? null : razorpayOrderIdRef.current,
+        razorpay_payment_id: isCOD || isWalletPaymentOnly ? null : razorpayPaymentId,
         
         wallet_used: useWallet,
         wallet_amount: walletUsage,
@@ -761,7 +928,7 @@ const CartScreen = ({ route, navigation }) => {
         payment_attempt_id: paymentAttemptId
       };
 
-      console.log('Creating order for successful payment with payload:', payload);
+      console.log('Creating order with payload:', payload);
 
       const response = await updatePyamentData(payload);
       if (response.status === 201) {
@@ -776,7 +943,7 @@ const CartScreen = ({ route, navigation }) => {
     }
   };
 
-  // Verify payment status (called only for successful payments)
+  // Verify payment status (called only for successful online payments)
   const verifyPaymentStatus = async (paymentResponse: PaymentResponse) => {
     if (!cartData || !userId || !kitchenId || !addressId || !paymentResponse) {
       console.error("Missing required payment data");
@@ -1044,7 +1211,133 @@ const CartScreen = ({ route, navigation }) => {
     setIsPaymentInProgress(false);
   };
 
-  const initiatePayment = async () => {
+  // Handle wallet payment - Scenario 1
+  const handleWalletPayment = async () => {
+    if (!cartData || !userId || !kitchenId || !addressId) {
+      showPaymentStatusModal('failed', 'Required information missing');
+      return;
+    }
+    
+    const walletBalanceAmount = walletBalance?.balance || 0;
+    const totalAmount = safePrice(cartData.billing_details.total);
+    
+    // Scenario 1: If wallet has insufficient balance, navigate to EatoorMoney page
+    if (walletBalanceAmount < totalAmount) {
+      navigation.navigate('EatoorMoneyScreen', { 
+        prevScreen: 'CartScreen',
+        amountToAdd: totalAmount 
+      });
+      setShowPaymentMethodModal(false);
+      return;
+    }
+    
+    // Prevent multiple payment attempts
+    if (paymentInProgressRef.current) {
+      console.log('Payment already in progress');
+      return;
+    }
+    
+    paymentInProgressRef.current = true;
+    setIsPaymentInProgress(true);
+    setPaymentStatus('processing');
+    setShowBlurOverlay(true);
+    
+    try {
+      // Create order with wallet payment
+      const updateResponse = await updateOrderDetails('', true);
+      
+      if (updateResponse.status === 'success') {
+        // Debit wallet amount for wallet-only payment
+        const walletUsage = calculateWalletUsage();
+        if (useWallet && walletUsage > 0) {
+          try {
+            await debitWalletAmount(walletUsage, updateResponse.order_id);
+          } catch (walletError) {
+            console.error('Wallet debit failed:', walletError);
+          }
+        }
+        
+        setOrderDetails({
+          order_id: updateResponse.order_id,
+          order_number: updateResponse.order_number
+        });
+        
+        // Clear cart after successful payment
+        AsyncStorage.removeItem('pastKitchenDetails');
+        
+        showPaymentStatusModal('success', 'Payment successful using Eatoor Money!', updateResponse.order_number);
+      } else {
+        throw new Error('Failed to process wallet payment');
+      }
+    } catch (error) {
+      console.error('Wallet payment error:', error);
+      showPaymentStatusModal('failed', 'Eatoor Money payment failed');
+    } finally {
+      paymentInProgressRef.current = false;
+      setIsPaymentInProgress(false);
+      setShowBlurOverlay(false);
+    }
+  };
+
+  // Handle COD payment - Scenario 3
+  const handleCODPayment = async () => {
+    if (!cartData || !userId || !kitchenId || !addressId) {
+      showPaymentStatusModal('failed', 'Required information missing');
+      return;
+    }
+    
+    // Prevent multiple payment attempts
+    if (paymentInProgressRef.current) {
+      console.log('Payment already in progress');
+      return;
+    }
+    
+    paymentInProgressRef.current = true;
+    setIsPaymentInProgress(true);
+    setPaymentStatus('processing');
+    setShowBlurOverlay(true);
+    
+    try {
+      // Create order with COD payment
+      const updateResponse = await updateOrderDetails('', false, true);
+      
+      if (updateResponse.status === 'success') {
+        // If wallet is used with COD, debit the wallet amount
+        if (useWallet && calculateWalletUsage() > 0) {
+          try {
+            await debitWalletAmount(calculateWalletUsage(), updateResponse.order_id);
+          } catch (walletError) {
+            console.error('Wallet debit failed for COD:', walletError);
+          }
+        }
+        
+        setOrderDetails({
+          order_id: updateResponse.order_id,
+          order_number: updateResponse.order_number
+        });
+        
+        // Clear cart after successful order
+        AsyncStorage.removeItem('pastKitchenDetails');
+        
+        showPaymentStatusModal('success', 
+          `Order placed successfully! ${calculateFinalAmount() > 0 ? `Pay ₹${calculateFinalAmount().toFixed(2)} at delivery.` : 'Paid with Eatoor Money.'}`, 
+          updateResponse.order_number
+        );
+      } else {
+        throw new Error('Failed to process COD order');
+      }
+    } catch (error) {
+      console.error('COD payment error:', error);
+      showPaymentStatusModal('failed', 'Failed to place COD order');
+    } finally {
+      paymentInProgressRef.current = false;
+      setIsPaymentInProgress(false);
+      setShowBlurOverlay(false);
+    }
+  };
+
+  // Handle Online payment - Scenario 2
+  const handleOnlinePayment = async () => {
     // Prevent multiple payment attempts
     if (paymentInProgressRef.current) {
       console.log('Payment already in progress');
@@ -1052,49 +1345,26 @@ const CartScreen = ({ route, navigation }) => {
     }
     
     if (!cartData || !user) {
-      Alert.alert('Error', 'Cart data or user information is missing');
+      showPaymentStatusModal('failed', 'Cart data or user information is missing');
       return;
     }
     
-    // Check minimum order value
     const finalAmount = calculateFinalAmount();
+    
+    // Check minimum order value for remaining amount
     if (finalAmount > 0 && finalAmount < MINIMUM_ORDER_VALUE) {
       Alert.alert(
         'Minimum Order Value',
-        `Your remaining amount is ₹${finalAmount.toFixed(2)}. Minimum order value is ₹${MINIMUM_ORDER_VALUE}. Please add more items to proceed.`,
-        [
-          { text: 'OK' },
-          {
-            text: 'Browse Menu',
-            onPress: BackToKitchen
-          }
-        ]
+        `Minimum order value for online payment is ₹${MINIMUM_ORDER_VALUE}. Please add more items or choose Cash on Delivery.`
       );
       return;
     }
     
     if (!addressId) {
       Alert.alert(
-        'Address Required',
-        'Please select a delivery address before proceeding to payment',
-        [
-          {
-            text: 'OK',
-          },
-          {
-            text: 'Select Address',
-            onPress: () => {
-              handleAddressChange();
-            }
-          }
-        ]
+        'Delivery Address Required',
+        'Please select a delivery address before proceeding to payment.'
       );
-      return;
-    }
-    
-    // If wallet covers entire amount
-    if (useWallet && calculateWalletUsage() >= cartData.billing_details.total) {
-      handleWalletPayment();
       return;
     }
     
@@ -1105,7 +1375,7 @@ const CartScreen = ({ route, navigation }) => {
     setShowBlurOverlay(true);
     
     try {
-      // Create Razorpay order first
+      // Create Razorpay order for the remaining amount
       const orderId = await createRazorpayOrder();
       
       const options = {
@@ -1128,12 +1398,9 @@ const CartScreen = ({ route, navigation }) => {
           delivery_offer: cartData.delivery_offer_exist ? 'true' : 'false',
           payment_attempt_id: paymentAttemptId
         },
-        // Add modal configuration for better UX
         modal: {
-          backdropclose: false, // Prevent accidental closure
+          backdropclose: false,
           ondismiss: () => {
-            // This gets called when modal is dismissed without payment
-            console.log('Razorpay modal dismissed');
             handlePaymentCancellation({ description: 'Payment modal dismissed' });
           }
         }
@@ -1142,9 +1409,7 @@ const CartScreen = ({ route, navigation }) => {
       // Open Razorpay checkout
       RazorpayCheckout.open(options)
         .then(async (data: PaymentResponse) => {
-          console.log('Payment successful:', data);
-          
-          // Start verification process - ONLY FOR SUCCESSFUL PAYMENTS
+          // Start verification process
           setPaymentVerification({
             verifying: true,
             message: 'Verifying your payment...',
@@ -1153,26 +1418,11 @@ const CartScreen = ({ route, navigation }) => {
           
           try {
             await verifyPaymentStatus(data);
-            setVerificationComplete(true);
           } catch (verificationError) {
-            console.error('Payment verification error:', verificationError);
-            // Even if verification fails, order was already created
-            showPaymentStatusModal('failed', 'Payment completed but verification failed. Please check your order history.');
-          } finally {
-            paymentInProgressRef.current = false;
-            setIsPaymentInProgress(false);
-            setShowBlurOverlay(false);
+            showPaymentStatusModal('failed', 'Payment verification failed');
           }
         })
         .catch((error) => {
-          console.log("Payment error details:", error);
-          
-          // Reset payment in progress
-          paymentInProgressRef.current = false;
-          setIsPaymentInProgress(false);
-          setShowBlurOverlay(false);
-          
-          // Handle different types of errors - NO ORDER CREATION FOR ANY FAILURE
           if (isUserCancelledError(error)) {
             handlePaymentCancellation(error);
           } else if (isNetworkError(error)) {
@@ -1180,87 +1430,238 @@ const CartScreen = ({ route, navigation }) => {
           } else {
             handlePaymentFailure(error);
           }
+        })
+        .finally(() => {
+          paymentInProgressRef.current = false;
+          setIsPaymentInProgress(false);
+          setShowBlurOverlay(false);
         });
     } catch (error) {
-      console.error('Payment initiation error:', error);
-      
-      // Reset states
+      showPaymentStatusModal('failed', 'Payment initiation failed');
       paymentInProgressRef.current = false;
       setIsPaymentInProgress(false);
       setShowBlurOverlay(false);
-      
-      // Handle error - NO ORDER CREATION
-      if (isUserCancelledError(error)) {
-        handlePaymentCancellation(error);
-      } else if (isNetworkError(error)) {
-        handleNetworkError(error);
-      } else {
-        showPaymentStatusModal('failed', getUserFriendlyErrorMessage(error));
-      }
-      
-      setPaymentStatus('idle');
     }
   };
 
-  // Handle wallet-only payment - ONLY CALLED FOR SUCCESSFUL WALLET PAYMENTS
-  const handleWalletPayment = async () => {
-    if (!cartData || !userId || !kitchenId || !addressId) {
-      Alert.alert('Error', 'Required information missing for wallet payment');
+  const initiatePayment = async () => {
+    // Check if payment method is selected
+    if (!selectedPaymentMethod) {
+      openPaymentMethodModal();
       return;
     }
     
-    // Prevent multiple payment attempts
-    if (paymentInProgressRef.current) {
-      console.log('Payment already in progress');
-      return;
+    // Directly handle based on selected payment method
+    switch (selectedPaymentMethod.type) {
+      case 'wallet':
+        handleWalletPayment();
+        break;
+      case 'cod':
+        handleCODPayment();
+        break;
+      case 'online':
+        handleOnlinePayment();
+        break;
+      default:
+        openPaymentMethodModal();
     }
+  };
+
+  // Enhanced payment method modal with smooth animation and drag to close
+  const renderPaymentMethodModal = () => {
+    const finalAmount = calculateFinalAmount();
+    const walletUsage = calculateWalletUsage();
+    const totalAmount = safePrice(cartData?.billing_details.total || 0);
+    const walletBalanceAmount = walletBalance?.balance || 0;
     
-    paymentInProgressRef.current = true;
-    setIsPaymentInProgress(true);
-    setPaymentStatus('processing');
-    setShowBlurOverlay(true);
-    
-    try {
-      // Create order with wallet payment - ONLY FOR SUCCESSFUL PAYMENTS
-      const updateResponse = await updateOrderDetails('', true);
-      
-      if (updateResponse.status === 'success') {
-        // Debit wallet amount for wallet-only payment
-        try {
-          const walletUsage = calculateWalletUsage();
-          await debitWalletAmount(walletUsage, updateResponse.order_id);
-          console.log(`Wallet debited: ₹${walletUsage.toFixed(2)}`);
-        } catch (walletError) {
-          console.error('Wallet debit failed:', walletError);
-          // Continue even if wallet debit fails
-        }
-        
-        setPaymentVerification({
-          verifying: false,
-          message: 'Payment successful using Eatoor Money!',
-          success: true
-        });
-        
-        setOrderDetails({
-          order_id: updateResponse.order_id,
-          order_number: updateResponse.order_number
-        });
-        
-        showPaymentStatusModal('success', 'Payment successful using Eatoor Money! Redirecting to order details...', updateResponse.order_number);
-      } else {
-        throw new Error('Failed to process wallet payment');
-      }
-    } catch (error) {
-      console.error('Wallet payment error:', error);
-      
-      // For wallet payment failure, we don't create an order
-      showPaymentStatusModal('failed', getUserFriendlyErrorMessage(error) || 'Eatoor Money payment failed');
-    } finally {
-      paymentInProgressRef.current = false;
-      setIsPaymentInProgress(false);
-      setShowBlurOverlay(false);
-      setPaymentStatus('idle');
-    }
+    // Combine drag animation with slide animation
+    const modalTranslateY = Animated.add(
+      paymentMethodSlideAnim,
+      modalDragOffset
+    );
+
+    // Background opacity animation
+    const backdropOpacity = paymentMethodSlideAnim.interpolate({
+      inputRange: [0, height],
+      outputRange: [1, 0],
+    });
+
+    return (
+      <Modal
+        visible={showPaymentMethodModal}
+        transparent
+        animationType="none"
+        onRequestClose={closePaymentMethodModal}
+      >
+        <Animated.View style={[styles.paymentMethodModalOverlay, { opacity: backdropOpacity }]}>
+          <TouchableWithoutFeedback onPress={closePaymentMethodModal}>
+            <View style={styles.paymentMethodModalBackdrop} />
+          </TouchableWithoutFeedback>
+          
+          <Animated.View 
+            style={[
+              styles.paymentMethodModalContainer,
+              { 
+                transform: [{ translateY: modalTranslateY }],
+                height: height * 0.55 
+              }
+            ]}
+          >
+            {/* Drag Handle */}
+            <View style={styles.dragHandleContainer} {...modalPanResponder.panHandlers}>
+              <View style={styles.dragHandle} />
+            </View>
+            
+            {/* Modal Header */}
+            <View style={styles.paymentMethodModalHeader}>
+              <Text style={styles.paymentMethodModalTitle}>Choose Payment Method</Text>
+              <TouchableOpacity 
+                onPress={closePaymentMethodModal}
+                style={styles.paymentMethodModalCloseButton}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Icon name="close" size={scale(24)} color="#666" />
+              </TouchableOpacity>
+            </View>
+            
+            {/* Payment Method Options */}
+            <ScrollView 
+              style={styles.paymentMethodListContainer}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              {PAYMENT_METHOD_OPTIONS.map((option) => {
+                let isDisabled = false;
+                let disabledReason = '';
+                
+                // Check if wallet option should be disabled
+                if (option.type === 'wallet') {
+                  if (walletBalanceAmount <= 0) {
+                    isDisabled = true;
+                    disabledReason = 'No balance in Eatoor Money';
+                  } else if (walletBalanceAmount < totalAmount) {
+                    // Not disabled, but will show insufficient balance message
+                  }
+                }
+
+                // Check if COD option should be disabled for online-only restaurants
+                if (option.type === 'cod' && cartData?.restaurant_name) {
+                  // Add your logic here if COD should be disabled for certain restaurants
+                  // isDisabled = !restaurantAcceptsCOD;
+                  // disabledReason = 'Cash on Delivery not available for this restaurant';
+                }
+                
+                return (
+                  <TouchableOpacity
+                    key={option.id}
+                    style={[
+                      styles.paymentMethodOption,
+                      selectedPaymentMethod?.id === option.id && styles.paymentMethodOptionSelected,
+                      isDisabled && styles.paymentMethodOptionDisabled
+                    ]}
+                    onPress={() => {
+                      if (!isDisabled) {
+                        setSelectedPaymentMethod(option);
+                        if (option.type === 'wallet') {
+                          setUseWallet(true);
+                        }
+                        closePaymentMethodModal();
+                      }
+                    }}
+                    disabled={isDisabled || showBlurOverlay || isPaymentInProgress}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.paymentMethodOptionContent}>
+                      <View style={[
+                        styles.paymentMethodIconContainer,
+                        selectedPaymentMethod?.id === option.id && styles.paymentMethodIconContainerSelected,
+                        option.type === 'wallet' && useWallet && styles.walletIconContainerActive
+                      ]}>
+                        <Icon 
+                          name={option.icon} 
+                          size={scale(22)} 
+                          color={
+                            selectedPaymentMethod?.id === option.id ? '#fff' : 
+                            option.type === 'wallet' && useWallet ? '#E65C00' : '#666'
+                          } 
+                        />
+                      </View>
+                      <View style={styles.paymentMethodTextContainer}>
+                        <View style={styles.paymentMethodTitleContainer}>
+                          <Text style={[
+                            styles.paymentMethodOptionTitle,
+                            selectedPaymentMethod?.id === option.id && styles.paymentMethodOptionTitleSelected,
+                            isDisabled && styles.paymentMethodOptionTextDisabled,
+                            option.type === 'wallet' && useWallet && styles.walletOptionTitleActive
+                          ]}>
+                            {option.title}
+                          </Text>
+                          {option.type === 'wallet' && useWallet && (
+                            <View style={styles.walletActiveBadge}>
+                              <Text style={styles.walletActiveBadgeText}>Active</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={[
+                          styles.paymentMethodOptionSubtitle,
+                          selectedPaymentMethod?.id === option.id && styles.paymentMethodOptionSubtitleSelected,
+                          isDisabled && styles.paymentMethodOptionTextDisabled,
+                          option.type === 'wallet' && useWallet && styles.walletOptionSubtitleActive
+                        ]}>
+                          {option.subtitle}
+                        </Text>
+                        
+                        {/* Wallet balance info for wallet option */}
+                        {option.type === 'wallet' && walletBalance && !isDisabled && (
+                          <View style={styles.walletBalanceInfo}>
+                            <Text style={[
+                              styles.walletBalanceText,
+                              walletBalanceAmount < totalAmount && styles.insufficientBalanceText
+                            ]}>
+                              Balance: ₹{walletBalanceAmount.toFixed(2)}
+                            </Text>
+                            {walletBalanceAmount < totalAmount && (
+                              <Text style={styles.insufficientMessage}>
+                                Add ₹{(totalAmount - walletBalanceAmount).toFixed(2)} more
+                              </Text>
+                            )}
+                          </View>
+                        )}
+                        
+                        {/* Disabled reason */}
+                        {isDisabled && disabledReason && (
+                          <Text style={styles.disabledReasonText}>
+                            {disabledReason}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                    
+                    <View style={styles.paymentMethodOptionRight}>
+                      {selectedPaymentMethod?.id === option.id ? (
+                        <View style={styles.selectedIndicator}>
+                          <Icon name="checkmark-circle" size={scale(22)} color="#E65C00" />
+                        </View>
+                      ) : (
+                        <Icon name="chevron-forward" size={scale(18)} color="#ccc" />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+              
+              {/* Information Note */}
+              <View style={styles.infoNote}>
+                <Icon name="information-circle-outline" size={scale(16)} color="#666" />
+                <Text style={styles.infoNoteText}>
+                  You can use Eatoor Money along with other payment methods
+                </Text>
+              </View>
+            </ScrollView>
+          </Animated.View>
+        </Animated.View>
+      </Modal>
+    );
   };
 
   const updateItemQuantity = async (itemId: number, action: 'increment' | 'decrement', source: 'CART' | 'SUGGESTION' = 'CART') => {
@@ -1285,11 +1686,11 @@ const CartScreen = ({ route, navigation }) => {
         await fetchCartData();
       } else {
         console.error('Failed to update cart:', response.data.message);
-        Alert.alert('Error', 'Failed to update cart. Please try again.');
+        // Show inline message instead of alert
       }
     } catch (err) {
       console.error('Error updating cart:', err);
-      Alert.alert('Error', 'An error occurred while updating your cart.');
+      // Show inline message instead of alert
     } finally {
       setUpdatingItems(prev => prev.filter(item => item.id !== itemId));
     }
@@ -1304,39 +1705,31 @@ const CartScreen = ({ route, navigation }) => {
   };
 
   const handleClearCart = () => {
-    Alert.alert(
-      'Clear Cart',
-      'Are you sure you want to remove all items from your cart?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear',
-          style: 'destructive',
-          onPress: async () => {
-            if (!cartData || !kitchenId || !userId) return;
-            
-            try {
-              for (const item of cartData.cart_details) {
-                const payload = {
-                  user_id: userId,
-                  session_id: sessionId,
-                  restaurant_id: kitchenId,
-                  item_id: item.item_id,
-                  source: 'CART',
-                  quantity: item.quantity,
-                  action: 'remove'
-                };
-                await updateCart(payload);
-              }
-              await fetchCartData();
-            } catch (error) {
-              console.error('Error clearing cart:', error);
-              Alert.alert('Error', 'Failed to clear cart. Please try again.');
-            }
-          }
+    // Show inline confirmation in future update
+    if (!cartData || !kitchenId || !userId) return;
+    
+    // Directly clear cart without alert
+    const clearCartItems = async () => {
+      try {
+        for (const item of cartData.cart_details) {
+          const payload = {
+            user_id: userId,
+            session_id: sessionId,
+            restaurant_id: kitchenId,
+            item_id: item.item_id,
+            source: 'CART',
+            quantity: item.quantity,
+            action: 'remove'
+          };
+          await updateCart(payload);
         }
-      ]
-    );
+        await fetchCartData();
+      } catch (error) {
+        console.error('Error clearing cart:', error);
+      }
+    };
+    
+    clearCartItems();
   };
 
   const getTotalItems = () => {
@@ -1344,7 +1737,7 @@ const CartScreen = ({ route, navigation }) => {
     return calculateTotalQuantity(cartData.cart_details);
   };
 
-  // Render Eatoor Money section
+  // Render Eatoor Money section in footer
   const renderEatoorMoneySection = () => {
     if (walletLoading) {
       return (
@@ -1358,6 +1751,9 @@ const CartScreen = ({ route, navigation }) => {
     }
 
     const balance = walletBalance?.balance || 0;
+    const totalAmount = safePrice(cartData?.billing_details.total || 0);
+    const isInsufficient = useWallet && balance < totalAmount;
+    const finalAmount = calculateFinalAmount();
 
     return (
       <View style={styles.eatoorMoneyContainer}>
@@ -1365,38 +1761,50 @@ const CartScreen = ({ route, navigation }) => {
           <TouchableOpacity 
             style={styles.checkboxContainer}
             onPress={() => {
-              if (balance <= 0) {
-                Alert.alert(
-                  'No Eatoor Money',
-                  'You need to add money to your Eatoor Money first',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Add Money', onPress: () => navigation.navigate('EatoorMoneyScreen', { prevScreen: 'CartScreen' }) }
-                  ]
-                );
-                return;
+              const newUseWallet = !useWallet;
+              setUseWallet(newUseWallet);
+              
+              // If user unchecks wallet and amount is zero, reset to default payment method
+              if (!newUseWallet && finalAmount === 0) {
+                const onlineOption = PAYMENT_METHOD_OPTIONS.find(option => option.type === 'online');
+                if (onlineOption) {
+                  setSelectedPaymentMethod(onlineOption);
+                }
               }
-              setUseWallet(!useWallet);
+              
+              // If user checks wallet and it covers full amount, auto-select wallet payment
+              if (newUseWallet && balance >= totalAmount) {
+                const walletOption = PAYMENT_METHOD_OPTIONS.find(option => option.type === 'wallet');
+                if (walletOption) {
+                  setSelectedPaymentMethod(walletOption);
+                }
+              }
             }}
             disabled={showBlurOverlay || isPaymentInProgress}
           >
             <View style={[
               styles.checkbox,
               useWallet && styles.checkboxChecked,
-              balance <= 0 && styles.checkboxDisabled
+              (balance <= 0 || showBlurOverlay || isPaymentInProgress) && styles.checkboxDisabled
             ]}>
               {useWallet && (
                 <Icon name="checkmark" size={scale(12)} color="#fff" />
               )}
             </View>
             <View style={styles.checkboxLabelContainer}>
+              <View style={styles.checkboxLabelRow}>
+                <Text style={[
+                  styles.checkboxLabel,
+                  (balance <= 0 || showBlurOverlay || isPaymentInProgress) && styles.checkboxLabelDisabled
+                ]}>
+                  Use Eatoor Money
+                </Text>
+              </View>
               <Text style={[
-                styles.checkboxLabel,
-                balance <= 0 && styles.checkboxLabelDisabled
+                styles.balanceTextSmall,
+                isInsufficient && styles.insufficientBalanceText,
+                (showBlurOverlay || isPaymentInProgress) && styles.balanceTextDisabled
               ]}>
-                Use Eatoor Money
-              </Text>
-              <Text style={styles.balanceTextSmall}>
                 Balance: ₹{balance.toFixed(2)}
               </Text>
             </View>
@@ -1404,13 +1812,97 @@ const CartScreen = ({ route, navigation }) => {
           
           <TouchableOpacity 
             style={styles.addMoneyButton}
-            onPress={() => navigation.navigate('EatoorMoneyScreen', { prevScreen: 'CartScreen' })}
+            onPress={() => navigation.navigate('EatoorMoneyScreen', { 
+              prevScreen: 'CartScreen',
+              amountToAdd: totalAmount
+            })}
             disabled={showBlurOverlay || isPaymentInProgress}
           >
             <Text style={styles.addMoneyButtonText}>Add Money</Text>
             <Icon name="arrow-forward" size={scale(14)} color="#E65C00" style={styles.addMoneyIcon} />
           </TouchableOpacity>
         </View>
+      </View>
+    );
+  };
+
+  // Render payment method dropdown in footer - SIDE BY SIDE with button
+  const renderPaymentMethodDropdown = () => {
+    const finalAmount = calculateFinalAmount();
+
+    return (
+      <View style={styles.paymentMethodInlineContainer}>
+        {/* Payment Method Selection */}
+        <TouchableOpacity 
+          style={styles.paymentMethodDropdown}
+          onPress={togglePaymentDropdown}
+          disabled={showBlurOverlay || isPaymentInProgress}
+          activeOpacity={0.7}
+        >
+          <View style={styles.paymentMethodContent}>
+            {/* Icon */}
+            <View style={styles.iconContainer}>
+              <View style={styles.paymentIcon}>
+                {selectedPaymentMethod ? (
+                  <Icon 
+                    name={selectedPaymentMethod.icon} 
+                    size={scale(20)} 
+                  />
+                ) : (
+                  <Icon 
+                    name="card-outline" 
+                    size={scale(20)} 
+                  />
+                )}
+              </View>
+            </View>
+
+            {/* Text Content */}
+            <View style={styles.textContainer}>
+              {/* Pay Using + Drop-up Icon */}
+              <View style={styles.topRow}>
+                <Text style={styles.payUsingLabel}>PAY USING</Text>
+                <Icon 
+                  name="chevron-up" 
+                  size={scale(12)} 
+                  color="#666" 
+                />
+              </View>
+
+              {/* Payment Method Name */}
+              <View style={styles.paymentMethodRow}>
+                <Text style={styles.paymentMethodName} numberOfLines={1}>
+                  {selectedPaymentMethod ? selectedPaymentMethod.title : 'Select Payment'}
+                </Text>
+              </View>
+
+              {/* Payment Details */}
+              <Text style={styles.paymentDetails} numberOfLines={1}>
+                {finalAmount === 0 ? 'Paid with Eatoor Money' : selectedPaymentMethod?.subtitle || 'UPI/Cash/Cards'}
+              </Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+
+        {/* Proceed Button */}
+        <TouchableOpacity 
+          style={[
+            styles.proceedButton,
+            (isPaymentInProgress || paymentStatus === 'processing') && styles.proceedButtonDisabled
+          ]}
+          onPress={initiatePayment}
+          disabled={paymentStatus === 'processing' || paymentVerification.verifying || showBlurOverlay || isPaymentInProgress}
+          activeOpacity={0.8}
+        >
+          {paymentStatus === 'processing' || isPaymentInProgress ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.proceedButtonText}>
+              {selectedPaymentMethod?.type === 'cod' ? 'Place Order' : 
+              finalAmount === 0 ? 'Place Order' : `Pay  ₹${finalAmount.toFixed(0)}`}
+            </Text>
+          )}
+        </TouchableOpacity>
       </View>
     );
   };
@@ -1963,68 +2455,14 @@ const CartScreen = ({ route, navigation }) => {
     }
 
     const finalAmount = calculateFinalAmount();
-    const walletUsage = calculateWalletUsage();
 
     return (
       <View style={styles.paymentFooter}>
         {/* Eatoor Money Section */}
         {renderEatoorMoneySection()}
         
-        <View style={styles.paymentFooterContent}>
-          <View style={styles.totalAmountContainer}>
-            <Text style={styles.totalAmountLabel}>
-              {finalAmount === 0 ? 'PAID' : 'TO PAY'}
-            </Text>
-            <View style={styles.totalAmountValueContainer}>
-              <Text style={styles.totalAmountValue}>₹{finalAmount.toFixed(2)}</Text>
-              {useWallet && walletUsage > 0 && (
-                <Text style={styles.walletUsageFooter}>
-                  (Eatoor Money: ₹{walletUsage.toFixed(2)})
-                </Text>
-              )}
-            </View>
-          </View>
-          {addressId ? (
-            <TouchableOpacity 
-              style={[
-                styles.payButton,
-                finalAmount === 0 && styles.payButtonPaid,
-                (isPaymentInProgress || paymentStatus === 'processing') && styles.payButtonDisabled
-              ]}
-              onPress={initiatePayment}
-              disabled={paymentStatus === 'processing' || paymentVerification.verifying || showBlurOverlay || isPaymentInProgress}
-              activeOpacity={0.8}
-            >
-              {paymentStatus === 'processing' || isPaymentInProgress ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  <Text style={styles.payButtonText}>
-                    {finalAmount === 0 
-                      ? 'Place Order' 
-                      : 'Proceed to Pay'}
-                  </Text>
-                  <Icon 
-                    name="arrow-forward" 
-                    size={scale(20)} 
-                    color="#fff" 
-                    style={styles.payButtonIcon} 
-                  />
-                </>
-              )}
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity 
-              style={styles.addAddressButton}
-              onPress={handleAddressChange}
-              activeOpacity={0.8}
-              disabled={showBlurOverlay || isPaymentInProgress}
-            >
-              <Icon name="location" size={scale(18)} color="#fff" style={styles.addAddressIcon} />
-              <Text style={styles.addAddressButtonText}>Select Location</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        {/* Payment Method Dropdown and Proceed Button - SIDE BY SIDE */}
+        {renderPaymentMethodDropdown()}
       </View>
     );
   };
@@ -2263,6 +2701,9 @@ const CartScreen = ({ route, navigation }) => {
         </TouchableWithoutFeedback>
       )}
       
+      {/* Enhanced Payment Method Selection Modal */}
+      {renderPaymentMethodModal()}
+      
       {isCartEmpty ? (
         renderEmptyCart()
       ) : (
@@ -2364,33 +2805,406 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#666',
   },
-  // Eatoor Money Section Styles (Zomato Style)
+  // Payment Method Inline Container (SIDE BY SIDE)
+  // Updated styles for clean text alignment
+// Alternative: Minimal clean version
+paymentMethodInlineContainer: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  paddingHorizontal: scale(16),
+  paddingVertical: verticalScale(14),
+  backgroundColor: '#fff',
+  borderTopWidth: 0.5,
+  borderTopColor: '#eee',
+},
+paymentMethodDropdown: {
+  flex: 1,
+  marginRight: scale(16),
+},
+paymentMethodContent: {
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+},
+iconContainer: {
+  marginRight: scale(12),
+  marginTop: verticalScale(2),
+},
+paymentIcon: {
+  width: scale(24),
+  height: scale(24),
+},
+textContainer: {
+  flex: 1,
+},
+topRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  marginBottom: verticalScale(4),
+},
+payUsingLabel: {
+  fontSize: FONT.S,
+  color: '#666',
+  fontWeight: '500',
+  marginRight: scale(6),
+},
+paymentMethodRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  marginBottom: verticalScale(2),
+},
+paymentMethodName: {
+  fontSize: FONT.BASE,
+  fontWeight: '600',
+  color: '#1a1a1a',
+},
+paymentDetails: {
+  fontSize: FONT.SM,
+  color: '#666',
+  fontWeight: '400',
+},
+proceedButton: {
+  backgroundColor: '#E65C00',
+  borderRadius: scale(6),
+  paddingVertical: verticalScale(12),
+  paddingHorizontal: scale(20),
+  minWidth: scale(100),
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+proceedButtonDisabled: {
+    opacity: 0.7,
+  },
+proceedButtonText: {
+  color: '#fff',
+  fontSize: FONT.BASE,
+  fontWeight: '700',
+},
+  // Order Amount Footer
+  orderAmountFooterContainer: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: scale(8),
+    padding: scale(12),
+    marginHorizontal: scale(12),
+    marginTop: verticalScale(4),
+    marginBottom: verticalScale(8),
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  amountRowFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: verticalScale(4),
+  },
+  amountLabelFooter: {
+    fontSize: FONT.SM,
+    color: '#666',
+    fontWeight: '500',
+  },
+  amountValueFooter: {
+    fontSize: FONT.SM,
+    color: '#333',
+    fontWeight: '600',
+  },
+  walletDeductionFooter: {
+    color: '#E65C00',
+    fontWeight: '700',
+  },
+  finalAmountRowFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: verticalScale(6),
+    paddingTop: verticalScale(6),
+    borderTopWidth: 1,
+    borderTopColor: '#e8e8e8',
+  },
+  finalAmountLabelFooter: {
+    fontSize: FONT.BASE,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  finalAmountValueFooter: {
+    fontSize: FONT.LG,
+    fontWeight: '800',
+    color: '#E65C00',
+  },
+  // Enhanced Payment Method Modal Styles
+  paymentMethodModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  paymentMethodModalBackdrop: {
+    flex: 1,
+  },
+  paymentMethodModalContainer: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: scale(20),
+    borderTopRightRadius: scale(20),
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 10,
+      },
+    }),
+  },
+  dragHandleContainer: {
+    width: '100%',
+    alignItems: 'center',
+    paddingTop: verticalScale(8),
+    paddingBottom: verticalScale(4),
+  },
+  dragHandle: {
+    width: scale(40),
+    height: verticalScale(4),
+    backgroundColor: '#e0e0e0',
+    borderRadius: scale(2),
+  },
+  paymentMethodModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: scale(20),
+    paddingVertical: verticalScale(16),
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  paymentMethodModalTitle: {
+    fontSize: FONT.XXL,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  paymentMethodModalCloseButton: {
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    backgroundColor: '#f5f5f5',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  paymentSummaryContainer: {
+    padding: scale(20),
+    backgroundColor: '#f8f9fa',
+    marginHorizontal: scale(16),
+    marginTop: verticalScale(8),
+    borderRadius: scale(12),
+    marginBottom: verticalScale(12),
+  },
+  amountRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: verticalScale(8),
+  },
+  amountLabel: {
+    fontSize: FONT.SM,
+    color: '#666',
+    fontWeight: '500',
+  },
+  totalAmountValue: {
+    fontSize: FONT.SM,
+    fontWeight: '600',
+    color: '#333',
+  },
+  walletDeductionText: {
+    fontSize: FONT.SM,
+    fontWeight: '700',
+    color: '#E65C00',
+  },
+  finalAmountRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: verticalScale(8),
+    paddingTop: verticalScale(8),
+    borderTopWidth: 1.5,
+    borderTopColor: '#e8e8e8',
+  },
+  finalAmountLabel: {
+    fontSize: FONT.LG,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  finalAmountValue: {
+    fontSize: FONT.XL,
+    fontWeight: '800',
+    color: '#E65C00',
+  },
+  paymentMethodListContainer: {
+    maxHeight: height * 0.4,
+    marginTop:15,
+    paddingHorizontal: scale(16),
+    paddingBottom: verticalScale(16),
+  },
+  paymentMethodOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: verticalScale(14),
+    paddingHorizontal: scale(12),
+    marginBottom: verticalScale(8),
+    borderRadius: scale(12),
+    borderWidth: 1.5,
+    borderColor: '#f0f0f0',
+    backgroundColor: '#fff',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
+  },
+  paymentMethodOptionSelected: {
+    borderColor: '#E65C00',
+    backgroundColor: '#fff8f0',
+    transform: [{ scale: 1.01 }],
+  },
+  paymentMethodOptionDisabled: {
+    opacity: 0.5,
+    borderColor: '#e8e8e8',
+    backgroundColor: '#f8f8f8',
+  },
+  paymentMethodOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  paymentMethodIconContainer: {
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(12),
+    backgroundColor: '#fff0e6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: scale(12),
+    borderWidth: 1.5,
+    borderColor: '#ffe0cc',
+  },
+  paymentMethodIconContainerSelected: {
+    backgroundColor: '#E65C00',
+    borderColor: '#E65C00',
+  },
+  walletIconContainerActive: {
+    backgroundColor: '#fff0e6',
+    borderColor: '#E65C00',
+  },
+  paymentMethodTextContainer: {
+    flex: 1,
+  },
+  paymentMethodTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: verticalScale(2),
+  },
+  paymentMethodOptionTitle: {
+    fontSize: FONT.LG,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginRight: scale(8),
+  },
+  paymentMethodOptionTitleSelected: {
+    color: '#E65C00',
+  },
+  walletOptionTitleActive: {
+    color: '#E65C00',
+  },
+  walletActiveBadge: {
+    backgroundColor: '#E65C00',
+    paddingHorizontal: scale(6),
+    paddingVertical: verticalScale(2),
+    borderRadius: scale(4),
+  },
+  walletActiveBadgeText: {
+    color: '#fff',
+    fontSize: FONT.XS,
+    fontWeight: '700',
+  },
+  paymentMethodOptionSubtitle: {
+    fontSize: FONT.SM,
+    color: '#666',
+    fontWeight: '500',
+    marginBottom: verticalScale(4),
+  },
+  paymentMethodOptionSubtitleSelected: {
+    color: '#E65C00',
+  },
+  walletOptionSubtitleActive: {
+    color: '#E65C00',
+  },
+  paymentMethodOptionTextDisabled: {
+    color: '#999',
+  },
+  walletBalanceInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: verticalScale(2),
+  },
+  walletBalanceText: {
+    fontSize: FONT.SM,
+    color: '#E65C00',
+    fontWeight: '600',
+  },
+  insufficientBalanceText: {
+    color: '#ff6b6b',
+  },
+  insufficientMessage: {
+    fontSize: FONT.XS,
+    color: '#ff6b6b',
+    fontWeight: '500',
+    fontStyle: 'italic',
+  },
+  disabledReasonText: {
+    fontSize: FONT.XS,
+    color: '#ff6b6b',
+    fontWeight: '500',
+    marginTop: verticalScale(2),
+  },
+  paymentMethodOptionRight: {
+    alignItems: 'flex-end',
+  },
+  selectedIndicator: {
+    backgroundColor: '#fff',
+    borderRadius: scale(20),
+    padding: scale(2),
+  },
+  infoNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f8ff',
+    padding: scale(12),
+    borderRadius: scale(8),
+    marginTop: verticalScale(12),
+    borderWidth: 1,
+    borderColor: '#e3f2fd',
+  },
+  infoNoteText: {
+    fontSize: FONT.SM,
+    color: '#1976d2',
+    fontWeight: '500',
+    marginLeft: scale(8),
+    flex: 1,
+  },
+  // Eatoor Money Section Styles
   eatoorMoneyContainer: {
     paddingHorizontal: scale(12),
     paddingVertical: verticalScale(10),
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
-  },
-  eatoorMoneyHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: verticalScale(10),
-  },
-  eatoorMoneyTitle: {
-    fontSize: FONT.LG,
-    fontWeight: '700',
-    color: '#1a1a1a',
-  },
-  eatoorMoneyBalance: {
-    fontSize: FONT.SM,
-    color: '#666',
-    fontWeight: '500',
-  },
-  eatoorMoneyBalanceAmount: {
-    fontWeight: '700',
-    color: '#E65C00',
   },
   eatoorMoneyToggleRow: {
     flexDirection: 'row',
@@ -2400,7 +3214,7 @@ const styles = StyleSheet.create({
   },
   checkboxContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flex: 1,
   },
   checkbox: {
@@ -2413,6 +3227,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: scale(8),
+    marginTop: verticalScale(2),
   },
   checkboxChecked: {
     backgroundColor: '#E65C00',
@@ -2425,11 +3240,16 @@ const styles = StyleSheet.create({
   checkboxLabelContainer: {
     flex: 1,
   },
+  checkboxLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: verticalScale(4),
+  },
   checkboxLabel: {
     fontSize: FONT.BASE,
     fontWeight: '600',
     color: '#1a1a1a',
-    marginBottom: verticalScale(2),
   },
   checkboxLabelDisabled: {
     color: '#999',
@@ -2439,14 +3259,37 @@ const styles = StyleSheet.create({
     color: '#E65C00',
     fontWeight: '500',
   },
+  insufficientBalanceText: {
+    color: '#ff6b6b',
+  },
+  balanceTextDisabled: {
+    color: '#999',
+  },
+  insufficientMessageContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff5f5',
+    padding: scale(8),
+    borderRadius: scale(6),
+    marginTop: verticalScale(4),
+    borderWidth: 1,
+    borderColor: '#ffd6d6',
+  },
+  insufficientMessageText: {
+    fontSize: FONT.SM,
+    color: '#ff6b6b',
+    fontWeight: '500',
+    marginLeft: scale(4),
+    flex: 1,
+  },
   addMoneyButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: scale(8),
-    paddingVertical: verticalScale(4),
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(6),
     backgroundColor: '#fff',
-    borderRadius: scale(4),
-    borderWidth: 1,
+    borderRadius: scale(6),
+    borderWidth: 1.5,
     borderColor: '#E65C00',
   },
   addMoneyButtonText: {
@@ -2467,68 +3310,7 @@ const styles = StyleSheet.create({
     marginTop: verticalScale(6),
     fontWeight: '500',
   },
-  eatoorMoneyDetails: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: scale(8),
-    paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(8),
-    marginTop: verticalScale(6),
-  },
-  insufficientWarning: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff3e0',
-    paddingHorizontal: scale(10),
-    paddingVertical: verticalScale(8),
-    borderRadius: scale(6),
-    marginBottom: verticalScale(8),
-    borderWidth: 1,
-    borderColor: '#ffcc80',
-  },
-  insufficientText: {
-    fontSize: FONT.SM,
-    color: '#E65C00',
-    fontWeight: '500',
-    marginLeft: scale(6),
-    flex: 1,
-  },
-  eatoorMoneyBreakdown: {
-    borderTopWidth: 1,
-    borderTopColor: '#e8e8e8',
-    paddingTop: verticalScale(6),
-  },
-  eatoorMoneyRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: verticalScale(4),
-  },
-  eatoorMoneyLabel: {
-    fontSize: FONT.SM,
-    color: '#666',
-    fontWeight: '500',
-  },
-  eatoorMoneyDeduction: {
-    fontSize: FONT.SM,
-    color: '#E65C00',
-    fontWeight: '700',
-  },
-  eatoorMoneyAmount: {
-    fontSize: FONT.BASE,
-    color: '#E65C00',
-    fontWeight: '800',
-  },
-  eatoorMoneyFullyPaid: {
-    fontSize: FONT.BASE,
-    color: '#4CAF50',
-    fontWeight: '800',
-  },
-  sectionDivider: {
-    height: 8,
-    backgroundColor: '#f0f0f0',
-    marginHorizontal: -scale(16),
-    marginTop: verticalScale(10),
-  },
-  // Section Cards - All content in cards like Zomato
+  // Section Cards
   sectionCard: {
     backgroundColor: '#fff',
     borderRadius: scale(12),
@@ -2601,7 +3383,7 @@ const styles = StyleSheet.create({
     color: '#E65C00',
     fontWeight: '600',
   },
-  // Cart Item Styles - Compact and Clean
+  // Cart Item Styles
   cartItemCard: {
     backgroundColor: '#fff',
     borderRadius: scale(10),
@@ -2695,7 +3477,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FF9800',
   },
-  // Quantity Container - Compact Design
+  // Quantity Container
   quantityContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2726,7 +3508,7 @@ const styles = StyleSheet.create({
     minWidth: scale(18),
     textAlign: 'center',
   },
-  // Suggested Items - Horizontal Scroll
+  // Suggested Items
   suggestedItemsHorizontalContainer: {
     paddingHorizontal: scale(2),
     paddingBottom: verticalScale(2),
@@ -2887,7 +3669,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: scale(6),
   },
-  // Free Delivery Offer Card (Above Bill Details)
+  // Free Delivery Offer Card
   freeDeliveryOfferCard: {
     backgroundColor: '#e8f5e8',
     borderRadius: scale(12),
@@ -3194,77 +3976,6 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  paymentFooterContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: scale(12),
-    paddingBottom: verticalScale(10),
-  },
-  totalAmountContainer: {
-    flex: 1,
-  },
-  totalAmountLabel: {
-    fontSize: FONT.SM,
-    color: '#666',
-    fontWeight: '500',
-    marginBottom: verticalScale(2),
-  },
-  totalAmountValueContainer: {
-    flexDirection: 'column',
-  },
-  totalAmountValue: {
-    fontSize: FONT.XL,
-    fontWeight: '800',
-    color: '#E65C00',
-  },
-  walletUsageFooter: {
-    fontSize: FONT.XS,
-    color: '#666',
-    fontWeight: '500',
-    marginTop: verticalScale(1),
-  },
-  payButton: {
-    backgroundColor: '#E65C00',
-    borderRadius: scale(20),
-    paddingVertical: verticalScale(12),
-    paddingHorizontal: scale(20),
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: scale(130),
-  },
-  payButtonPaid: {
-    backgroundColor: '#E65C00',
-  },
-  payButtonText: {
-    color: '#fff',
-    fontSize: FONT.LG,
-    fontWeight: '700',
-    marginRight: scale(4),
-  },
-  payButtonIcon: {
-    marginLeft: scale(2),
-  },
-  addAddressButton: {
-    backgroundColor: '#E65C00',
-    borderRadius: scale(20),
-    paddingVertical: verticalScale(12),
-    paddingHorizontal: scale(16),
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-  },
-  addAddressButtonText: {
-    color: '#fff',
-    fontSize: FONT.LG,
-    fontWeight: '700',
-    marginLeft: scale(4),
-  },
-  addAddressIcon: {
-    marginRight: scale(4),
-  },
   // Verification Container
   verificationContainer: {
     alignItems: 'center',
@@ -3406,10 +4117,6 @@ const styles = StyleSheet.create({
   },
   networkErrorModal: {
     backgroundColor: '#607D8B',
-  },
-  // Add disabled button style
-  payButtonDisabled: {
-    opacity: 0.7,
   },
 });
 
