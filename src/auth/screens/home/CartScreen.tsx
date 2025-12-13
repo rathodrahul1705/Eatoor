@@ -1220,12 +1220,12 @@ const CartScreen = ({ route, navigation }) => {
     
     const walletBalanceAmount = walletBalance?.balance || 0;
     const totalAmount = safePrice(cartData.billing_details.total);
-    
+
     // Scenario 1: If wallet has insufficient balance, navigate to EatoorMoney page
     if (walletBalanceAmount < totalAmount) {
-      navigation.navigate('EatoorMoneyScreen', { 
+      navigation.navigate('EatoorMoneyAdd', { 
         prevScreen: 'CartScreen',
-        amountToAdd: totalAmount 
+        amountToAdd: totalAmount - walletBalanceAmount
       });
       setShowPaymentMethodModal(false);
       return;
@@ -1812,7 +1812,7 @@ const CartScreen = ({ route, navigation }) => {
           
           <TouchableOpacity 
             style={styles.addMoneyButton}
-            onPress={() => navigation.navigate('EatoorMoneyScreen', { 
+            onPress={() => navigation.navigate('EatoorMoneyAdd', { 
               prevScreen: 'CartScreen',
               amountToAdd: totalAmount
             })}

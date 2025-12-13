@@ -17,6 +17,8 @@ end
 
 target 'Eatoor' do
   config = use_native_modules!
+  use_frameworks! :linkage => :static
+  $RNFirebaseAsStaticFramework = true
 
   # Google Maps SDK (works with dynamic frameworks)
   pod 'GoogleMaps'

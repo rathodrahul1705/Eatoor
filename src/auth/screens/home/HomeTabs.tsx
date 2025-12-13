@@ -13,6 +13,7 @@ import {
   Dimensions,
   AppState,
   AppStateStatus,
+  SafeAreaView,
 } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -39,26 +40,36 @@ const Stack = createNativeStackNavigator<HomeStackParamList>();
 // Get screen dimensions
 const { width, height } = Dimensions.get('window');
 const isSmallDevice = height < 700;
-const isIOS = Platform.OS === 'ios';
 
-// Header height values optimized for all devices
-const HEADER_HEIGHT = isIOS ? (isSmallDevice ? 100 : 120) : (isSmallDevice ? 70 : 80);
-const HEADER_PADDING_TOP = isIOS ? (isSmallDevice ? 30 : 40) : 0;
+// Improved header height values for better cross-platform compatibility
+const HEADER_HEIGHT = Platform.select({
+  ios: isSmallDevice ? 100 : 120,
+  android: isSmallDevice ? 70 : 80,
+  default: 80,
+});
 
-const tabIcons: { [key in keyof HomeTabParamList]: string } = {
+const HEADER_PADDING_TOP = Platform.select({
+  ios: isSmallDevice ? 30 : 40,
+  android: 0,
+  default: 0,
+});
+
+// Define the tabs that actually exist in your app
+type AppTabs = 'Kitchen' | 'Eatmart' | 'Reorder' | 'Partner';
+
+// Tab icons for normal and focused states
+const tabIcons: Record<AppTabs, string> = {
   Kitchen: 'fast-food-outline',
   Eatmart: 'restaurant-outline',
   Reorder: 'repeat-outline',
   Partner: 'people-outline',
-  Cart: 'cart-outline',
 };
 
-const tabIconsFocused: { [key in keyof HomeTabParamList]: string } = {
+const tabIconsFocused: Record<AppTabs, string> = {
   Kitchen: 'fast-food',
   Eatmart: 'restaurant',
   Reorder: 'repeat',
   Partner: 'people',
-  Cart: 'cart',
 };
 
 // Enhanced Color palette with smooth gradient colors
@@ -71,17 +82,20 @@ const COLORS = {
   textLight: '#666666',
   border: '#EEEEEE',
   inactive: '#999999',
-  error: '#FFFFFF', // Changed to white for error messages
+  error: '#FF3B30',
   success: '#34C759',
   warning: '#FF9500',
   info: '#5AC8FA',
   // Enhanced gradient colors for smooth transitions
-  gradientStart: '#FF6B35',    // Primary orange
-  gradientMiddle: '#FF512F',   // Intermediate orange
-  gradientEnd: '#DD2476',      // Primary dark with pink tone
+  gradientStart: '#FF6B35',
+  gradientMiddle: '#FF512F',
+  gradientEnd: '#DD2476',
   // Additional gradient variations
-  gradientLight: '#FF9F5B',    // Light orange
-  gradientDark: '#E65C00',     // Dark orange
+  gradientLight: '#FF9F5B',
+  gradientDark: '#E65C00',
+  // Header specific colors
+  headerText: '#FFFFFF',
+  headerIcon: '#FFFFFF',
 };
 
 // Storage keys for consistency
@@ -93,7 +107,26 @@ const STORAGE_KEYS = {
   LONGITUDE: 'Longitude',
 };
 
-// Enhanced ProfileButton component with better touch handling
+// Custom Header Component - This will replace React Navigation's header
+const CustomHeader = ({ children }: { children: React.ReactNode }) => {
+  return (
+    <LinearGradient
+      colors={[COLORS.gradientStart, COLORS.gradientMiddle, COLORS.gradientEnd]}
+      style={styles.customHeader}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 0 }}
+      locations={[0, 0.5, 1]}
+    >
+      <SafeAreaView style={styles.headerSafeArea}>
+        <View style={styles.headerContent}>
+          {children}
+        </View>
+      </SafeAreaView>
+    </LinearGradient>
+  );
+};
+
+// Enhanced ProfileButton component
 const EnhancedProfileButton = () => {
   const navigation = useNavigation();
   
@@ -105,21 +138,14 @@ const EnhancedProfileButton = () => {
   return (
     <TouchableOpacity
       onPress={handleProfilePress}
-      style={styles.profileButton}
       activeOpacity={0.7}
-      hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+      style={styles.profileButton}
     >
-      <Animatable.View
-        animation="pulse"
-        duration={500}
-        useNativeDriver
-      >
-        <Icon 
-          name="person-circle-outline" 
-          size={32} 
-          color={COLORS.background} 
-        />
-      </Animatable.View>
+      <Icon 
+        name="person-circle-outline" 
+        size={Platform.select({ ios: 32, android: 28 })} 
+        color={COLORS.headerIcon} 
+      />
     </TouchableOpacity>
   );
 };
@@ -410,7 +436,7 @@ const AddressHeaderLeft = () => {
           resolve,
           (error) => {
             // Handle platform-specific errors
-            if (isIOS) {
+            if (Platform.OS === 'ios') {
               if (error.code === 1) {
                 error.message = 'Location permission denied';
               } else if (error.code === 2) {
@@ -430,8 +456,8 @@ const AddressHeaderLeft = () => {
             reject(error);
           },
           {
-            enableHighAccuracy: isIOS ? true : false,
-            timeout: isIOS ? 15000 : 30000,
+            enableHighAccuracy: Platform.OS === 'ios',
+            timeout: Platform.OS === 'ios' ? 15000 : 30000,
             maximumAge: 10000,
             distanceFilter: 50,
           }
@@ -503,7 +529,7 @@ const AddressHeaderLeft = () => {
           onPress: async () => {
             setLocation(prev => ({ ...prev, showEnableLocationPrompt: false }));
             try {
-              if (isIOS) {
+              if (Platform.OS === 'ios') {
                 await Linking.openURL('app-settings:');
               } else {
                 await Linking.sendIntent('android.settings.LOCATION_SOURCE_SETTINGS');
@@ -547,11 +573,11 @@ const AddressHeaderLeft = () => {
                     text: 'Open Settings',
                     onPress: async () => {
                       try {
-                        if (isIOS) {
+                        if (Platform.OS === 'ios') {
                           await Linking.openURL('app-settings:');
                         } else {
                           await Linking.openSettings();
-                        }
+                      }
                       } catch (error) {
                         console.error('Error opening settings:', error);
                       }
@@ -684,40 +710,38 @@ const AddressHeaderLeft = () => {
 
   return (
     <TouchableOpacity
-      style={styles.addressHeader}
       onPress={handleAddressPress}
       activeOpacity={0.7}
-      hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+      style={styles.addressContainer}
     >
-      <View style={styles.addressLine}>
+      <View style={styles.addressRow}>
         <Icon
-          name={"navigate"} 
-          size={14} 
-          color={location.error ? COLORS.error : COLORS.background} 
+          name="navigate" 
+          size={Platform.select({ ios: 14, android: 12 })} 
+          color={location.headerIcon ? COLORS.headerIcon : COLORS.headerIcon} 
         />
-        <Text style={[styles.addressLabel, { color: COLORS.background }]}>
+        <Text style={[styles.addressLabel, { color: COLORS.headerText }]}>
           {location.homeType}
         </Text>
         <Icon 
           name="chevron-down" 
-          size={16} 
-          color={COLORS.background} 
-          style={{ marginLeft: 2 }} 
+          size={Platform.select({ ios: 16, android: 14 })} 
+          color={COLORS.headerText} 
+          style={styles.chevronIcon} 
         />
       </View>
       
-      <Animatable.View 
-        animation={location.loading ? 'pulse' : undefined}
-        iterationCount="infinite"
-        style={styles.addressLine}
-      >
+      <View style={styles.addressRow}>
         {location.loading ? (
-          <ActivityIndicator size={14} color={COLORS.background} />
+          <ActivityIndicator 
+            size={Platform.select({ ios: 14, android: 'small' })} 
+            color={COLORS.headerIcon} 
+          />
         ) : (
           <Icon 
             name={location.error ? "warning-outline" : "location-outline"}  
-            size={15} 
-            color={location.error ? COLORS.error : COLORS.background} 
+            size={Platform.select({ ios: 15, android: 13 })} 
+            color={location.headerIcon ? COLORS.headerIcon : COLORS.headerIcon} 
           />
         )}
         
@@ -725,7 +749,7 @@ const AddressHeaderLeft = () => {
           style={[
             styles.addressText, 
             { 
-              color: location.error ? COLORS.error : COLORS.background,
+              color: location.headerIcon ? COLORS.headerIcon : COLORS.headerText,
               fontWeight: location.error ? '500' : '400',
             },
           ]} 
@@ -742,24 +766,34 @@ const AddressHeaderLeft = () => {
               handleRefreshLocation();
             }} 
             style={styles.refreshButton}
-            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
           >
-            <Animatable.View 
-              animation="pulse" 
-              iterationCount={1}
-              duration={500}
-              useNativeDriver
-            >
-              <Icon 
-                name="reload-outline" 
-                size={14} 
-                color={location.error ? COLORS.error : COLORS.background} 
-              />
-            </Animatable.View>
+            <Icon 
+              name="reload-outline" 
+              size={Platform.select({ ios: 14, android: 12 })} 
+              color={location.headerIcon ? COLORS.headerIcon : COLORS.headerIcon} 
+            />
           </TouchableOpacity>
         )}
-      </Animatable.View>
+      </View>
     </TouchableOpacity>
+  );
+};
+
+// Custom Screen wrapper with custom header
+const HomeScreenWithCustomHeader = () => {
+  return (
+    <View style={styles.fullScreen}>
+      <CustomHeader>
+        <View style={styles.headerRow}>
+          <AddressHeaderLeft />
+          <View style={styles.spacer} />
+          <EnhancedProfileButton />
+        </View>
+      </CustomHeader>
+      <View style={styles.screenContent}>
+        <HomeTabsNavigator />
+      </View>
+    </View>
   );
 };
 
@@ -768,9 +802,10 @@ const HomeTabsNavigator = () => {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         tabBarIcon: ({ focused, color, size }) => {
+          const routeName = route.name as AppTabs;
           const iconName = focused
-            ? tabIconsFocused[route.name as keyof HomeTabParamList]
-            : tabIcons[route.name as keyof HomeTabParamList];
+            ? tabIconsFocused[routeName]
+            : tabIcons[routeName];
           const animation = focused ? 'bounceIn' : undefined;
 
           return (
@@ -786,21 +821,12 @@ const HomeTabsNavigator = () => {
         },
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.inactive,
-        tabBarStyle: [
-          styles.tabBar,
-          {
-            backgroundColor: COLORS.background,
-            borderTopColor: COLORS.border,
-          },
-        ],
+        tabBarStyle: styles.tabBar,
         tabBarLabelStyle: styles.tabLabel,
         headerShown: false,
         tabBarShowLabel: true,
       })}
-      sceneContainerStyle={[
-        styles.sceneContainer,
-        { backgroundColor: COLORS.background },
-      ]}
+      sceneContainerStyle={styles.sceneContainer}
     >
       <Tab.Screen 
         name="Kitchen" 
@@ -846,42 +872,14 @@ const HomeTabs = () => {
         backgroundColor={COLORS.gradientStart} 
         translucent={false}
       />
-      <Stack.Navigator>
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+        }}
+      >
         <Stack.Screen
-          name="HomeTabs"
-          component={HomeTabsNavigator}
-          options={{
-            headerTitle: '',
-            headerLeft: () => <AddressHeaderLeft />,
-            headerRight: () => <EnhancedProfileButton />,
-            headerBackground: () => (
-              <LinearGradient
-                colors={[COLORS.gradientStart, COLORS.gradientMiddle, COLORS.gradientEnd]}
-                style={StyleSheet.absoluteFill}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                locations={[0, 0.5, 1]}
-              />
-            ),
-            headerStyle: [
-              styles.header,
-              { 
-                backgroundColor: 'transparent',
-                borderBottomWidth: 0,
-                height: HEADER_HEIGHT,
-                paddingTop: HEADER_PADDING_TOP,
-                elevation: 0,
-                shadowOpacity: 0,
-              },
-            ],
-            headerShadowVisible: false,
-            headerTitleStyle: {
-              color: COLORS.background,
-            },
-            // Improved header configuration for better touch handling
-            headerLeftContainerStyle: styles.headerLeftContainer,
-            headerRightContainerStyle: styles.headerRightContainer,
-          }}
+          name="HomeScreen"
+          component={HomeScreenWithCustomHeader}
         />
       </Stack.Navigator>
     </>
@@ -889,90 +887,115 @@ const HomeTabs = () => {
 };
 
 const styles = StyleSheet.create({
-  sceneContainer: {
+  fullScreen: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  customHeader: {
+    width: '100%',
+    height: HEADER_HEIGHT,
+  },
+  headerSafeArea: {
     flex: 1,
   },
-  header: {
-    elevation: 0,
-    shadowOpacity: 0,
-    borderBottomWidth: 0,
+  headerContent: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    paddingBottom: 10,
   },
-  // Improved container styles for better touch handling
-  headerLeftContainer: {
-    paddingLeft: isIOS ? 16 : 16,
-    paddingRight: isIOS ? 0 : 16,
-    zIndex: 999,
-    elevation: 999,
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
   },
-  headerRightContainer: {
-    paddingRight: isIOS ? 16 : 16,
-    paddingLeft: isIOS ? 0 : 16,
-    zIndex: 999,
-    elevation: 999,
+  spacer: {
+    flex: 1,
   },
+  screenContent: {
+    flex: 1,
+  },
+  sceneContainer: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  
+  // Profile button - NO BACKGROUND
   profileButton: {
-    padding: 8,
-    borderRadius: 20,
-    zIndex: 1000,
-    elevation: 1000,
+    // No background, no padding
   },
+  
+  // Tab bar styles
   tabBar: {
     position: 'absolute',
-    left: 10,
-    right: 10,
-    bottom: isIOS ? (isSmallDevice ? 20 : 0) : (isSmallDevice ? 10 : 0),
-    height: isIOS ? (isSmallDevice ? 64 : 80) : (isSmallDevice ? 58 : 64),
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 8,
+    left: 0,
+    right: 0,
+    bottom: Platform.select({ ios: isSmallDevice ? 20 : 0, android: 0 }),
+    height: Platform.select({ ios: isSmallDevice ? 64 : 80, android: isSmallDevice ? 58 : 64 }),
+    backgroundColor: COLORS.background,
+    borderTopWidth: Platform.select({ ios: 0, android: 1 }),
+    borderTopColor: COLORS.border,
     paddingHorizontal: 10,
-    borderTopWidth: 0,
-    borderRadius: isIOS ? 0 : 0,
-    zIndex: 100,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
+  
   tabLabel: {
-    fontSize: isIOS ? (isSmallDevice ? 11 : 12) : (isSmallDevice ? 10 : 11),
-    fontWeight: '600',
-    paddingBottom: isIOS ? (isSmallDevice ? 4 : 6) : (isSmallDevice ? 2 : 4),
+    fontSize: Platform.select({ ios: isSmallDevice ? 11 : 12, android: isSmallDevice ? 10 : 11 }),
+    fontWeight: Platform.select({ ios: '600', android: '500' }),
+    paddingBottom: Platform.select({ ios: isSmallDevice ? 4 : 6, android: isSmallDevice ? 2 : 4 }),
+    marginTop: Platform.select({ ios: 0, android: -2 }),
   },
+  
   tabIconContainer: {
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: isIOS ? 2 : 0,
-    paddingTop: isIOS ? 0 : (isSmallDevice ? 4 : 6),
+    marginBottom: Platform.select({ ios: 2, android: 0 }),
+    paddingTop: Platform.select({ ios: 0, android: isSmallDevice ? 4 : 6 }),
   },
-  addressHeader: {
-    flexDirection: 'column',
-    paddingLeft: isIOS ? 0 : 0,
-    paddingTop: isIOS ? 8 : 4,
-    maxWidth: isIOS ? (isSmallDevice ? 220 : 240) : (isSmallDevice ? 200 : 220),
-    minHeight: 50,
-    justifyContent: 'center',
-    zIndex: 1000,
-    elevation: 1000,
+  
+  // Address container - NO BACKGROUND
+  addressContainer: {
+    maxWidth: Platform.select({ ios: isSmallDevice ? 220 : 240, android: isSmallDevice ? 200 : 220 }),
   },
-  addressLine: {
+  
+  addressRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 0,
+    marginBottom: 2,
   },
+  
+  chevronIcon: {
+    marginLeft: 2,
+  },
+  
   addressLabel: {
-    fontSize: isIOS ? (isSmallDevice ? 13 : 14) : (isSmallDevice ? 12 : 15),
-    fontWeight: '900',
+    fontSize: Platform.select({ ios: isSmallDevice ? 13 : 14, android: isSmallDevice ? 12 : 13 }),
+    fontWeight: Platform.select({ ios: '900', android: '700' }),
     marginLeft: 6,
-    marginTop: isIOS ? 0 : 2,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
+  
   addressText: {
-    fontSize: isIOS ? (isSmallDevice ? 13 : 14) : (isSmallDevice ? 12 : 11),
+    fontSize: Platform.select({ ios: isSmallDevice ? 13 : 14, android: isSmallDevice ? 12 : 13 }),
     marginLeft: 6,
-    maxWidth: isIOS ? (isSmallDevice ? 160 : 180) : (isSmallDevice ? 140 : 160),
+    maxWidth: Platform.select({ ios: isSmallDevice ? 160 : 180, android: isSmallDevice ? 140 : 160 }),
     flexShrink: 1,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
+  
   refreshButton: {
-    marginLeft: 8,
-    padding: 4,
+    marginLeft: Platform.select({ ios: 8, android: 6 }),
   },
 });
 

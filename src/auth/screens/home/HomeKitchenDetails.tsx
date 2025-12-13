@@ -458,13 +458,6 @@ const HomeKitchenDetails = ({ route }) => {
           code = `OFFER${offer.id}`;
       }
       
-      // Add validity period if available
-      if (offer.details?.valid_from && offer.details?.valid_to) {
-        const validFrom = new Date(offer.details.valid_from).toLocaleDateString();
-        const validTo = new Date(offer.details.valid_to).toLocaleDateString();
-        description += '';
-      }
-      
       return {
         id: offer.id.toString(),
         title: offer.title,
@@ -781,8 +774,6 @@ const HomeKitchenDetails = ({ route }) => {
 
   // Copy offer code to clipboard
   const copyToClipboard = useCallback((code) => {
-    // You'll need to install and use @react-native-clipboard/clipboard
-    // For now, let's show a message
     showMessage({
       message: "Offer code copied!",
       description: `Code: ${code}`,
@@ -820,18 +811,19 @@ const HomeKitchenDetails = ({ route }) => {
       activeOpacity={0.8}
     >
       <View style={styles.kitchenDetails__offerIcon}>
-        <Icon name="pricetag" size={20} color={COLORS.primary} />
+        <Icon 
+          name={item.offer_type === "free_delivery" ? "bicycle" : "pricetag"} 
+          size={16} 
+          color={COLORS.primary} 
+        />
       </View>
       <View style={styles.kitchenDetails__offerContent}>
-        <Text style={styles.kitchenDetails__offerTitle}>{item.title}</Text>
-        <Text style={styles.kitchenDetails__offerDescription}>
+        <Text style={styles.kitchenDetails__offerTitle} numberOfLines={1}>
+          {item.title}
+        </Text>
+        <Text style={styles.kitchenDetails__offerDescription} numberOfLines={2}>
           {item.description}
         </Text>
-        <View style={styles.kitchenDetails__offerCodeContainer}>
-          <Text style={styles.kitchenDetails__offerCodeText}>
-            {/* Code: {item.code} */}
-          </Text>
-        </View>
       </View>
       <View style={styles.kitchenDetails__offerCount}>
         <Text style={styles.kitchenDetails__offerCountText}>
@@ -1008,7 +1000,7 @@ const HomeKitchenDetails = ({ route }) => {
             </Text>
             <Icon
               name={isExpanded ? "chevron-up" : "chevron-down"}
-              size={24}
+              size={20}
               color={COLORS.primary}
             />
           </View>
@@ -1124,15 +1116,14 @@ const HomeKitchenDetails = ({ route }) => {
 
       <Animated.ScrollView
         ref={scrollViewRef}
-        style={[
-          styles.kitchenDetails__scrollView,
-          { marginBottom: showCartSummary ? 120 : 0 },
-        ]}
+        style={styles.kitchenDetails__scrollView}
+        contentContainerStyle={styles.kitchenDetails__scrollContent}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           { useNativeDriver: false }
         )}
         scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -1223,11 +1214,11 @@ const HomeKitchenDetails = ({ route }) => {
           </View>
         </View>
 
-        {/* Offers Banner - Conditionally Rendered */}
+        {/* Offers Banner - Compact Design */}
         {offers.length > 0 ? (
           <View style={styles.kitchenDetails__offersContainer}>
             <View style={styles.kitchenDetails__offersHeader}>
-              <Icon name="pricetag" size={20} color={COLORS.primary} />
+              <Icon name="pricetag" size={18} color={COLORS.primary} />
               <Text style={styles.kitchenDetails__offersTitle}>Offers</Text>
               <TouchableOpacity
                 onPress={openOffersModal}
@@ -1247,7 +1238,7 @@ const HomeKitchenDetails = ({ route }) => {
               showsHorizontalScrollIndicator={false}
               onMomentumScrollEnd={(event) => {
                 const index = Math.round(
-                  event.nativeEvent.contentOffset.x / (width - 40)
+                  event.nativeEvent.contentOffset.x / (width - 32)
                 );
                 setCurrentOfferIndex(index);
               }}
@@ -1267,9 +1258,9 @@ const HomeKitchenDetails = ({ route }) => {
           </View>
         ) : (
           <View style={styles.kitchenDetails__noOffersContainer}>
-            <Icon name="pricetag-outline" size={24} color={COLORS.border} />
+            <Icon name="pricetag-outline" size={20} color={COLORS.border} />
             <Text style={styles.kitchenDetails__noOffersText}>
-              No offers available at the moment
+              No offers available
             </Text>
           </View>
         )}
@@ -1287,7 +1278,7 @@ const HomeKitchenDetails = ({ route }) => {
         {/* Kitchen Closed Message */}
         {!isKitchenOpen && (
           <View style={styles.kitchenDetails__closedMessageContainer}>
-            <Icon name="time-outline" size={24} color={COLORS.primary} />
+            <Icon name="time-outline" size={20} color={COLORS.primary} />
             <Text style={styles.kitchenDetails__closedMessageText}>
               This kitchen is currently closed. You can browse the menu but
               cannot place orders.
@@ -1306,13 +1297,16 @@ const HomeKitchenDetails = ({ route }) => {
             />
           ) : (
             <View style={styles.kitchenDetails__noItemsContainer}>
-              <Icon name="fast-food-outline" size={60} color={COLORS.border} />
+              <Icon name="fast-food-outline" size={50} color={COLORS.border} />
               <Text style={styles.kitchenDetails__noItemsText}>
                 No items found for this filter
               </Text>
             </View>
           )}
         </View>
+        
+        {/* Bottom Padding for ScrollView */}
+        <View style={styles.kitchenDetails__bottomPadding} />
       </Animated.ScrollView>
 
       {/* Cart Summary Bar */}
@@ -1812,17 +1806,22 @@ const styles = StyleSheet.create({
     zIndex: 11,
   },
 
-  // Scroll View
+  // Scroll View - FIXED to remove white space
   kitchenDetails__scrollView: {
     flex: 1,
-    marginBottom: 0,
+  },
+  kitchenDetails__scrollContent: {
+    paddingBottom: Platform.OS === 'ios' ? 80 : 60, // Add padding for safe area
+  },
+  kitchenDetails__bottomPadding: {
+    height: Platform.OS === 'ios' ? 100 : 80, // Extra padding at bottom
   },
 
   // Kitchen Card Styles
   kitchenDetails__kitchenCard: {
     backgroundColor: COLORS.background,
     marginTop: 230,
-    marginBottom: 10,
+    marginBottom: 8, // Reduced from 10
     marginHorizontal: 12,
     borderRadius: 16,
     shadowColor: "#000",
@@ -1941,21 +1940,23 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
 
-  // Offers Styles
+  // UPDATED Offers Styles - More Compact
   kitchenDetails__offersContainer: {
-    padding: 20,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 16,
     backgroundColor: COLORS.background,
-    borderBottomWidth: 6,
-    borderBottomColor: COLORS.divider,
+    marginBottom: 8, // Reduced from border
   },
   kitchenDetails__noOffersContainer: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    padding: 10,
-    marginHorizontal: 20,
-    marginVertical: 10,
+    padding: 12,
+    marginHorizontal: 16,
+    marginVertical: 8,
     backgroundColor: COLORS.surface,
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.divider,
     borderStyle: "dashed",
@@ -1965,12 +1966,12 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: COLORS.text.disabled,
     textAlign: "center",
-    marginTop: 8,
+    marginLeft: 8,
   },
   kitchenDetails__offersHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 12,
     gap: 8,
   },
   kitchenDetails__offersTitle: {
@@ -1992,69 +1993,59 @@ const styles = StyleSheet.create({
   kitchenDetails__offerItem: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 16,
-    borderRadius: 16,
+    padding: 12,
+    borderRadius: 12,
     backgroundColor: COLORS.surface,
-    marginRight: 16,
-    width: width - 40,
-    borderWidth: 1.5,
+    marginRight: 12,
+    width: width - 32, // Adjusted width
+    borderWidth: 1,
     borderColor: COLORS.divider,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
   kitchenDetails__offerItemActive: {
     backgroundColor: "#fff8e6",
     borderColor: "#ffd166",
     shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   kitchenDetails__offerIcon: {
-    marginRight: 12,
+    marginRight: 10,
     backgroundColor: "#fff0e0",
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
   },
   kitchenDetails__offerContent: {
     flex: 1,
+    marginRight: 8,
   },
   kitchenDetails__offerTitle: {
-    fontSize: FONT.LG,
-    fontWeight: "bold",
+    fontSize: FONT.SM,
+    fontWeight: "600",
     color: COLORS.text.primary,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   kitchenDetails__offerDescription: {
-    fontSize: FONT.SM,
-    color: COLORS.text.secondary,
-    marginBottom: 6,
-    lineHeight: 18,
-  },
-  kitchenDetails__offerCodeContainer: {
-    backgroundColor: "#fff0e0",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    alignSelf: "flex-start",
-  },
-  kitchenDetails__offerCodeText: {
     fontSize: FONT.XS,
-    color: COLORS.primary,
-    fontWeight: "500",
+    color: COLORS.text.secondary,
+    lineHeight: 14,
   },
   kitchenDetails__offerCount: {
     backgroundColor: COLORS.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 8,
+    minWidth: 40,
+    alignItems: "center",
   },
   kitchenDetails__offerCountText: {
     color: COLORS.text.light,
@@ -2065,35 +2056,36 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 12,
-    gap: 6,
+    marginTop: 8,
+    gap: 4,
   },
   kitchenDetails__paginationDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: COLORS.border,
   },
   kitchenDetails__paginationDotActive: {
     backgroundColor: COLORS.primary,
-    width: 12,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
 
   // Filters Styles
   kitchenDetails__filtersContainer: {
     backgroundColor: COLORS.background,
-    borderBottomWidth: 6,
-    borderBottomColor: COLORS.divider,
+    marginBottom: 8, // Reduced from border
   },
   kitchenDetails__filtersContent: {
     paddingHorizontal: 16,
-    paddingVertical: 16,
-    gap: 12,
+    paddingVertical: 12,
+    gap: 8,
   },
   kitchenDetails__filterChip: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
     backgroundColor: COLORS.surface,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -2114,35 +2106,39 @@ const styles = StyleSheet.create({
   // Closed Message Styles
   kitchenDetails__closedMessageContainer: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     backgroundColor: "#fff8e6",
-    padding: 16,
+    padding: 12,
     marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 12,
+    marginVertical: 8,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: "#ffd166",
   },
   kitchenDetails__closedMessageText: {
-    marginLeft: 12,
+    marginLeft: 10,
     fontSize: FONT.SM,
     color: COLORS.primary,
     flex: 1,
+    lineHeight: 16,
   },
 
-  // Menu Container Styles
+  // Menu Container Styles - FIXED to remove bottom white space
   kitchenDetails__menuContainer: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 20, // Reduced padding
     backgroundColor: COLORS.background,
-    minHeight: 300,
+    flex: 1,
   },
   kitchenDetails__noItemsContainer: {
     alignItems: "center",
     justifyContent: "center",
-    padding: 40,
+    paddingVertical: 30,
+    paddingHorizontal: 20,
   },
   kitchenDetails__noItemsText: {
-    marginTop: 16,
+    marginTop: 12,
     fontSize: FONT.LG,
     color: COLORS.text.disabled,
     textAlign: "center",
@@ -2150,20 +2146,20 @@ const styles = StyleSheet.create({
 
   // Menu Section Styles
   kitchenDetails__menuSection: {
-    marginBottom: 16,
-    borderRadius: 16,
+    marginBottom: 12,
+    borderRadius: 12,
     backgroundColor: COLORS.background,
     overflow: "hidden",
     borderWidth: 1,
     borderColor: COLORS.divider,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
   kitchenDetails__sectionHeader: {
-    padding: 16,
+    padding: 14,
     backgroundColor: COLORS.surface,
   },
   kitchenDetails__sectionHeaderContent: {
@@ -2177,7 +2173,7 @@ const styles = StyleSheet.create({
     color: COLORS.text.primary,
   },
   kitchenDetails__sectionContent: {
-    padding: 16,
+    padding: 14,
     paddingTop: 0,
   },
 
@@ -2345,19 +2341,22 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  // Cart Summary Styles
+  // Cart Summary Styles - FIXED positioning
   kitchenDetails__cartSummaryContainer: {
     position: "absolute",
-    bottom: Platform.OS === "android" ? 0 : 0,
+    bottom: 0,
     left: 0,
     right: 0,
     backgroundColor: COLORS.background,
     padding: 16,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 16,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.1,
-    shadowRadius: 12,
+    shadowRadius: 8,
     elevation: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.divider,
   },
   kitchenDetails__cartSummaryHeader: {
     flexDirection: "row",

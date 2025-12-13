@@ -1,1001 +1,513 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
+  StyleSheet,
   View,
   Text,
-  StyleSheet,
-  ScrollView,
   TouchableOpacity,
-  FlatList,
   SafeAreaView,
   StatusBar,
-  Platform,
-  TextInput,
-  Modal,
-  Alert,
+  FlatList,
   Dimensions,
-  Animated,
-  Easing,
-  ActivityIndicator,
+  Platform,
   RefreshControl,
+  Alert,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from 'react-native-vector-icons/Ionicons';
-import LinearGradient from 'react-native-linear-gradient';
-import RazorpayCheckout from 'react-native-razorpay';
 import {
   getWalletBalance,
-  createWalletOrder,
-  walletAddMoneySuccess,
   getWalletTransactions,
 } from '../../../api/wallet';
-import { useRoute } from '@react-navigation/native';
 
-const { width, height } = Dimensions.get('window');
-
-// Constants
-const QUICK_AMOUNTS = [100, 200, 500, 1000, 2000, 5000];
-const MIN_AMOUNT = 1;
-const MAX_AMOUNT = 100000;
-const TRANSACTION_FILTERS = [
-  { id: 'all', label: 'All', icon: 'grid-outline' },
-  { id: 'credit', label: 'Credits', icon: 'trending-up-outline' },
-  { id: 'debit', label: 'Debits', icon: 'trending-down-outline' },
-];
-
-// Helper functions
-const mapTransactionType = (txn_type) => {
-  const mapping = {
-    credit: { type: 'addition', label: 'Credit', icon: 'add-circle', color: '#10B981', bgColor: 'rgba(16, 185, 129, 0.1)' },
-    debit: { type: 'deduction', label: 'Debit', icon: 'remove-circle', color: '#EF4444', bgColor: 'rgba(239, 68, 68, 0.1)' },
-  };
-  return mapping[txn_type] || { type: 'addition', label: 'Other', icon: 'help-circle', color: '#3B82F6', bgColor: 'rgba(59, 130, 246, 0.1)' };
-};
-
-const mapTransactionSource = (txn_source) => {
-  const mapping = {
-    add_money: { category: 'Wallet Top-up', description: 'Money Added', icon: 'wallet-outline' },
-    order_payment: { category: 'Order Payment', description: 'Food Order', icon: 'restaurant-outline' },
-    refund: { category: 'Refund', description: 'Order Refund', icon: 'arrow-back-outline' },
-    referral: { category: 'Referral Bonus', description: 'Referral Reward', icon: 'gift-outline' },
-    cashback: { category: 'Cashback', description: 'Reward Cashback', icon: 'cash-outline' },
-  };
-  return mapping[txn_source] || { category: 'Transaction', description: 'Wallet Transaction', icon: 'swap-horizontal-outline' };
-};
-
-const formatTransactionDate = (created_at) => {
-  const date = new Date(created_at);
-  const now = new Date();
-  const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
-  
-  if (diffDays === 0) return 'Today';
-  if (diffDays === 1) return 'Yesterday';
-  if (diffDays < 7) return `${diffDays} days ago`;
-  
-  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-};
-
-const formatAmount = (amount) => {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(amount);
-};
+const { width } = Dimensions.get('window');
 
 const EatoorMoneyScreen = ({ navigation }) => {
-  // State Management
-  const route = useRoute();
-  const [balance, setBalance] = useState(0);
-  const [transactions, setTransactions] = useState([]);
+  const [balanceVisible, setBalanceVisible] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState('all');
-  const [addMoneyModalVisible, setAddMoneyModalVisible] = useState(false);
-  const [amount, setAmount] = useState('');
-  const [isBalanceVisible, setIsBalanceVisible] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [processingPayment, setProcessingPayment] = useState(false);
-  const [user, setUser] = useState({
-    name: '',
-    email: '',
-    contact: '',
-    id: '',
-  });
   const [refreshing, setRefreshing] = useState(false);
-  
-  // Refs
-  const scrollY = useRef(new Animated.Value(0)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(height)).current;
-  const rotateAnim = useRef(new Animated.Value(0)).current;
-  const eyeScaleAnim = useRef(new Animated.Value(1)).current;
-  const flatListRef = useRef(null);
-  const isMounted = useRef(true);
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [transactions, setTransactions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [isActive, setIsActive] = useState(true);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      isMounted.current = false;
-    };
-  }, []);
-
-  // Animation interpolations
-  const headerOpacity = scrollY.interpolate({
-    inputRange: [0, 100, 150],
-    outputRange: [1, 0.8, 0],
-    extrapolate: 'clamp',
-  });
-
-  const headerScale = scrollY.interpolate({
-    inputRange: [0, 100],
-    outputRange: [1, 0.95],
-    extrapolate: 'clamp',
-  });
-
-  // Fetch user data from AsyncStorage
-  const fetchUserData = useCallback(async () => {
-    if (!isMounted.current) return;
-    
+  // Fetch wallet data
+  const fetchWalletData = async () => {
     try {
-      const userData = await AsyncStorage.getItem('user');
-      if (userData) {
-        const parsedUser = JSON.parse(userData);
-        
-        const userDetails = {
-          name: parsedUser.full_name || parsedUser.name || 'Eatoor User',
-          email: parsedUser.email || 'user@example.com',
-          contact: parsedUser.contact_number || parsedUser.phone || parsedUser.mobile || '9999999999',
-          id: parsedUser.id || parsedUser.user_id || '',
-          avatar: parsedUser.avatar || parsedUser.profile_image || null,
-        };
-        
-        setUser(userDetails);
-        
-        if (parsedUser.wallet_balance !== undefined) {
-          setBalance(parseFloat(parsedUser.wallet_balance));
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching user data:', error);
-      setUser({
-        name: 'Eatoor User',
-        email: 'user@example.com',
-        contact: '9999999999',
-        id: '',
-      });
-    }
-  }, []);
-
-  // Toggle balance visibility with animation
-  const toggleBalanceVisibility = useCallback(() => {
-    Animated.sequence([
-      Animated.timing(eyeScaleAnim, {
-        toValue: 0,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(eyeScaleAnim, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-    ]).start();
-    
-    setIsBalanceVisible(prev => !prev);
-  }, []);
-
-  // Process transaction data from API
-  const processTransactionData = useCallback((apiTransactions) => {
-    if (!apiTransactions || !Array.isArray(apiTransactions)) return [];
-    
-    return apiTransactions.map(transaction => {
-      const typeInfo = mapTransactionType(transaction.txn_type);
-      const sourceInfo = mapTransactionSource(transaction.txn_source);
-      const date = new Date(transaction.created_at);
-      
-      return {
-        id: transaction.id.toString(),
-        title: sourceInfo.category,
-        amount: parseFloat(transaction.amount),
-        type: typeInfo.type,
-        txn_type: transaction.txn_type,
-        date: formatTransactionDate(transaction.created_at),
-        time: date.toLocaleTimeString('en-IN', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        }),
-        description: transaction.note || sourceInfo.description,
-        category: sourceInfo.category,
-        icon: sourceInfo.icon || typeInfo.icon,
-        color: typeInfo.color,
-        bgColor: typeInfo.bgColor,
-        orderId: transaction.order_number,
-        status: transaction.status,
-        created_at: transaction.created_at,
-        fullDate: date,
-      };
-    });
-  }, []);
-
-  // Load wallet data
-  const fetchWalletData = useCallback(async (isRefresh = false) => {
-    if (!isMounted.current) return;
-    
-    try {
-      if (isRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
-      
+      setLoading(true);
+      // Fetch wallet balance
       const balanceResponse = await getWalletBalance();
-      
-      if (balanceResponse.data?.balance) {
-        setBalance(parseFloat(balanceResponse.data.balance));
-        
-        const processedTransactions = processTransactionData(
-          balanceResponse.data.transactions
-        );
-        
-        setTransactions(processedTransactions);
-        setCurrentPage(1);
-        setHasMore(true);
+      if (balanceResponse.data) {
+        setWalletBalance(parseFloat(balanceResponse.data.balance));
+        setIsActive(balanceResponse.data.is_active);
+      }
+
+      // Fetch transactions
+      const transactionsResponse = await getWalletTransactions();
+      if (transactionsResponse.data) {
+        const formattedTransactions = transactionsResponse?.data.map(transaction => ({
+          id: transaction.id.toString(),
+          type: transaction.txn_type, // 'credit' or 'debit'
+          amount: parseFloat(transaction.amount),
+          description: getTransactionDescription(transaction),
+          date: formatDate(transaction.created_at),
+          time: formatTime(transaction.created_at),
+          category: getTransactionCategory(transaction),
+          txn_source: transaction.txn_source,
+          status: transaction.status,
+          note: transaction.note,
+          order_number: transaction.order_number,
+          razorpay_payment_id: transaction.razorpay_payment_id,
+          created_at: transaction.created_at,
+        }));
+        setTransactions(formattedTransactions);
       }
     } catch (error) {
       console.error('Error fetching wallet data:', error);
-      Alert.alert('Oops!', 'Failed to load wallet data. Please try again.');
+      Alert.alert('Error', 'Failed to load wallet data. Please try again.');
     } finally {
-      if (isMounted.current) {
-        setLoading(false);
-        setRefreshing(false);
-      }
+      setLoading(false);
     }
-  }, [processTransactionData]);
+  };
+
+  // Helper function to get transaction description
+  const getTransactionDescription = (transaction) => {
+    if (transaction.order_number) {
+      return `Order #${transaction.order_number}`;
+    }
+    
+    switch (transaction.txn_source) {
+      case 'add_money':
+        return 'Wallet Recharge';
+      case 'order_payment':
+        return transaction.order_number ? `Order #${transaction.order_number}` : 'Order Payment';
+      case 'refund':
+        return 'Refund';
+      case 'cashback':
+        return 'Cashback Offer';
+      case 'bonus':
+        return 'Bonus';
+      case 'referral':
+        return 'Referral Bonus';
+      default:
+        return transaction.note || 'Transaction';
+    }
+  };
+
+  // Helper function to get transaction category
+  const getTransactionCategory = (transaction) => {
+    switch (transaction.txn_source) {
+      case 'add_money':
+        return 'recharge';
+      case 'order_payment':
+        return 'food';
+      case 'refund':
+        return 'refund';
+      case 'cashback':
+        return 'cashback';
+      case 'bonus':
+      case 'referral':
+        return 'bonus';
+      default:
+        return 'other';
+    }
+  };
+
+  // Helper function to format date
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-IN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+  };
+
+  // Helper function to format time
+  const formatTime = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
 
   // Initial load
   useEffect(() => {
     fetchWalletData();
-    fetchUserData();
-  }, [fetchWalletData, fetchUserData]);
-
-  // Refresh handler
-  const handleRefresh = useCallback(() => {
-    fetchWalletData(true);
-  }, [fetchWalletData]);
-
-  // Load more transactions
-  const loadMoreTransactions = useCallback(async () => {
-    if (loadingMore || !hasMore || !isMounted.current) return;
-
-    try {
-      setLoadingMore(true);
-      const nextPage = currentPage + 1;
-      const response = await getWalletTransactions(nextPage);
-
-      if (response.data?.results?.length > 0) {
-        const newTransactions = processTransactionData(response.data.results);
-        setTransactions(prev => [...prev, ...newTransactions]);
-        setCurrentPage(nextPage);
-        setHasMore(response.data.next !== null);
-      } else {
-        setHasMore(false);
-      }
-    } catch (error) {
-      console.error('Error loading more transactions:', error);
-    } finally {
-      if (isMounted.current) {
-        setLoadingMore(false);
-      }
-    }
-  }, [loadingMore, hasMore, currentPage, processTransactionData]);
-
-  // Filtered transactions
-  const filteredTransactions = useMemo(() => {
-    if (selectedFilter === 'all') return transactions;
-    if (selectedFilter === 'credit') {
-      return transactions.filter(t => t.txn_type === 'credit');
-    }
-    if (selectedFilter === 'debit') {
-      return transactions.filter(t => t.txn_type === 'debit');
-    }
-    return transactions;
-  }, [transactions, selectedFilter]);
-
-  // Navigation handlers
-  const handleBackPress = useCallback(() => {
-    navigation.goBack();
-  }, [navigation]);
-
-  // Modal handlers
-  const openAddMoneyModal = useCallback(async () => {
-    if (!user.email || !user.contact) {
-      await fetchUserData();
-    }
-    
-    setAmount('');
-    setAddMoneyModalVisible(true);
-    
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.spring(slideAnim, {
-        toValue: 0,
-        tension: 70,
-        friction: 12,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [user, fetchUserData]);
-
-  const closeAddMoneyModal = useCallback((callback) => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: height,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      if (isMounted.current) {
-        setAddMoneyModalVisible(false);
-        fadeAnim.setValue(0);
-        slideAnim.setValue(height);
-        callback?.();
-      }
-    });
   }, []);
 
-  // Amount validation
-  const validateAmountInput = useCallback((text) => {
-    const cleanedText = text.replace(/[^0-9.]/g, '');
-    const parts = cleanedText.split('.');
-    if (parts.length > 2) {
-      setAmount(parts[0] + '.' + parts.slice(1).join(''));
-    } else {
-      setAmount(cleanedText);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchWalletData();
+    setRefreshing(false);
+  };
+
+  // Handle successful money addition (called from Add Money screen)
+  const handleAddMoneySuccess = (amount) => {
+    // Refresh data to get latest transactions
+    fetchWalletData();
+  };
+
+  const totalTransactions = transactions.length;
+  const creditCount = transactions.filter(t => t.type === 'credit').length;
+  const debitCount = transactions.filter(t => t.type === 'debit').length;
+
+  const filteredTransactions = selectedFilter === 'all' 
+    ? transactions 
+    : transactions.filter(t => t.type === selectedFilter);
+
+  const getCategoryIcon = (category) => {
+    switch(category) {
+      case 'food':
+        return 'fast-food-outline';
+      case 'beverage':
+        return 'cafe-outline';
+      case 'entertainment':
+        return 'film-outline';
+      case 'dining':
+        return 'restaurant-outline';
+      case 'grocery':
+        return 'cart-outline';
+      case 'recharge':
+        return 'phone-portrait-outline';
+      case 'transfer':
+        return 'swap-horizontal-outline';
+      case 'cashback':
+      case 'bonus':
+        return 'gift-outline';
+      case 'refund':
+        return 'arrow-undo-outline';
+      default:
+        return 'card-outline';
     }
-  }, []);
+  };
 
-  const validateAmount = useCallback((amountStr) => {
-    const numAmount = parseFloat(amountStr);
-    if (isNaN(numAmount)) {
-      return { isValid: false, message: 'Please enter a valid amount' };
-    }
-    if (numAmount < MIN_AMOUNT) {
-      return { isValid: false, message: `Minimum amount is ₹${MIN_AMOUNT}` };
-    }
-    if (numAmount > MAX_AMOUNT) {
-      return { isValid: false, message: `Maximum amount is ₹${MAX_AMOUNT.toLocaleString()}` };
-    }
-    return { isValid: true, amount: numAmount };
-  }, []);
-
-  // Payment handler
-  const handleAddMoney = useCallback(async () => {
-    const validation = validateAmount(amount);
-    if (!validation.isValid) {
-      Alert.alert('Invalid Amount', validation.message);
-      return;
-    }
-
-    try {
-      setProcessingPayment(true);
-      
-      if (!user.email || !user.contact) {
-        await fetchUserData();
-      }
-
-      const orderResponse = await createWalletOrder({ 
-        amount: validation.amount,
-        user_id: user.id,
-        user_email: user.email,
-        user_name: user.name,
-      });
-      const orderData = orderResponse.data;
-      
-      if (!orderData.order_id) {
-        throw new Error('Failed to create payment order');
-      }
-      
-      const razorpayOptions = {
-        description: 'Add Eatoor Money',
-        image: 'https://eatoorprod.s3.amazonaws.com/eatoor-logo/fwdeatoorlogofiles/5.png',
-        currency: 'INR',
-        key: orderData.key || 'rzp_test_Ler2HqmO4lVND1',
-        amount: validation.amount * 100,
-        name: 'Eatoor Money',
-        order_id: orderData.order_id,
-        prefill: {
-          email: user.email || 'user@example.com',
-          contact: user.contact || '9999999999',
-          name: user.name || 'Eatoor User',
-        },
-        theme: { color: '#FF6B35' },
-        notes: {
-          source: 'eatoor_wallet',
-          user_id: user.id || 'unknown',
-          app_name: 'Eatoor',
-        },
-      };
-
-      const razorpayResponse = await RazorpayCheckout.open(razorpayOptions);
-      
-      if (razorpayResponse) {
-        const successPayload = {
-          razorpay_payment_id: razorpayResponse.razorpay_payment_id,
-          razorpay_order_id: razorpayResponse.razorpay_order_id,
-          razorpay_signature: razorpayResponse.razorpay_signature,
-          amount: validation.amount,
-        };
-
-        const verificationResponse = await walletAddMoneySuccess(successPayload);
-
-        if (verificationResponse.status === 200) {
-          Animated.sequence([
-            Animated.timing(rotateAnim, {
-              toValue: 1,
-              duration: 500,
-              easing: Easing.out(Easing.back(2)),
-              useNativeDriver: true,
-            }),
-            Animated.timing(rotateAnim, {
-              toValue: 0,
-              duration: 300,
-              useNativeDriver: true,
-            }),
-          ]).start();
-
-          await fetchWalletData();
-          closeAddMoneyModal();
-
-          Alert.alert(
-            'Success! 🎉',
-            `₹${validation.amount.toFixed(2)} added to your wallet`,
-            [{ text: 'Awesome!', style: 'cancel' }]
-          );
-
-          if (route?.params?.prevScreen === "CartScreen") {
-            navigation.navigate(route.params.prevScreen);
-          }
-        } else {
-          throw new Error('Payment verification failed');
-        }
-      }
-    } catch (error) {
-      console.error('Payment error:', error);
-      
-      if (error.code === 2) {
-        Alert.alert('Payment Cancelled', 'Payment was cancelled');
-      } else {
+  const renderTransactionItem = ({ item }) => (
+    <TouchableOpacity 
+      style={styles.transactionItem}
+      activeOpacity={0.7}
+      onPress={() => {
+        // Show transaction details if needed
         Alert.alert(
-          'Payment Failed',
-          error.message || 'Failed to process payment. Please try again.'
+          'Transaction Details',
+          `Amount: ${item.type === 'credit' ? '+' : '-'}₹${item.amount.toFixed(2)}\n` +
+          `Description: ${item.description}\n` +
+          `Date: ${item.date}\n` +
+          `Time: ${item.time}\n` +
+          `Status: ${item.status}\n` +
+          `Type: ${item.type === 'credit' ? 'Credit' : 'Debit'}\n` +
+          `${item.order_number ? `Order #: ${item.order_number}\n` : ''}` +
+          `${item.razorpay_payment_id ? `Payment ID: ${item.razorpay_payment_id}\n` : ''}`
         );
-      }
-    } finally {
-      if (isMounted.current) {
-        setProcessingPayment(false);
-      }
-    }
-  }, [amount, validateAmount, fetchWalletData, closeAddMoneyModal, user, fetchUserData]);
+      }}
+    >
+      <View style={styles.transactionIconContainer}>
+        <View style={[
+          styles.transactionIcon,
+          { backgroundColor: item.type === 'credit' ? 'rgba(76, 175, 80, 0.1)' : 'rgba(255, 107, 53, 0.1)' }
+        ]}>
+          <Icon 
+            name={getCategoryIcon(item.category)} 
+            size={22} 
+            color={item.type === 'credit' ? '#4CAF50' : '#FF6B35'} 
+          />
+        </View>
+        <View style={styles.transactionDetails}>
+          <Text style={styles.transactionDescription} numberOfLines={1}>
+            {item.description}
+          </Text>
+          <View style={styles.transactionMeta}>
+            <View style={styles.transactionDateContainer}>
+              <Icon name="calendar-outline" size={12} color="#666" />
+              <Text style={styles.transactionDate}> {item.date} • {item.time}</Text>
+            </View>
+            {item.status && (
+              <View style={[
+                styles.statusBadge,
+                { backgroundColor: item.status === 'success' ? 'rgba(76, 175, 80, 0.1)' : 'rgba(255, 107, 53, 0.1)' }
+              ]}>
+                <Text style={[
+                  styles.statusText,
+                  { color: item.status === 'success' ? '#4CAF50' : '#FF6B35' }
+                ]}>
+                  {item.status}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </View>
+      <View style={styles.transactionAmountContainer}>
+        <Text style={[
+          styles.transactionAmount,
+          { color: item.type === 'credit' ? '#4CAF50' : '#FF6B35' }
+        ]}>
+          {item.type === 'credit' ? '+' : '-'}₹{item.amount.toFixed(2)}
+        </Text>
+        <View style={[
+          styles.transactionTypeBadge,
+          { backgroundColor: item.type === 'credit' ? 'rgba(76, 175, 80, 0.1)' : 'rgba(255, 107, 53, 0.1)' }
+        ]}>
+          <Icon 
+            name={item.type === 'credit' ? 'trending-up' : 'trending-down'} 
+            size={10} 
+            color={item.type === 'credit' ? '#4CAF50' : '#FF6B35'} 
+          />
+          <Text style={[
+            styles.transactionTypeText,
+            { color: item.type === 'credit' ? '#4CAF50' : '#FF6B35' }
+          ]}>
+            {item.type === 'credit' ? 'Credit' : 'Debit'}
+          </Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
 
-  // Render transaction item
-  const renderTransactionItem = useCallback(({ item, index }) => {
-    const isCredit = item.txn_type === 'credit';
-    console.log("filteredTransactions===",item)
-    return (
-      <TouchableOpacity
-        style={styles.transactionCard}
-        activeOpacity={0.7}
-      >
-        <View style={[styles.transactionIconContainer, { backgroundColor: item.bgColor }]}>
-          <Icon name={item.icon} size={18} color={item.color} />
+  const renderEmptyState = () => (
+    <View style={styles.emptyState}>
+      <Icon name="receipt-outline" size={80} color="#E0E0E0" />
+      <Text style={styles.emptyStateText}>
+        {loading ? 'Loading transactions...' : 'No transactions found'}
+      </Text>
+      <Text style={styles.emptyStateSubText}>
+        {selectedFilter === 'all' 
+          ? 'Start using your wallet to see transactions here' 
+          : `No ${selectedFilter} transactions found`}
+      </Text>
+    </View>
+  );
+
+  const renderHeader = () => (
+    <>
+      {/* Balance Section */}
+      <View style={styles.balanceContainer}>
+        <View style={styles.balanceLabelContainer}>
+          <Icon name="wallet-outline" size={22} color="#666" />
+          <Text style={styles.balanceLabel}>Wallet Balance</Text>
+          <View style={styles.balanceHeaderRight}>
+            {!isActive && (
+              <View style={styles.inactiveBadge}>
+                <Icon name="warning-outline" size={14} color="#FF6B35" />
+                <Text style={styles.inactiveText}>Inactive</Text>
+              </View>
+            )}
+            <TouchableOpacity 
+              style={styles.eyeButton}
+              onPress={() => setBalanceVisible(!balanceVisible)}
+              activeOpacity={0.7}
+            >
+              <Icon 
+                name={balanceVisible ? 'eye-off-outline' : 'eye-outline'} 
+                size={22} 
+                color="#666" 
+              />
+            </TouchableOpacity>
+          </View>
         </View>
         
-        <View style={styles.transactionContent}>
-          <View style={styles.transactionHeader}>
-            <View style={styles.transactionInfo}>
-              <Text style={styles.transactionTitle} numberOfLines={1}>
-                {item.title}
-              </Text>
-              <Text style={styles.transactionDescription} numberOfLines={1}>
-                {item.description} | {item.orderId}
-              </Text>
+        <View style={styles.balanceAmountContainer}>
+          <Text style={styles.currencySymbol}>₹</Text>
+          <Text style={styles.balanceAmount}>
+            {balanceVisible ? walletBalance.toFixed(2) : '••••••'}
+          </Text>
+        </View>
+        
+        <View style={styles.balanceFooter}>
+          <Icon name="information-circle-outline" size={16} color="#666" />
+          <Text style={styles.balanceFooterText}>
+            {balanceVisible ? 'Your current wallet balance' : 'Tap eye icon to view balance'}
+          </Text>
+        </View>
+      </View>
+
+      {/* Add Money Button */}
+      <TouchableOpacity 
+        style={styles.addMoneyButton}
+        activeOpacity={0.8}
+        onPress={() => navigation.navigate('EatoorMoneyAdd', {
+          currentBalance: walletBalance,
+          onAddMoney: handleAddMoneySuccess
+        })}
+      >
+        <Icon name="add-circle" size={26} color="#FFFFFF" />
+        <Text style={styles.addMoneyButtonText}>Add Money to Wallet</Text>
+      </TouchableOpacity>
+
+      {/* Stats Card */}
+      <View style={styles.statsCard}>
+        <View style={styles.statsHeader}>
+          <Icon name="stats-chart" size={20} color="#FF6B35" />
+          <Text style={styles.statsTitle}>Transaction Summary</Text>
+        </View>
+        
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <View style={[styles.statIcon, { backgroundColor: 'rgba(255, 107, 53, 0.1)' }]}>
+              <Icon name="swap-horizontal" size={26} color="#FF6B35" />
             </View>
-            <View style={styles.amountContainer}>
-              <Text style={[
-                styles.transactionAmount,
-                { color: isCredit ? '#10B981' : '#EF4444' }
-              ]}>
-                {isCredit ? '+' : '-'} {formatAmount(item.amount)}
-              </Text>
-            </View>
+            <Text style={styles.statValue}>{totalTransactions}</Text>
+            <Text style={styles.statLabel}>Total</Text>
           </View>
           
-          <View style={styles.transactionFooter}>
-            <View style={styles.transactionMeta}>
-              <Icon name="time-outline" size={12} color="#9CA3AF" />
-              <Text style={styles.transactionTime}>
-                {item.time} • {item.date}
-              </Text>
+          <View style={styles.statDivider} />
+          
+          <View style={styles.statItem}>
+            <View style={[styles.statIcon, { backgroundColor: 'rgba(76, 175, 80, 0.1)' }]}>
+              <Icon name="trending-up" size={26} color="#4CAF50" />
             </View>
-            <View style={[styles.statusBadge, { backgroundColor: item.color + '15' }]}>
-              <Text style={[styles.statusText, { color: item.color }]}>
-                {item.status === 'success' ? '✓' : item.status}
-              </Text>
+            <Text style={[styles.statValue, { color: '#4CAF50' }]}>{creditCount}</Text>
+            <Text style={styles.statLabel}>Credits</Text>
+          </View>
+          
+          <View style={styles.statDivider} />
+          
+          <View style={styles.statItem}>
+            <View style={[styles.statIcon, { backgroundColor: 'rgba(244, 67, 54, 0.1)' }]}>
+              <Icon name="trending-down" size={26} color="#FF6B35" />
             </View>
+            <Text style={[styles.statValue, { color: '#FF6B35' }]}>{debitCount}</Text>
+            <Text style={styles.statLabel}>Debits</Text>
           </View>
         </View>
-      </TouchableOpacity>
-    );
-  }, []);
-
-  // Render list footer
-  const renderFooter = useCallback(() => {
-    if (!loadingMore) return null;
-    
-    return (
-      <View style={styles.loadingFooter}>
-        <ActivityIndicator size="small" color="#FF6B35" />
-        <Text style={styles.loadingText}>Loading more...</Text>
       </View>
-    );
-  }, [loadingMore]);
 
-  // Loading state
-  if (loading && !refreshing) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#FF6B35" />
-        <View style={styles.skeletonHeader}>
-          <View style={styles.skeletonBackButton} />
-          <View style={styles.skeletonTitle} />
-          <View style={styles.skeletonEyeButton} />
+      {/* Filter Section */}
+      <View style={styles.filterContainer}>
+        <View style={styles.filterHeader}>
+          <Icon name="filter" size={20} color="#FF6B35" />
+          <Text style={styles.filterTitle}>Filter Transactions</Text>
+          <Text style={styles.transactionCount}>
+            ({filteredTransactions.length} transactions)
+          </Text>
         </View>
-        <View style={styles.skeletonContent}>
-          <View style={styles.skeletonBalance} />
-          <View style={styles.skeletonStats}>
-            <View style={styles.skeletonStat} />
-            <View style={styles.skeletonStat} />
-            <View style={styles.skeletonStat} />
-          </View>
-          <View style={styles.skeletonTransactions}>
-            {[1, 2, 3, 4].map((i) => (
-              <View key={i} style={styles.skeletonTransaction} />
-            ))}
-          </View>
+        <View style={styles.filterButtons}>
+          <TouchableOpacity 
+            style={[
+              styles.filterButton,
+              selectedFilter === 'all' && styles.filterButtonActive
+            ]}
+            onPress={() => setSelectedFilter('all')}
+            activeOpacity={0.7}
+          >
+            <Icon 
+              name="apps" 
+              size={18} 
+              color={selectedFilter === 'all' ? '#FFFFFF' : '#666'} 
+            />
+            <Text style={[
+              styles.filterButtonText,
+              selectedFilter === 'all' && styles.filterButtonTextActive
+            ]}>
+              All
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[
+              styles.filterButton,
+              selectedFilter === 'credit' && styles.filterButtonActive
+            ]}
+            onPress={() => setSelectedFilter('credit')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.filterButtonContent}>
+              <Icon 
+                name="trending-up" 
+                size={18} 
+                color={selectedFilter === 'credit' ? '#FFFFFF' : '#4CAF50'} 
+              />
+              <Text style={[
+                styles.filterButtonText,
+                selectedFilter === 'credit' && styles.filterButtonTextActive
+              ]}>
+                Credit
+              </Text>
+            </View>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[
+              styles.filterButton,
+              selectedFilter === 'debit' && styles.filterButtonActive
+            ]}
+            onPress={() => setSelectedFilter('debit')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.filterButtonContent}>
+              <Icon 
+                name="trending-down" 
+                size={18} 
+                color={selectedFilter === 'debit' ? '#FFFFFF' : '#FF6B35'} 
+              />
+              <Text style={[
+                styles.filterButtonText,
+                selectedFilter === 'debit' && styles.filterButtonTextActive
+              ]}>
+                Debit
+              </Text>
+            </View>
+          </TouchableOpacity>
         </View>
-      </SafeAreaView>
-    );
-  }
+      </View>
+    </>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#FF6B35" />
+      <StatusBar 
+        barStyle="dark-content" 
+        backgroundColor="#FFFFFF" 
+      />
       
-      {/* Fixed Header */}
+      {/* Header */}
       <View style={styles.header}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={handleBackPress}
-            activeOpacity={0.8}
-          >
-            <Icon name="chevron-back" size={24} color="#FFF" />
-          </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+          activeOpacity={0.7}
+        >
+          <Icon name="chevron-back" size={28} color="#000000" />
+        </TouchableOpacity>
+        <View style={styles.headerTitleContainer}>
+          <Icon name="wallet" size={24} color="#FF6B35" />
           <Text style={styles.headerTitle}>Eatoor Money</Text>
-          <TouchableOpacity 
-            style={styles.eyeButton}
-            onPress={toggleBalanceVisibility}
-            activeOpacity={0.8}
-          >
-            <Animated.View style={{ transform: [{ scale: eyeScaleAnim }] }}>
-              <Icon 
-                name={isBalanceVisible ? 'eye-off-outline' : 'eye-outline'} 
-                size={20} 
-                color="#FFF" 
-              />
-            </Animated.View>
-          </TouchableOpacity>
         </View>
+        <TouchableOpacity 
+          style={styles.menuButton}
+          onPress={() => {
+            Alert.alert(
+              'Wallet Info',
+              `Wallet ID: ${transactions[0]?.razorpay_payment_id ? transactions[0].razorpay_payment_id : 'N/A'}\n` +
+              `Status: ${isActive ? 'Active' : 'Inactive'}\n` +
+              `Total Transactions: ${totalTransactions}`
+            );
+          }}
+          activeOpacity={0.7}
+        >
+          <Icon name="ellipsis-vertical" size={24} color="#000000" />
+        </TouchableOpacity>
       </View>
 
-      <ScrollView
+      <FlatList
+        data={filteredTransactions}
+        renderItem={renderTransactionItem}
+        keyExtractor={(item) => item.id}
+        ListHeaderComponent={renderHeader}
+        ListEmptyComponent={renderEmptyState}
+        contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: false }
-        )}
-        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={handleRefresh}
+            onRefresh={onRefresh}
             colors={['#FF6B35']}
             tintColor="#FF6B35"
           />
         }
-      >
-        {/* Animated Balance Section */}
-        <Animated.View style={[
-          styles.balanceContainer,
-          {
-            opacity: headerOpacity,
-            transform: [
-              { scale: headerScale }
-            ],
-          },
-        ]}>
-          <LinearGradient
-            colors={['#FF6B35', '#FF8E53']}
-            style={styles.balanceGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <Text style={styles.balanceLabel}>Wallet Balance</Text>
-            
-            {isBalanceVisible ? (
-              <Animated.View
-                style={[
-                  styles.visibleBalance,
-                  {
-                    transform: [
-                      {
-                        rotate: rotateAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: ['0deg', '360deg']
-                        })
-                      }
-                    ]
-                  }
-                ]}
-              >
-                <Text style={styles.balanceAmount}>
-                  {formatAmount(balance)}
-                </Text>
-                <Text style={styles.balanceSubtitle}>
-                  Available to spend on Eatoor
-                </Text>
-              </Animated.View>
-            ) : (
-              <TouchableOpacity 
-                onPress={toggleBalanceVisibility}
-                activeOpacity={0.9}
-                style={styles.hiddenBalance}
-              >
-                <View style={styles.hiddenBalanceRow}>
-                  <Icon name="lock-closed" size={16} color="rgba(255,255,255,0.8)" />
-                  <Text style={styles.hiddenBalanceText}>●●●●●</Text>
-                </View>
-                <Text style={styles.showBalanceHint}>Tap to reveal balance</Text>
-              </TouchableOpacity>
-            )}
-          </LinearGradient>
-        </Animated.View>
-
-        {/* Quick Action Button */}
-        <View style={styles.quickActionContainer}>
-          <TouchableOpacity 
-            style={styles.addMoneyButton}
-            onPress={openAddMoneyModal}
-            activeOpacity={0.8}
-            disabled={processingPayment}
-          >
-            <LinearGradient
-              colors={['#FF6B35', '#FF8E53']}
-              style={styles.addMoneyGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              {processingPayment ? (
-                <ActivityIndicator size="small" color="#FFF" />
-              ) : (
-                <>
-                  <Icon name="add-circle" size={20} color="#FFF" />
-                  <Text style={styles.addMoneyText}>Add Money</Text>
-                </>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-
-        {/* Stats Overview */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <View style={[styles.statIcon, { backgroundColor: 'rgba(255, 107, 53, 0.1)' }]}>
-              <Icon name="swap-horizontal" size={16} color="#FF6B35" />
-            </View>
-            <Text style={styles.statValue}>{transactions.length}</Text>
-            <Text style={styles.statLabel}>Total</Text>
-          </View>
-          
-          <View style={styles.statCard}>
-            <View style={[styles.statIcon, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}>
-              <Icon name="trending-up" size={16} color="#10B981" />
-            </View>
-            <Text style={[styles.statValue, { color: '#10B981' }]}>
-              {transactions.filter(t => t.txn_type === 'credit').length}
-            </Text>
-            <Text style={styles.statLabel}>Credits</Text>
-          </View>
-          
-          <View style={styles.statCard}>
-            <View style={[styles.statIcon, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
-              <Icon name="trending-down" size={16} color="#EF4444" />
-            </View>
-            <Text style={[styles.statValue, { color: '#EF4444' }]}>
-              {transactions.filter(t => t.txn_type === 'debit').length}
-            </Text>
-            <Text style={styles.statLabel}>Debits</Text>
-          </View>
-        </View>
-
-        {/* Transaction Section */}
-        <View style={styles.transactionSection}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleRow}>
-              <Icon name="time-outline" size={20} color="#374151" />
-              <Text style={styles.sectionTitle}>Recent Transactions</Text>
-            </View>
-            
-            {/* Filter Chips */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filterContainer}
-            >
-              {TRANSACTION_FILTERS.map((filter) => (
-                <TouchableOpacity
-                  key={filter.id}
-                  style={[
-                    styles.filterChip,
-                    selectedFilter === filter.id && styles.filterChipActive,
-                  ]}
-                  onPress={() => setSelectedFilter(filter.id)}
-                  activeOpacity={0.7}
-                >
-                  <Icon
-                    name={filter.icon}
-                    size={14}
-                    color={selectedFilter === filter.id ? '#FFF' : '#6B7280'}
-                  />
-                  <Text style={[
-                    styles.filterText,
-                    selectedFilter === filter.id && styles.filterTextActive,
-                  ]}>
-                    {filter.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-
-          {/* Transactions List */}
-          {filteredTransactions.length > 0 ? (
-            <>
-              <FlatList
-                ref={flatListRef}
-                data={filteredTransactions}
-                renderItem={renderTransactionItem}
-                keyExtractor={(item) => item.id}
-                scrollEnabled={false}
-                contentContainerStyle={styles.transactionsList}
-                ListFooterComponent={renderFooter}
-                onEndReached={loadMoreTransactions}
-                onEndReachedThreshold={0.5}
-                initialNumToRender={10}
-                maxToRenderPerBatch={10}
-                windowSize={5}
-                removeClippedSubviews={Platform.OS === 'android'}
-              />
-              {hasMore && !loadingMore && (
-                <TouchableOpacity
-                  style={styles.loadMoreButton}
-                  onPress={loadMoreTransactions}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.loadMoreText}>Load More</Text>
-                  <Icon name="chevron-down" size={14} color="#666" />
-                </TouchableOpacity>
-              )}
-            </>
-          ) : (
-            <View style={styles.emptyState}>
-              <View style={styles.emptyStateIcon}>
-                <Icon name="receipt-outline" size={48} color="#D1D5DB" />
-              </View>
-              <Text style={styles.emptyStateTitle}>No transactions yet</Text>
-              <Text style={styles.emptyStateSubtitle}>
-                {selectedFilter !== 'all' 
-                  ? `No ${selectedFilter} transactions found`
-                  : 'Make your first transaction to get started!'}
-              </Text>
-            </View>
-          )}
-        </View>
-        
-        {/* Bottom Spacer */}
-        <View style={{ height: 80 }} />
-      </ScrollView>
-
-      {/* Floating Action Button */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={openAddMoneyModal}
-        activeOpacity={0.9}
-        disabled={processingPayment}
-      >
-        <LinearGradient
-          colors={['#FF6B35', '#FF8E53']}
-          style={styles.fabGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          {processingPayment ? (
-            <ActivityIndicator size="small" color="#FFF" />
-          ) : (
-            <Icon name="add" size={24} color="#FFF" />
-          )}
-        </LinearGradient>
-      </TouchableOpacity>
-
-      {/* Add Money Modal */}
-      <Modal
-        transparent={true}
-        visible={addMoneyModalVisible}
-        onRequestClose={() => closeAddMoneyModal()}
-        statusBarTranslucent
-        animationType="none"
-      >
-        <Animated.View style={[styles.modalOverlay, { opacity: fadeAnim }]}>
-          <TouchableOpacity 
-            style={styles.modalOverlayTouchable}
-            activeOpacity={1}
-            onPress={() => !processingPayment && closeAddMoneyModal()}
-          />
-          <Animated.View style={[
-            styles.modalContainer,
-            {
-              transform: [{ translateY: slideAnim }],
-            },
-          ]}>
-            {/* Modal Header */}
-            <View style={styles.modalHeader}>
-              <View style={styles.modalHeaderContent}>
-                <View style={styles.modalTitleRow}>
-                  <View style={styles.modalIcon}>
-                    <Icon name="wallet" size={20} color="#FFF" />
-                  </View>
-                  <View>
-                    <Text style={styles.modalTitle}>Add Money</Text>
-                    <Text style={styles.modalSubtitle}>Secure & Instant</Text>
-                  </View>
-                </View>
-                <TouchableOpacity 
-                  onPress={() => !processingPayment && closeAddMoneyModal()} 
-                  style={styles.modalCloseButton}
-                  activeOpacity={0.7}
-                  disabled={processingPayment}
-                >
-                  <Icon name="close" size={20} color="#666" />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Amount Section */}
-            <View style={styles.modalAmountSection}>
-              <Text style={styles.amountLabel}>Enter Amount</Text>
-              <View style={styles.amountInputContainer}>
-                <Text style={styles.currencySymbol}>₹</Text>
-                <TextInput
-                  style={styles.amountInput}
-                  placeholder="0"
-                  value={amount}
-                  onChangeText={validateAmountInput}
-                  keyboardType="decimal-pad"
-                  placeholderTextColor="#9CA3AF"
-                  autoFocus={!processingPayment}
-                  maxLength={10}
-                  editable={!processingPayment}
-                />
-              </View>
-              
-              {amount && parseFloat(amount) < MIN_AMOUNT ? (
-                <View style={styles.amountError}>
-                  <Icon name="alert-circle" size={14} color="#EF4444" />
-                  <Text style={styles.amountErrorText}>
-                    Minimum amount: ₹{MIN_AMOUNT}
-                  </Text>
-                </View>
-              ) : (
-                <Text style={styles.amountHint}>
-                  Enter ₹{MIN_AMOUNT} - ₹{MAX_AMOUNT.toLocaleString()}
-                </Text>
-              )}
-
-              {/* Quick Amounts */}
-              <Text style={styles.quickAmountLabel}>Quick Add</Text>
-              <View style={styles.quickAmountsRow}>
-                {QUICK_AMOUNTS.map((quickAmount) => {
-                  const isActive = amount === quickAmount.toString();
-                  return (
-                    <TouchableOpacity
-                      key={quickAmount}
-                      style={[
-                        styles.quickAmountButton,
-                        isActive && styles.quickAmountButtonActive,
-                      ]}
-                      onPress={() => setAmount(quickAmount.toString())}
-                      activeOpacity={0.7}
-                      disabled={processingPayment}
-                    >
-                      <Text style={[
-                        styles.quickAmountText,
-                        isActive && styles.quickAmountTextActive,
-                      ]}>
-                        ₹{quickAmount}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-
-            {/* Action Button */}
-            <TouchableOpacity
-              style={[
-                styles.payButton,
-                (!amount || parseFloat(amount) < MIN_AMOUNT || processingPayment) && 
-                styles.payButtonDisabled
-              ]}
-              onPress={handleAddMoney}
-              activeOpacity={0.8}
-              disabled={!amount || parseFloat(amount) < MIN_AMOUNT || processingPayment}
-            >
-              <LinearGradient
-                colors={(!amount || parseFloat(amount) < MIN_AMOUNT || processingPayment) 
-                  ? ['#E5E7EB', '#9CA3AF'] 
-                  : ['#FF6B35', '#FF8E53']}
-                style={styles.payButtonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                {processingPayment ? (
-                  <>
-                    <ActivityIndicator size="small" color="#FFF" />
-                    <Text style={styles.payButtonText}>Processing...</Text>
-                  </>
-                ) : (
-                  <>
-                    <Icon name="lock-closed" size={16} color="#FFF" />
-                    <Text style={styles.payButtonText}>
-                      {amount ? `Add ₹${parseFloat(amount).toLocaleString('en-IN')}` : 'Enter Amount'}
-                    </Text>
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-            
-            {/* Modal Footer */}
-            <View style={styles.modalFooter}>
-              <View style={styles.securityInfo}>
-                <Icon name="shield-checkmark" size={14} color="#10B981" />
-                <Text style={styles.securityText}>Secure Payment</Text>
-              </View>
-            </View>
-          </Animated.View>
-        </Animated.View>
-      </Modal>
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        ListFooterComponent={<View style={styles.footer} />}
+      />
     </SafeAreaView>
   );
 };
@@ -1003,119 +515,61 @@ const EatoorMoneyScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F8F9FA',
   },
   header: {
-    backgroundColor: '#FF6B35',
-    paddingTop: Platform.OS === 'ios' ? 10 : StatusBar.currentHeight + 10,
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-  },
-  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFF',
-    letterSpacing: 0.3,
-  },
-  eyeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scrollContent: {
-    paddingBottom: 100,
-  },
-  balanceContainer: {
     paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 20,
-  },
-  balanceGradient: {
-    borderRadius: 20,
-    padding: 20,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
     ...Platform.select({
       ios: {
-        shadowColor: '#FF6B35',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.2,
-        shadowRadius: 16,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
       },
       android: {
-        elevation: 8,
+        elevation: 3,
       },
     }),
   },
-  balanceLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.9)',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 8,
+  backButton: {
+    padding: 4,
   },
-  visibleBalance: {
-    alignItems: 'flex-start',
-  },
-  balanceAmount: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#FFF',
-    marginBottom: 4,
-    letterSpacing: -0.5,
-  },
-  balanceSubtitle: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontWeight: '500',
-  },
-  hiddenBalance: {
-    alignItems: 'flex-start',
-  },
-  hiddenBalanceRow: {
+  headerTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
   },
-  hiddenBalanceText: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: 'rgba(255, 255, 255, 0.8)',
-    letterSpacing: 4,
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#000000',
+    marginLeft: 8,
   },
-  showBalanceHint: {
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontWeight: '500',
+  menuButton: {
+    padding: 4,
   },
-  quickActionContainer: {
-    paddingHorizontal: 16,
-    marginBottom: 20,
+  listContent: {
+    paddingBottom: 20,
   },
-  addMoneyButton: {
+  balanceContainer: {
+    margin: 16,
+    marginTop: 20,
+    padding: 20,
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E9ECEF',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
+        shadowOpacity: 0.05,
         shadowRadius: 8,
       },
       android: {
@@ -1123,224 +577,78 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  addMoneyGradient: {
+  balanceLabelContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    gap: 10,
-  },
-  addMoneyText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFF',
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    marginBottom: 24,
-    gap: 12,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 16,
-    alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  statIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
     marginBottom: 8,
   },
-  statValue: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#1A1A1A',
-    marginBottom: 2,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '600',
-  },
-  transactionSection: {
-    backgroundColor: '#FFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 24,
-    minHeight: height * 0.4,
-  },
-  sectionHeader: {
-    paddingHorizontal: 16,
-    marginBottom: 16,
-  },
-  sectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1A1A1A',
-  },
-  filterContainer: {
-    gap: 8,
-  },
-  filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginRight: 8,
-    gap: 6,
-  },
-  filterChipActive: {
-    backgroundColor: '#FF6B35',
-    borderColor: '#FF6B35',
-  },
-  filterText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  filterTextActive: {
-    color: '#FFF',
-    fontWeight: '700',
-  },
-  transactionsList: {
-    paddingHorizontal: 16,
-  },
-  transactionCard: {
-    flexDirection: 'row',
-    backgroundColor: '#FFF',
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
-  },
-  transactionIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  transactionContent: {
-    flex: 1,
-  },
-  transactionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  transactionInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
-  transactionTitle: {
+  balanceLabel: {
     fontSize: 15,
-    fontWeight: '700',
-    color: '#1A1A1A',
-    marginBottom: 2,
-  },
-  transactionDescription: {
-    fontSize: 12,
-    color: '#6B7280',
+    color: '#666',
+    marginLeft: 8,
+    marginRight: 'auto',
     fontWeight: '500',
   },
-  amountContainer: {
-    alignItems: 'flex-end',
-  },
-  transactionAmount: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  transactionFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  transactionMeta: {
+  balanceHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
   },
-  transactionTime: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    fontWeight: '500',
+  inactiveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 107, 53, 0.1)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 10,
   },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  statusText: {
+  inactiveText: {
     fontSize: 11,
+    color: '#FF6B35',
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  eyeButton: {
+    padding: 4,
+  },
+  balanceAmountContainer: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginBottom: 12,
+  },
+  currencySymbol: {
+    fontSize: 28,
     fontWeight: '700',
+    color: '#000000',
+    marginRight: 4,
   },
-  emptyState: {
+  balanceAmount: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#000000',
+  },
+  balanceFooter: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 48,
-    paddingHorizontal: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
   },
-  emptyStateIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#F9FAFB',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-    borderWidth: 1.5,
-    borderColor: '#F3F4F6',
-  },
-  emptyStateTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#374151',
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-  emptyStateSubtitle: {
+  balanceFooterText: {
     fontSize: 13,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 18,
+    color: '#666',
+    marginLeft: 6,
+    fontStyle: 'italic',
   },
-  fab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  addMoneyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FF6B35',
+    marginHorizontal: 16,
+    paddingVertical: 18,
+    borderRadius: 14,
+    marginBottom: 20,
     ...Platform.select({
       ios: {
         shadowColor: '#FF6B35',
@@ -1353,290 +661,251 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  fabGradient: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalOverlayTouchable: {
-    flex: 1,
-  },
-  modalContainer: {
-    backgroundColor: '#FFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: height * 0.7,
-  },
-  modalHeader: {
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  modalHeaderContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  modalTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  modalIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FF6B35',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalTitle: {
+  addMoneyButtonText: {
+    color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '700',
-    color: '#1A1A1A',
-    marginBottom: 2,
+    marginLeft: 10,
   },
-  modalSubtitle: {
-    fontSize: 13,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  modalCloseButton: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 18,
-  },
-  modalAmountSection: {
+  statsCard: {
+    marginHorizontal: 16,
+    marginBottom: 20,
     padding: 20,
-  },
-  amountLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 12,
-  },
-  amountInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: '#FF6B35',
-    marginBottom: 8,
-    paddingVertical: 8,
-  },
-  currencySymbol: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#1A1A1A',
-    marginRight: 8,
-  },
-  amountInput: {
-    flex: 1,
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#1A1A1A',
-    padding: 0,
-  },
-  amountError: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FEF2F2',
-    padding: 10,
-    borderRadius: 10,
-    marginTop: 8,
-    marginBottom: 16,
-    gap: 6,
-  },
-  amountErrorText: {
-    fontSize: 13,
-    color: '#EF4444',
-    fontWeight: '600',
-  },
-  amountHint: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    marginTop: 8,
-    marginBottom: 20,
-  },
-  quickAmountLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 12,
-  },
-  quickAmountsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  quickAmountButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    minWidth: 90,
-  },
-  quickAmountButtonActive: {
-    backgroundColor: '#FF6B35',
-    borderColor: '#FF6B35',
-  },
-  quickAmountText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#6B7280',
-    textAlign: 'center',
-  },
-  quickAmountTextActive: {
-    color: '#FFF',
-    fontWeight: '800',
-  },
-  payButton: {
-    marginHorizontal: 20,
-    marginBottom: 20,
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
     ...Platform.select({
       ios: {
-        shadowColor: '#FF6B35',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
         shadowRadius: 8,
       },
       android: {
-        elevation: 6,
+        elevation: 4,
       },
     }),
   },
-  payButtonDisabled: {
-    opacity: 0.6,
-  },
-  payButtonGradient: {
+  statsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 18,
-    gap: 10,
-  },
-  payButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFF',
-  },
-  modalFooter: {
-    padding: 20,
-    paddingTop: 0,
-    alignItems: 'center',
-  },
-  securityInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  securityText: {
-    fontSize: 13,
-    color: '#10B981',
-    fontWeight: '600',
-  },
-  loadingFooter: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 20,
-    gap: 10,
-  },
-  loadingText: {
-    fontSize: 13,
-    color: '#6B7280',
-    fontWeight: '600',
-  },
-  loadMoreButton: {
-    backgroundColor: '#F9FAFB',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 20,
-    alignSelf: 'center',
     marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
   },
-  loadMoreText: {
-    fontSize: 13,
+  statsTitle: {
+    fontSize: 16,
     fontWeight: '600',
-    color: '#6B7280',
+    color: '#000000',
+    marginLeft: 8,
   },
-  // Skeleton styles
-  skeletonHeader: {
-    backgroundColor: '#FF6B35',
-    paddingTop: Platform.OS === 'ios' ? 10 : StatusBar.currentHeight + 10,
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+  statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  skeletonBackButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  skeletonTitle: {
-    width: 120,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  skeletonEyeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  skeletonContent: {
+  statItem: {
+    alignItems: 'center',
     flex: 1,
+  },
+  statIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#000000',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 13,
+    color: '#666',
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  statDivider: {
+    width: 1,
+    height: 50,
+    backgroundColor: '#E0E0E0',
+  },
+  filterContainer: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     padding: 16,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
-  skeletonBalance: {
-    height: 120,
-    backgroundColor: '#FFF',
-    borderRadius: 20,
-    marginBottom: 20,
-    opacity: 0.8,
-  },
-  skeletonStats: {
+  filterHeader: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 24,
+    alignItems: 'center',
+    marginBottom: 16,
   },
-  skeletonStat: {
+  filterTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000000',
+    marginLeft: 8,
+  },
+  transactionCount: {
+    marginLeft: 'auto',
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  filterButtons: {
+    flexDirection: 'row',
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    padding: 6,
+  },
+  filterButton: {
     flex: 1,
-    height: 80,
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    opacity: 0.8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 8,
   },
-  skeletonTransactions: {
-    gap: 12,
+  filterButtonActive: {
+    backgroundColor: '#FF6B35',
   },
-  skeletonTransaction: {
-    height: 80,
-    backgroundColor: '#FFF',
+  filterButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#666',
+    marginLeft: 6,
+  },
+  filterButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  transactionItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+  },
+  transactionIconContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  transactionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  transactionDetails: {
+    marginLeft: 14,
+    flex: 1,
+  },
+  transactionDescription: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#000000',
+    marginBottom: 6,
+  },
+  transactionMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  transactionDateContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  transactionDate: {
+    fontSize: 13,
+    color: '#666',
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  transactionAmountContainer: {
+    alignItems: 'flex-end',
+  },
+  transactionAmount: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  transactionTypeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  transactionTypeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    marginLeft: 4,
+  },
+  separator: {
+    height: 8,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    marginHorizontal: 16,
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    opacity: 0.8,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+  },
+  emptyStateText: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#666',
+    marginTop: 20,
+    marginBottom: 8,
+  },
+  emptyStateSubText: {
+    fontSize: 15,
+    color: '#999',
+    textAlign: 'center',
+    paddingHorizontal: 40,
+    lineHeight: 22,
+  },
+  footer: {
+    height: 30,
   },
 });
 

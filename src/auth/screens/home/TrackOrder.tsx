@@ -18,7 +18,8 @@ import {
   Easing,
   Vibration,
   LayoutAnimation,
-  UIManager
+  UIManager,
+  KeyboardAvoidingView
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -44,7 +45,8 @@ const LONGITUDE_DELTA = LATITUDE_DELTA * ASPECT_RATIO;
 const SMALL_MAP_HEIGHT = 320;
 const EXPANDED_MAP_HEIGHT = height * 0.75;
 const CARD_WIDTH = width - 40;
-const HEADER_HEIGHT = Platform.OS === 'ios' ? 100 : 80;
+const HEADER_HEIGHT = Platform.OS === 'ios' ? 90 : 70;
+const STATUS_BAR_HEIGHT = Platform.OS === 'ios' ? 44 : StatusBar.currentHeight || 0;
 const CARD_PADDING = 20;
 const CARD_RADIUS = 24;
 const CARD_MARGIN = 20;
@@ -358,163 +360,38 @@ const getRelativeTime = (dateString: string) => {
   }
 };
 
-// Bike Animation Component
-const BikeAnimation = () => {
-  const bikePosition = useRef(new Animated.Value(0)).current;
-  const wheelRotation1 = useRef(new Animated.Value(0)).current;
-  const wheelRotation2 = useRef(new Animated.Value(0)).current;
+// Loading Animation Component
+const LoadingAnimation = () => {
+  const [rotation] = useState(new Animated.Value(0));
   
   useEffect(() => {
-    // Start bike animation
-    const bikeAnimation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(bikePosition, {
-          toValue: width - 100,
-          duration: 20000,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
-        Animated.timing(bikePosition, {
-          toValue: 0,
-          duration: 0,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-
-    // Wheel rotation animation
-    const wheelAnimation = Animated.loop(
-      Animated.timing(wheelRotation1, {
+    Animated.loop(
+      Animated.timing(rotation, {
         toValue: 1,
-        duration: 500,
+        duration: 2000,
         easing: Easing.linear,
         useNativeDriver: true,
       })
-    );
-
-    const wheelAnimation2 = Animated.loop(
-      Animated.timing(wheelRotation2, {
-        toValue: 1,
-        duration: 500,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    );
-
-    bikeAnimation.start();
-    wheelAnimation.start();
-    wheelAnimation2.start();
-
-    return () => {
-      bikeAnimation.stop();
-      wheelAnimation.stop();
-      wheelAnimation2.stop();
-    };
+    ).start();
   }, []);
 
-  const wheelSpin1 = wheelRotation1.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg']
-  });
-
-  const wheelSpin2 = wheelRotation2.interpolate({
+  const spin = rotation.interpolate({
     inputRange: [0, 1],
     outputRange: ['0deg', '360deg']
   });
 
   return (
-    <View style={styles.bikeAnimationContainer}>
-      {/* Road */}
-      <View style={styles.road}>
-        <View style={styles.roadLine} />
-        <View style={[styles.roadLine, { left: width / 3 }]} />
-        <View style={[styles.roadLine, { left: (2 * width) / 3 }]} />
+    <View style={styles.loadingAnimationContainer}>
+      <View style={styles.loadingBikeContainer}>
+        <Animated.View style={[styles.loadingBike, { transform: [{ rotate: spin }] }]}>
+          <Icon name="bicycle" size={60} color="#FF6B35" />
+        </Animated.View>
       </View>
-      
-      {/* Bike Container */}
-      <Animated.View 
-        style={[
-          styles.bikeContainer,
-          {
-            transform: [{ translateX: bikePosition }]
-          }
-        ]}
-      >
-        {/* Bike Body */}
-        <View style={styles.bikeBody}>
-          {/* Main Frame */}
-          <View style={styles.bikeFrame}>
-            {/* Horizontal bar */}
-            <View style={styles.bikeHorizontalBar} />
-            {/* Diagonal bar */}
-            <View style={styles.bikeDiagonalBar} />
-            {/* Seat post */}
-            <View style={styles.seatPost} />
-            {/* Handlebar post */}
-            <View style={styles.handlebarPost} />
-          </View>
-          
-          {/* Seat */}
-          <View style={styles.bikeSeat} />
-          
-          {/* Front Wheel */}
-          <Animated.View 
-            style={[
-              styles.wheelContainer,
-              styles.frontWheel,
-              { transform: [{ rotate: wheelSpin1 }] }
-            ]}
-          >
-            <View style={styles.wheel}>
-              <View style={styles.wheelSpoke} />
-              <View style={[styles.wheelSpoke, { transform: [{ rotate: '45deg' }] }]} />
-              <View style={[styles.wheelSpoke, { transform: [{ rotate: '90deg' }] }]} />
-              <View style={[styles.wheelSpoke, { transform: [{ rotate: '135deg' }] }]} />
-              <View style={styles.wheelHub} />
-            </View>
-          </Animated.View>
-          
-          {/* Back Wheel */}
-          <Animated.View 
-            style={[
-              styles.wheelContainer,
-              styles.backWheel,
-              { transform: [{ rotate: wheelSpin2 }] }
-            ]}
-          >
-            <View style={styles.wheel}>
-              <View style={styles.wheelSpoke} />
-              <View style={[styles.wheelSpoke, { transform: [{ rotate: '45deg' }] }]} />
-              <View style={[styles.wheelSpoke, { transform: [{ rotate: '90deg' }] }]} />
-              <View style={[styles.wheelSpoke, { transform: [{ rotate: '135deg' }] }]} />
-              <View style={styles.wheelHub} />
-            </View>
-          </Animated.View>
-          
-          {/* Handlebar */}
-          <View style={styles.handlebar}>
-            <View style={styles.handlebarGripLeft} />
-            <View style={styles.handlebarGripRight} />
-          </View>
-          
-          {/* Motor/Engine */}
-          <View style={styles.engine}>
-            <View style={styles.engineDetail} />
-            <View style={styles.engineExhaust} />
-          </View>
-          
-          {/* Delivery Box */}
-          <View style={styles.deliveryBox}>
-            <View style={styles.boxLabel}>
-              <Text style={styles.boxLabelText}>FOOD</Text>
-            </View>
-            <View style={styles.boxStripes}>
-              <View style={styles.boxStripe} />
-              <View style={styles.boxStripe} />
-            </View>
-          </View>
-        </View>
-      </Animated.View>
+      <View style={styles.loadingDots}>
+        <Animated.View style={[styles.loadingDot, styles.dot1]} />
+        <Animated.View style={[styles.loadingDot, styles.dot2]} />
+        <Animated.View style={[styles.loadingDot, styles.dot3]} />
+      </View>
     </View>
   );
 };
@@ -1496,46 +1373,12 @@ const TrackOrder = () => {
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
         <View style={styles.loadingContainer}>
-          {/* Bike Animation */}
-          <BikeAnimation />
+          {/* Loading Animation */}
+          <LoadingAnimation />
           
           <View style={styles.loadingContent}>
             <Text style={styles.loadingTitle}>Tracking Your Order</Text>
             <Text style={styles.loadingSubtitle}>Fetching real-time updates...</Text>
-            
-            {/* Progress dots */}
-            <View style={styles.progressDots}>
-              <Animated.View style={[
-                styles.progressDot,
-                {
-                  backgroundColor: '#FF6B35',
-                  opacity: new Animated.Value(0.3).interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [0.3, 1, 0.3]
-                  })
-                }
-              ]} />
-              <Animated.View style={[
-                styles.progressDot,
-                {
-                  backgroundColor: '#FF6B35',
-                  opacity: new Animated.Value(0.3).interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [0.3, 1, 0.3]
-                  })
-                }
-              ]} />
-              <Animated.View style={[
-                styles.progressDot,
-                {
-                  backgroundColor: '#FF6B35',
-                  opacity: new Animated.Value(0.3).interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [0.3, 1, 0.3]
-                  })
-                }
-              ]} />
-            </View>
             
             {/* Order info */}
             <View style={styles.loadingOrderInfo}>
@@ -1584,45 +1427,40 @@ const TrackOrder = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       
-      {/* Floating Header */}
-      <Animated.View style={[
-        styles.header,
-        { 
-          opacity: fadeAnim,
-          transform: [{ translateY: fadeAnim.interpolate({
-            inputRange: [0, 1],
-            outputRange: [-20, 0]
-          })}]
-        }
-      ]}>
-        <TouchableOpacity 
-          onPress={() => {
-            triggerHaptic('light');
-            if (prev_location) {
-              navigation.navigate(prev_location);
-            } else {
-              navigation.goBack();
-            }
-          }} 
-          style={styles.backButton}
-          activeOpacity={0.7}
-        >
-          <Icon name="chevron-back" size={28} color="#333" />
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Track Order</Text>
-          <View style={styles.headerDateTimeContainer}>
-            <Text style={styles.headerOrderNumber}>#{order.order_number}</Text>
-            <Text style={styles.headerDateTime}>
-              • {formatHeaderDate(order.placed_on)}
-            </Text>
+      {/* Fixed Header */}
+      <View style={styles.headerContainer}>
+        <SafeAreaView style={styles.safeAreaHeader}>
+          <View style={styles.header}>
+            <TouchableOpacity 
+              onPress={() => {
+                triggerHaptic('light');
+                if (prev_location) {
+                  navigation.navigate(prev_location);
+                } else {
+                  navigation.goBack();
+                }
+              }} 
+              style={styles.backButton}
+              activeOpacity={0.7}
+            >
+              <Icon name="chevron-back" size={28} color="#333" />
+            </TouchableOpacity>
+            <View style={styles.headerCenter}>
+              <Text style={styles.headerTitle}>Track Order</Text>
+              <View style={styles.headerDateTimeContainer}>
+                <Text style={styles.headerOrderNumber}>#{order.order_number}</Text>
+                <Text style={styles.headerDateTime}>
+                  • {formatHeaderDate(order.placed_on)}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.headerRight} />
           </View>
-        </View>
-        <View style={styles.headerRight} />
-      </Animated.View>
+        </SafeAreaView>
+      </View>
 
       <ScrollView 
         ref={scrollViewRef}
@@ -2080,7 +1918,7 @@ const TrackOrder = () => {
           </View>
         </Animated.View>
 
-        {/* Delivery Address Card - IMPROVED DESIGN */}
+        {/* Delivery Address Card */}
         <Animated.View style={[
           styles.card,
           styles.addressCard,
@@ -2208,9 +2046,9 @@ const TrackOrder = () => {
         </View>
 
         {/* Bottom Spacer */}
-        <View style={{ height: 40 }} />
+        <View style={{ height: Platform.OS === 'ios' ? 40 : 20 }} />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -2363,55 +2201,56 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFD'
   },
-  header: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: HEADER_HEIGHT,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: CARD_MARGIN,
+  safeAreaHeader: {
+    backgroundColor: '#FFFFFF',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+  },
+  headerContainer: {
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
-    zIndex: 100,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 10,
     elevation: 8,
-    paddingTop: Platform.OS === 'ios' ? 15 : 10
+    zIndex: 1000,
+  },
+  header: {
+    height: HEADER_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: CARD_MARGIN,
   },
   headerCenter: {
     alignItems: 'center',
-    flex: 1
+    flex: 1,
   },
   headerTitle: {
     fontSize: getResponsiveFontSize(22),
     fontWeight: '800',
     color: '#1A1A1A',
     letterSpacing: -0.5,
-    marginBottom: 2
+    marginBottom: 2,
   },
   headerDateTimeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    flexWrap: 'wrap'
+    flexWrap: 'wrap',
   },
   headerOrderNumber: {
     fontSize: getResponsiveFontSize(14),
     color: '#666',
     fontWeight: '600',
-    letterSpacing: 0.5
+    letterSpacing: 0.5,
   },
   headerDateTime: {
     fontSize: getResponsiveFontSize(13),
     color: '#888',
     fontWeight: '500',
-    marginLeft: 4
+    marginLeft: 4,
   },
   backButton: {
     width: 48,
@@ -2419,15 +2258,15 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5'
+    backgroundColor: '#F5F5F5',
   },
   headerRight: {
     width: 48,
     height: 48,
   },
   scrollContainer: {
-    paddingTop: HEADER_HEIGHT + 10,
-    paddingBottom: 20
+    paddingTop: 10,
+    paddingBottom: 20,
   },
   mapContainer: {
     width: '100%',
@@ -2438,7 +2277,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 20,
     elevation: 10,
-    marginBottom: CARD_MARGIN_BOTTOM
+    marginBottom: CARD_MARGIN_BOTTOM,
   },
   map: {
     width: '100%',
@@ -2448,13 +2287,13 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5'
+    backgroundColor: '#F5F5F5',
   },
   mapPlaceholderText: {
     marginTop: 16,
     fontSize: getResponsiveFontSize(15),
     color: '#666',
-    fontWeight: '600'
+    fontWeight: '600',
   },
   orderInfoOverlay: {
     position: 'absolute',
@@ -2470,23 +2309,23 @@ const styles = StyleSheet.create({
     shadowRadius: 15,
     elevation: 8,
     paddingVertical: 20,
-    paddingHorizontal: CARD_MARGIN
+    paddingHorizontal: CARD_MARGIN,
   },
   orderInfoContent: {
-    alignItems: 'center'
+    alignItems: 'center',
   },
   restaurantInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     width: '100%',
     marginBottom: 20,
-    justifyContent: 'space-between'
+    justifyContent: 'space-between',
   },
   restaurantInfoLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    marginRight: 10
+    marginRight: 10,
   },
   arrowButton: {
     width: 44,
@@ -2495,7 +2334,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#F5F5F5',
-    marginLeft: 'auto'
+    marginLeft: 'auto',
   },
   restaurantImage: {
     width: 60,
@@ -2504,13 +2343,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0F0F0',
     marginRight: 16,
     borderWidth: 2,
-    borderColor: '#FFFFFF'
+    borderColor: '#FFFFFF',
   },
   restaurantDetails: {
-    flex: 1
+    flex: 1,
   },
   restaurantNameContainer: {
-    marginBottom: 6
+    marginBottom: 6,
   },
   restaurantName: {
     fontSize: getResponsiveFontSize(18),
@@ -2519,7 +2358,7 @@ const styles = StyleSheet.create({
   },
   statusIndicator: {
     flexDirection: 'row',
-    alignItems: 'center'
+    alignItems: 'center',
   },
   statusDot: {
     width: 10,
@@ -2530,12 +2369,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 3,
-    elevation: 2
+    elevation: 2,
   },
   statusText: {
     fontSize: getResponsiveFontSize(14),
     color: '#666',
-    fontWeight: '600'
+    fontWeight: '600',
   },
   deliveryStats: {
     flexDirection: 'row',
@@ -2547,17 +2386,17 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: '#F0F0F0'
+    borderColor: '#F0F0F0',
   },
   statItem: {
     alignItems: 'center',
     flex: 1,
-    paddingHorizontal: 5
+    paddingHorizontal: 5,
   },
   statDivider: {
     width: 1,
     height: 30,
-    backgroundColor: '#E8E8E8'
+    backgroundColor: '#E8E8E8',
   },
   statValue: {
     fontSize: getResponsiveFontSize(16),
@@ -2565,26 +2404,26 @@ const styles = StyleSheet.create({
     color: '#1A1A1A',
     marginTop: 6,
     marginBottom: 2,
-    textAlign: 'center'
+    textAlign: 'center',
   },
   statLabel: {
     fontSize: getResponsiveFontSize(12),
     color: '#888',
     fontWeight: '600',
     letterSpacing: 0.3,
-    textAlign: 'center'
+    textAlign: 'center',
   },
   restaurantMarker: {
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
   deliveryMarker: {
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
   deliveryPartnerMarker: {
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
   markerInner: {
     width: 48,
@@ -2598,7 +2437,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
     borderWidth: 3,
-    borderColor: '#FFFFFF'
+    borderColor: '#FFFFFF',
   },
   markerPulse: {
     position: 'absolute',
@@ -2608,7 +2447,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#FF6B35',
     backgroundColor: 'rgba(255, 107, 53, 0.15)',
-    zIndex: -1
+    zIndex: -1,
   },
   mapToggleButton: {
     position: 'absolute',
@@ -2624,15 +2463,15 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
     borderWidth: 1,
-    borderColor: '#F0F0F0'
+    borderColor: '#F0F0F0',
   },
   expandButton: {
     top: 16,
-    right: 16
+    right: 16,
   },
   collapseButton: {
     bottom: 16,
-    right: 16
+    right: 16,
   },
   card: {
     backgroundColor: '#FFFFFF',
@@ -2646,7 +2485,7 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 4,
     borderWidth: 1,
-    borderColor: '#F5F5F5'
+    borderColor: '#F5F5F5',
   },
   progressCard: {
     // Inherits card styles
@@ -2655,31 +2494,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24
+    marginBottom: 24,
   },
   sectionTitle: {
     fontSize: getResponsiveFontSize(16),
     fontWeight: '800',
     color: '#1A1A1A',
     letterSpacing: -0.3,
-    flex: 1
+    flex: 1,
   },
   orderSummaryHeader: {
-    marginBottom: 20
+    marginBottom: 20,
   },
   orderDateTime: {
     fontSize: getResponsiveFontSize(13),
     color: '#888',
     fontWeight: '500',
     marginTop: 6,
-    lineHeight: 18
+    lineHeight: 18,
   },
   estimatedDateTime: {
     fontSize: getResponsiveFontSize(13),
     color: '#FF6B35',
     fontWeight: '600',
     marginTop: 4,
-    lineHeight: 18
+    lineHeight: 18,
   },
   statusBadge: {
     paddingHorizontal: 14,
@@ -2688,23 +2527,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.05)',
     minWidth: 100,
-    alignItems: 'center'
+    alignItems: 'center',
   },
   statusBadgeText: {
     fontSize: getResponsiveFontSize(12),
     fontWeight: '800',
     letterSpacing: 0.5,
-    textAlign: 'center'
+    textAlign: 'center',
   },
   progressBarContainer: {
-    marginTop: 8
+    marginTop: 8,
   },
   progressBar: {
     height: 8,
     backgroundColor: '#F0F0F0',
     borderRadius: 4,
     overflow: 'hidden',
-    marginBottom: 30
+    marginBottom: 30,
   },
   progressFill: {
     height: '100%',
@@ -2713,16 +2552,16 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
     shadowRadius: 2,
-    elevation: 1
+    elevation: 1,
   },
   progressSteps: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 2
+    paddingHorizontal: 2,
   },
   progressStep: {
     alignItems: 'center',
-    width: 70
+    width: 70,
   },
   progressStepIcon: {
     width: 36,
@@ -2737,14 +2576,14 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 2
+    elevation: 2,
   },
   progressStepLabel: {
     fontSize: getResponsiveFontSize(11),
     color: '#888',
     fontWeight: '600',
     textAlign: 'center',
-    letterSpacing: 0.2
+    letterSpacing: 0.2,
   },
   deliveryPartnerCard: {
     // Inherits card styles
@@ -2753,7 +2592,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20
+    marginBottom: 20,
   },
   ratingBadge: {
     flexDirection: 'row',
@@ -2763,27 +2602,27 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#FFEBB2'
+    borderColor: '#FFEBB2',
   },
   ratingText: {
     fontSize: getResponsiveFontSize(14),
     fontWeight: '800',
     color: '#1A1A1A',
     marginLeft: 4,
-    marginRight: 2
+    marginRight: 2,
   },
   ratingCount: {
     fontSize: getResponsiveFontSize(10),
     color: '#888',
-    fontWeight: '600'
+    fontWeight: '600',
   },
   deliveryPartnerContent: {
     flexDirection: 'row',
-    alignItems: 'center'
+    alignItems: 'center',
   },
   deliveryPartnerImageContainer: {
     position: 'relative',
-    marginRight: 16
+    marginRight: 16,
   },
   deliveryPartnerImage: {
     width: 60,
@@ -2796,7 +2635,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
-    elevation: 2
+    elevation: 2,
   },
   onlineIndicator: {
     position: 'absolute',
@@ -2811,22 +2650,22 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
     shadowRadius: 2,
-    elevation: 2
+    elevation: 2,
   },
   deliveryPartnerInfo: {
     flex: 1,
-    marginRight: 10
+    marginRight: 10,
   },
   deliveryPartnerName: {
     fontSize: getResponsiveFontSize(17),
     fontWeight: '800',
     color: '#1A1A1A',
-    marginBottom: 8
+    marginBottom: 8,
   },
   deliveryPartnerMeta: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8
+    gap: 8,
   },
   metaItem: {
     flexDirection: 'row',
@@ -2836,13 +2675,13 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#F0F0F0'
+    borderColor: '#F0F0F0',
   },
   metaText: {
     fontSize: getResponsiveFontSize(13),
     color: '#666',
     marginLeft: 6,
-    fontWeight: '600'
+    fontWeight: '600',
   },
   callButton: {
     width: 52,
@@ -2854,13 +2693,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
-    elevation: 4
+    elevation: 4,
   },
   orderSummaryCard: {
     // Inherits card styles
   },
   orderItems: {
-    marginBottom: 20
+    marginBottom: 20,
   },
   orderItem: {
     flexDirection: 'row',
@@ -2868,11 +2707,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0'
+    borderBottomColor: '#F0F0F0',
   },
   itemImageContainer: {
     position: 'relative',
-    marginRight: 16
+    marginRight: 16,
   },
   itemImage: {
     width: 60,
@@ -2880,7 +2719,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: '#F0F0F0',
     borderWidth: 1,
-    borderColor: '#FFFFFF'
+    borderColor: '#FFFFFF',
   },
   itemImagePlaceholder: {
     width: 60,
@@ -2890,7 +2729,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#F0F0F0'
+    borderColor: '#F0F0F0',
   },
   bogoBadge: {
     position: 'absolute',
@@ -2906,43 +2745,43 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 2
+    elevation: 2,
   },
   bogoText: {
     fontSize: getResponsiveFontSize(9),
     color: '#1A1A1A',
     fontWeight: '900',
-    letterSpacing: 0.5
+    letterSpacing: 0.5,
   },
   itemDetails: {
     flex: 1,
-    marginRight: 12
+    marginRight: 12,
   },
   itemName: {
     fontSize: getResponsiveFontSize(15),
     fontWeight: '700',
     color: '#1A1A1A',
-    marginBottom: 4
+    marginBottom: 4,
   },
   itemDescription: {
     fontSize: getResponsiveFontSize(12),
     color: '#888',
-    lineHeight: 16
+    lineHeight: 16,
   },
   itemPriceContainer: {
     alignItems: 'flex-end',
-    minWidth: 70
+    minWidth: 70,
   },
   itemQuantity: {
     fontSize: getResponsiveFontSize(13),
     color: '#888',
     marginBottom: 4,
-    fontWeight: '600'
+    fontWeight: '600',
   },
   itemPrice: {
     fontSize: getResponsiveFontSize(16),
     fontWeight: '800',
-    color: '#1A1A1A'
+    color: '#1A1A1A',
   },
   sectionDivider: {
     flexDirection: 'row',
@@ -3132,7 +2971,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   
-  // IMPROVED ADDRESS CARD STYLES
+  // ADDRESS CARD STYLES
   addressCard: {
     overflow: 'hidden',
     padding: 0,
@@ -3297,26 +3136,26 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
     borderWidth: 1,
-    borderColor: '#F0F0F0'
+    borderColor: '#F0F0F0',
   },
   footerContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1
+    flex: 1,
   },
   footerTextContainer: {
-    marginLeft: 10
+    marginLeft: 10,
   },
   footerText: {
     fontSize: getResponsiveFontSize(13),
     color: '#666',
     fontWeight: '600',
-    marginBottom: 2
+    marginBottom: 2,
   },
   footerSubtext: {
     fontSize: getResponsiveFontSize(11),
     color: '#888',
-    fontWeight: '500'
+    fontWeight: '500',
   },
   refreshButton: {
     width: 44,
@@ -3326,13 +3165,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#F8FAFD',
     borderWidth: 1,
-    borderColor: '#F0F0F0'
+    borderColor: '#F0F0F0',
   },
+  
+  // LOADING STYLES
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF'
+    backgroundColor: '#FFFFFF',
   },
   loadingContent: {
     alignItems: 'center',
@@ -3343,7 +3184,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#1A1A1A',
     marginBottom: 12,
-    textAlign: 'center'
+    textAlign: 'center',
   },
   loadingSubtitle: {
     fontSize: getResponsiveFontSize(16),
@@ -3351,272 +3192,100 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 40,
     fontWeight: '500',
-    marginBottom: 30
+    marginBottom: 30,
   },
   loadingOrderInfo: {
     alignItems: 'center',
-    marginTop: 20
+    marginTop: 20,
   },
   loadingOrderNumber: {
     fontSize: getResponsiveFontSize(16),
     fontWeight: '700',
     color: '#FF6B35',
-    marginBottom: 8
+    marginBottom: 8,
   },
   loadingStatus: {
     fontSize: getResponsiveFontSize(14),
     color: '#888',
-    fontWeight: '600'
+    fontWeight: '600',
   },
-  progressDots: {
-    flexDirection: 'row',
+  
+  // LOADING ANIMATION STYLES
+  loadingAnimationContainer: {
+    alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: 20
+    marginBottom: 30,
   },
-  progressDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginHorizontal: 5,
-    backgroundColor: '#FF6B35'
-  },
-  // Bike Animation Styles
-  bikeAnimationContainer: {
-    width: '100%',
-    height: 200,
+  loadingBikeContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#F8FAFD',
     justifyContent: 'center',
     alignItems: 'center',
-    position: 'relative',
-    overflow: 'hidden'
-  },
-  road: {
-    position: 'absolute',
-    bottom: 60,
-    width: '100%',
-    height: 4,
-    backgroundColor: '#E0E0E0',
-    borderRadius: 2
-  },
-  roadLine: {
-    position: 'absolute',
-    width: 30,
-    height: 3,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 1.5
-  },
-  bikeContainer: {
-    position: 'absolute',
-    bottom: 30,
-    left: 0
-  },
-  bikeBody: {
-    position: 'relative',
-    width: 100,
-    height: 60
-  },
-  bikeFrame: {
-    position: 'absolute',
-    width: 80,
-    height: 40,
-    top: 10,
-    left: 10
-  },
-  bikeHorizontalBar: {
-    position: 'absolute',
-    width: 50,
-    height: 4,
-    backgroundColor: '#333',
-    borderRadius: 2,
-    top: 10,
-    left: 20
-  },
-  bikeDiagonalBar: {
-    position: 'absolute',
-    width: 40,
-    height: 4,
-    backgroundColor: '#333',
-    borderRadius: 2,
-    top: 10,
-    left: 20,
-    transform: [{ rotate: '30deg' }]
-  },
-  seatPost: {
-    position: 'absolute',
-    width: 3,
-    height: 12,
-    backgroundColor: '#333',
-    top: 6,
-    left: 45
-  },
-  handlebarPost: {
-    position: 'absolute',
-    width: 3,
-    height: 20,
-    backgroundColor: '#333',
-    top: 6,
-    left: 20
-  },
-  bikeSeat: {
-    position: 'absolute',
-    width: 20,
-    height: 8,
-    backgroundColor: '#FF6B35',
-    borderRadius: 4,
-    top: 4,
-    left: 45
-  },
-  wheelContainer: {
-    position: 'absolute',
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#F0F0F0',
     borderWidth: 2,
-    borderColor: '#333'
+    borderColor: '#F0F0F0',
   },
-  frontWheel: {
-    top: 25,
-    left: 5
-  },
-  backWheel: {
-    top: 25,
-    left: 65
-  },
-  wheel: {
-    width: '100%',
-    height: '100%',
+  loadingBike: {
+    width: 100,
+    height: 100,
     justifyContent: 'center',
     alignItems: 'center',
-    position: 'relative'
   },
-  wheelSpoke: {
-    position: 'absolute',
-    width: 2,
-    height: 25,
-    backgroundColor: '#333',
-    borderRadius: 1,
-    top: 2.5
+  loadingDots: {
+    flexDirection: 'row',
+    marginTop: 20,
   },
-  wheelHub: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#FF6B35'
-  },
-  handlebar: {
-    position: 'absolute',
-    width: 40,
-    height: 20,
-    top: 0,
-    left: 15,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  handlebarGripLeft: {
-    position: 'absolute',
-    width: 20,
-    height: 4,
-    backgroundColor: '#333',
-    borderRadius: 2,
-    left: 0
-  },
-  handlebarGripRight: {
-    position: 'absolute',
-    width: 20,
-    height: 4,
-    backgroundColor: '#333',
-    borderRadius: 2,
-    right: 0
-  },
-  engine: {
-    position: 'absolute',
-    width: 20,
-    height: 15,
-    backgroundColor: '#666',
-    borderRadius: 4,
-    top: 20,
-    left: 40
-  },
-  engineDetail: {
-    position: 'absolute',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  loadingDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginHorizontal: 4,
     backgroundColor: '#FF6B35',
-    top: 3,
-    left: 6
   },
-  engineExhaust: {
-    position: 'absolute',
-    width: 15,
-    height: 4,
-    backgroundColor: '#333',
-    borderRadius: 2,
-    top: 5,
-    right: -15
+  dot1: {
+    opacity: 0.6,
+    transform: [{ scale: 0.8 }],
   },
-  deliveryBox: {
-    position: 'absolute',
-    width: 25,
-    height: 20,
-    backgroundColor: '#4A90E2',
-    borderRadius: 4,
-    top: 10,
-    left: 50,
-    justifyContent: 'center',
-    alignItems: 'center'
+  dot2: {
+    opacity: 0.8,
+    transform: [{ scale: 0.9 }],
   },
-  boxLabel: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: 2
+  dot3: {
+    opacity: 1,
+    transform: [{ scale: 1 }],
   },
-  boxLabelText: {
-    fontSize: 8,
-    fontWeight: '900',
-    color: '#4A90E2'
-  },
-  boxStripes: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    justifyContent: 'space-around'
-  },
-  boxStripe: {
-    width: '100%',
-    height: 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)'
-  },
+  
+  // ERROR STYLES
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    padding: 40
+    padding: 40,
   },
   errorAnimation: {
-    marginBottom: 30
+    marginBottom: 30,
   },
   errorTitle: {
     fontSize: getResponsiveFontSize(26),
     fontWeight: '800',
     color: '#1A1A1A',
-    marginBottom: 12
+    marginBottom: 12,
   },
   errorText: {
     fontSize: getResponsiveFontSize(16),
     color: '#FF6B35',
     fontWeight: '700',
     marginBottom: 8,
-    textAlign: 'center'
+    textAlign: 'center',
   },
   errorSubtext: {
     fontSize: getResponsiveFontSize(14),
     color: '#666',
     marginBottom: 40,
     textAlign: 'center',
-    fontWeight: '500'
+    fontWeight: '500',
   },
   retryButton: {
     flexDirection: 'row',
@@ -3632,26 +3301,26 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
     shadowRadius: 6,
-    elevation: 4
+    elevation: 4,
   },
   retryButtonText: {
     color: '#FFFFFF',
     fontWeight: '800',
     fontSize: getResponsiveFontSize(15),
-    marginLeft: 8
+    marginLeft: 8,
   },
   goBackButton: {
     paddingVertical: 14,
     borderRadius: 16,
     width: '100%',
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
   },
   goBackButtonText: {
     color: '#666',
     fontWeight: '700',
-    fontSize: getResponsiveFontSize(15)
-  }
+    fontSize: getResponsiveFontSize(15),
+  },
 });
 
 export default TrackOrder;

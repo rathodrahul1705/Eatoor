@@ -89,17 +89,18 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
   const isMountedRef = useRef(true);
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Animations - Initialize with final values to prevent flicker
+  // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(0)).current;
   const searchBarAnim = useRef(new Animated.Value(1)).current;
   const contentOpacity = useRef(new Animated.Value(0)).current;
-  const headerOpacity = useRef(new Animated.Value(1)).current;
   
   // Configuration
   const isSelectionMode = route?.params?.selectionMode ?? true;
   const onAddressSelect = route?.params?.onAddressSelect;
   const navigateToCart = route?.params?.navigateToCart ?? false;
+  
+  // Platform detection
+  const isIOS = Platform.OS === 'ios';
   
   // Cleanup function
   useEffect(() => {
@@ -113,7 +114,24 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
     };
   }, []);
   
-  // Optimized fetch function - only fetch once
+  // Keyboard listeners
+  useEffect(() => {
+    if (!isIOS) return;
+    
+    const showSubscription = Keyboard.addListener('keyboardWillShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hideSubscription = Keyboard.addListener('keyboardWillHide', () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [isIOS]);
+  
+  // Optimized fetch function
   const fetchAddresses = useCallback(async (isRefreshing = false) => {
     try {
       if (!isRefreshing) {
@@ -124,7 +142,6 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
       const response = await getAddressList();
       const formattedAddresses = formatAddresses(response.data);
       
-      // Use requestAnimationFrame for smooth state updates
       requestAnimationFrame(() => {
         if (!isMountedRef.current) return;
         
@@ -140,7 +157,6 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
         if (initialLoad) {
           setInitialLoad(false);
           
-          // Small delay to ensure render is complete
           animationTimeoutRef.current = setTimeout(() => {
             if (isMountedRef.current) {
               Animated.parallel([
@@ -177,13 +193,11 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
     }
   }, [initialLoad, isSelectionMode]);
   
-  // Initial load only once
+  // Initial load
   useEffect(() => {
     fetchAddresses();
-    
-    // Don't return cleanup function here, we have it above
-  }, []); // Empty dependency array - only run once on mount
-
+  }, []);
+  
   // Optimized refresh
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -240,7 +254,7 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
   }, []);
 
   const getIconColor = useCallback((address: Address) => {
-    if (address.isDefault) return '#FF6B35';
+    if (address.isDefault) return '#fff';
     if (isSelectionMode && selectedAddressId === address.id) return '#4CAF50';
     return '#666';
   }, [isSelectionMode, selectedAddressId]);
@@ -271,7 +285,6 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
     const params: MapLocationPickerParams = {
       prevLocation,
       onLocationConfirmed: (newAddress: Address) => {
-        // Use LayoutAnimation for smooth updates
         LayoutAnimation.configureNext({
           duration: 300,
           create: {
@@ -386,7 +399,6 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
   const handleAddressSelect = useCallback(async (address: Address) => {
     if (!isSelectionMode) return;
     
-    // Smooth selection animation
     LayoutAnimation.configureNext({
       duration: 200,
       update: {
@@ -401,18 +413,14 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
       onAddressSelect(address);
     }
     
-    // Haptic feedback (if available)
-    // ReactNativeHapticFeedback.trigger("impactLight");
-    
     if (navigateToCart) {
       navigation.navigate('CartScreen');
     } else {
-      // Smooth navigation back
       setTimeout(() => navigation.goBack(), 150);
     }
   }, [isSelectionMode, onAddressSelect, navigateToCart, navigation, storeAddressToStorage]);
 
-  // Memoized filtered addresses for performance
+  // Memoized filtered addresses
   const filteredAddresses = useMemo(() => {
     return savedAddresses.filter(addr => 
       addr.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -420,16 +428,25 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
     );
   }, [savedAddresses, searchQuery]);
 
-  // Component rendering - use useMemo to prevent unnecessary re-renders
-  const renderLoading = useMemo(() => () => (
+  // Handle back press
+  const handleBackPress = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('Home');
+    }
+  }, [navigation]);
+
+  // Component rendering
+  const renderLoading = () => (
     <View style={styles.loadingContainer}>
       <ActivityIndicator size="large" color="#FF6B35" />
       <Text style={styles.loadingText}>Loading your addresses...</Text>
       <Text style={styles.loadingSubText}>Please wait a moment</Text>
     </View>
-  ), []);
+  );
 
-  const renderError = useMemo(() => () => (
+  const renderError = () => (
     <View style={styles.errorContainer}>
       <Icon name="warning-outline" size={64} color="#FF6B6B" style={styles.errorIcon} />
       <Text style={styles.errorTitle}>Oops!</Text>
@@ -439,20 +456,15 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
         onPress={() => fetchAddresses()}
         activeOpacity={0.8}
       >
-        <LinearGradient
-          colors={['#FF6B35', '#FF8C42']}
-          style={styles.gradientButton}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-        >
+        <View style={styles.gradientButton}>
           <Icon name="refresh" size={20} color="#FFF" style={styles.retryIcon} />
           <Text style={styles.retryButtonText}>Try Again</Text>
-        </LinearGradient>
+        </View>
       </TouchableOpacity>
     </View>
-  ), [error, fetchAddresses]);
+  );
 
-  const renderAddressCard = useCallback((address: Address, index: number) => (
+  const renderAddressCard = (address: Address, index: number) => (
     <Animated.View 
       key={address.id}
       style={[
@@ -470,24 +482,17 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
         style={styles.addressCardTouchable}
       >
         <View style={styles.addressHeader}>
-          <LinearGradient
-            colors={
-              address.isDefault 
-                ? ['#FF6B35', '#FF8C42'] 
-                : (isSelectionMode && selectedAddressId === address.id)
-                ? ['#4CAF50', '#66BB6A']
-                : ['#F8F9FA', '#FFFFFF']
-            }
-            style={styles.addressIconContainer}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
+          <View style={[
+            styles.addressIconContainer,
+            address.isDefault && styles.defaultAddressIconContainer,
+            isSelectionMode && selectedAddressId === address.id && styles.selectedAddressIconContainer
+          ]}>
             <Icon 
               name={getIconName(address.type)} 
               size={20} 
               color={getIconColor(address)} 
             />
-          </LinearGradient>
+          </View>
           
           <View style={styles.addressTitleContainer}>
             <Text style={styles.addressName}>
@@ -515,15 +520,6 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
         
       <View style={styles.cardActions}>
         <View style={styles.actionButtons}>
-          {/* <TouchableOpacity 
-            style={styles.actionButton}
-            onPress={() => handleEditAddress(address)}
-            activeOpacity={0.6}
-          >
-            <Icon name="create-outline" size={18} color="#4A90E2" />
-            <Text style={[styles.actionButtonText, { color: '#4A90E2' }]}>Edit</Text>
-          </TouchableOpacity> */}
-          
           {!address.isDefault && (
             <TouchableOpacity 
               style={styles.actionButton}
@@ -534,17 +530,6 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
               <Text style={[styles.actionButtonText, { color: '#FFB74D' }]}>Set Default</Text>
             </TouchableOpacity>
           )}
-          
-          {/* {!address.isDefault && (
-            <TouchableOpacity 
-              style={styles.actionButton}
-              onPress={() => confirmDeleteAddress(address.id)}
-              activeOpacity={0.6}
-            >
-              <Icon name="trash-outline" size={18} color="#FF6B6B" />
-              <Text style={[styles.actionButtonText, { color: '#FF6B6B' }]}>Delete</Text>
-            </TouchableOpacity>
-          )} */}
         </View>
         
         {isSelectionMode && (
@@ -556,30 +541,24 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
             onPress={() => handleAddressSelect(address)}
             activeOpacity={0.8}
           >
-            <LinearGradient
-              colors={
-                selectedAddressId === address.id 
-                  ? ['#4CAF50', '#66BB6A']
-                  : ['#FF6B35', '#FF8C42']
-              }
-              style={styles.selectButtonGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
+            <View style={[
+              styles.selectButtonContent,
+              selectedAddressId === address.id ? styles.selectedButtonContent : styles.defaultButtonContent
+            ]}>
               <Text style={styles.selectButtonText}>
                 {selectedAddressId === address.id ? 'Selected' : 'Select'}
               </Text>
               {selectedAddressId === address.id && (
                 <Icon name="checkmark" size={16} color="#FFF" style={styles.selectButtonIcon} />
               )}
-            </LinearGradient>
+            </View>
           </TouchableOpacity>
         )}
       </View>
     </Animated.View>
-  ), [selectedAddressId, isSelectionMode, handleAddressSelect, handleEditAddress, setAsDefaultAddress, confirmDeleteAddress, getIconName, getIconColor]);
+  );
 
-  const renderDeleteModal = useMemo(() => () => (
+  const renderDeleteModal = () => (
     <Modal
       visible={showDeleteModal}
       transparent
@@ -590,11 +569,7 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
       <TouchableWithoutFeedback onPress={() => setShowDeleteModal(false)}>
         <View style={styles.modalOverlay}>
           <TouchableWithoutFeedback>
-            <Animated.View 
-              style={[
-                styles.modalContent,
-              ]}
-            >
+            <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <View style={styles.modalIconContainer}>
                   <Icon name="warning" size={32} color="#FF6B6B" />
@@ -623,15 +598,14 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
                   <Text style={styles.deleteButtonText}>Delete</Text>
                 </TouchableOpacity>
               </View>
-            </Animated.View>
+            </View>
           </TouchableWithoutFeedback>
         </View>
       </TouchableWithoutFeedback>
     </Modal>
-  ), [showDeleteModal, handleDeleteAddress]);
+  );
 
-  const renderContent = useMemo(() => () => {
-    // Don't render content until initial animation is complete
+  const renderContent = () => {
     if (initialLoad && !hasAnimatedIn) {
       return null;
     }
@@ -647,14 +621,17 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
       >
         <KeyboardAvoidingView
           style={styles.keyboardAvoidingView}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 64 : 0}
+          behavior={isIOS ? 'padding' : 'height'}
+          keyboardVerticalOffset={isIOS ? (insets.top + 44) : 0}
         >
           <ScrollView 
             ref={scrollViewRef}
             contentContainerStyle={[
               styles.scrollContent,
-              { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 20 : 24 }
+              { 
+                paddingBottom: keyboardHeight > 0 ? keyboardHeight + 20 : 
+                  (isIOS ? 34 : 24)
+              }
             ]}
             showsVerticalScrollIndicator={false}
             refreshControl={
@@ -664,7 +641,7 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
                 colors={['#FF6B35']}
                 tintColor="#FF6B35"
                 progressBackgroundColor="#FFF"
-                progressViewOffset={Platform.OS === 'ios' ? 64 : 0}
+                progressViewOffset={isIOS ? (insets.top + 44) : 0}
               />
             }
             keyboardShouldPersistTaps="handled"
@@ -721,20 +698,13 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
               onPress={handleAddNewAddress}
               activeOpacity={0.9}
             >
-              <LinearGradient
-                colors={['#FF6B35', '#FF8C42']}
-                style={styles.addButtonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                <View style={styles.addButtonContent}>
-                  <View style={styles.addButtonIconContainer}>
-                    <Icon name="add" size={22} color="#FFF" />
-                  </View>
-                  <Text style={styles.addButtonText}>Add New Address</Text>
+              <View style={styles.addButtonContent}>
+                <View style={styles.addButtonIconContainer}>
+                  <Icon name="add" size={22} color="#FFF" />
                 </View>
+                <Text style={styles.addButtonText}>Add New Address</Text>
                 <Icon name="chevron-forward" size={20} color="#FFF" style={styles.addButtonArrow} />
-              </LinearGradient>
+              </View>
             </TouchableOpacity>
 
             {filteredAddresses.length > 0 ? (
@@ -742,11 +712,7 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
                 {filteredAddresses.map((address, index) => renderAddressCard(address, index))}
               </>
             ) : (
-              <Animated.View 
-                style={[
-                  styles.emptyState,
-                ]}
-              >
+              <View style={styles.emptyState}>
                 <Icon 
                   name={searchQuery ? "search-outline" : "map-outline"} 
                   size={80} 
@@ -767,73 +733,59 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
                     onPress={handleAddNewAddress}
                     activeOpacity={0.8}
                   >
-                    <LinearGradient
-                      colors={['#FF6B35', '#FF8C42']}
-                      style={styles.emptyStateButtonGradient}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                    >
+                    <View style={styles.emptyStateButtonContent}>
                       <Icon name="add" size={18} color="#FFF" style={{ marginRight: 8 }} />
                       <Text style={styles.emptyStateButtonText}>Add Your First Address</Text>
-                    </LinearGradient>
+                    </View>
                   </TouchableOpacity>
                 )}
-              </Animated.View>
+              </View>
             )}
           </ScrollView>
         </KeyboardAvoidingView>
       </Animated.View>
     );
-  }, [searchQuery, isSearchFocused, filteredAddresses, refreshing, keyboardHeight, insets, initialLoad, hasAnimatedIn, contentOpacity, searchBarAnim, onRefresh, handleSearchFocus, handleSearchBlur, handleAddNewAddress, renderAddressCard]);
+  };
 
-  // Main render - simplified to prevent flickering
+  // Main render
   return (
     <SafeAreaView style={[styles.safeArea, { paddingTop: insets.top }]}>
       <StatusBar 
         barStyle="dark-content" 
-        backgroundColor="#FFF" 
+        backgroundColor="#FFF"
         animated={true}
       />
       
-      {/* Header - always visible */}
-      <Animated.View style={{ opacity: headerOpacity }}>
-        <LinearGradient
-          colors={['#FFFFFF', '#F8F9FA']}
-          style={[styles.header, { paddingTop: insets.top }]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-        >
-          <View style={styles.headerContent}>
-            <TouchableOpacity 
-              style={styles.backButton}
-              onPress={() => navigation.goBack()}
-              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-              activeOpacity={0.7}
-            >
-              <View style={styles.backButtonContainer}>
-                <Icon name="chevron-back" size={24} color="#333" />
-              </View>
-            </TouchableOpacity>
-            
-            <View style={styles.titleContainer}>
-              <Text style={styles.headerTitle} numberOfLines={1}>
-                {isSelectionMode ? 'Select Address' : 'My Addresses'}
-              </Text>
-            </View>
-            
-            <TouchableOpacity 
-              style={styles.addLocationButton}
-              onPress={handleAddNewAddress}
-              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-              activeOpacity={0.7}
-            >
-              <Icon name="add-circle" size={28} color="#FF6B35" />
-            </TouchableOpacity>
+      {/* Header - Fixed iOS spacing */}
+      <View style={[styles.header, { height: isIOS ? 44 : 56 }]}>
+        <View style={styles.headerContent}>
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={handleBackPress}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            activeOpacity={0.6}
+          >
+            <Icon name="chevron-back" size={28} color="#333" />
+          </TouchableOpacity>
+          
+          <View style={styles.titleContainer}>
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {isSelectionMode ? 'Select Address' : 'My Addresses'}
+            </Text>
           </View>
-        </LinearGradient>
-      </Animated.View>
+          
+          <TouchableOpacity 
+            style={styles.addLocationButton}
+            onPress={handleAddNewAddress}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            activeOpacity={0.6}
+          >
+            <Icon name="add-circle" size={32} color="#FF6B35" />
+          </TouchableOpacity>
+        </View>
+      </View>
 
-      {/* Content - rendered based on state */}
+      {/* Content */}
       {loading ? renderLoading() : error ? renderError() : renderContent()}
       {renderDeleteModal()}
     </SafeAreaView>
@@ -843,55 +795,56 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#FFF',
   },
   keyboardAvoidingView: {
     flex: 1,
   },
   header: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    backgroundColor: '#FFF',
+    borderBottomWidth: 0.5,
     borderBottomColor: '#E0E0E0',
-    zIndex: 10,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    height: Platform.OS === 'ios' ? 44 : 56,
+    flex: 1,
     paddingHorizontal: 16,
-    paddingBottom: 8,
   },
   backButton: {
+    width: 44,
+    height: 44,
     justifyContent: 'center',
-    alignItems: 'center',
-  },
-  backButtonContainer: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 20,
-    backgroundColor: 'transparent',
+    alignItems: 'flex-start',
   },
   titleContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
   },
   headerTitle: {
-    fontSize: Platform.OS === 'ios' ? 17 : 20,
-    fontWeight: '700',
-    color: '#1A1A1A',
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#000',
     textAlign: 'center',
   },
   addLocationButton: {
     width: 44,
     height: 44,
     justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 22,
-    backgroundColor: '#FFF',
+    alignItems: 'flex-end',
   },
   loadingContainer: {
     flex: 1,
@@ -946,6 +899,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 24,
     borderRadius: 12,
+    backgroundColor: '#FF6B35',
   },
   retryIcon: {
     marginRight: 8,
@@ -957,11 +911,12 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     flex: 1,
+    backgroundColor: '#F8F9FA',
   },
   scrollContent: {
+    flexGrow: 1,
     paddingTop: 8,
-    backgroundColor: '#F8F9FA',
-    minHeight: '100%',
+    paddingBottom: 34,
   },
   searchContainer: {
     flexDirection: 'row',
@@ -970,7 +925,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     margin: 16,
     paddingHorizontal: 16,
-    paddingVertical: Platform.OS === 'ios' ? 14 : 12,
+    paddingVertical: 14,
     borderWidth: 1,
     borderColor: '#F0F0F0',
   },
@@ -983,7 +938,7 @@ const styles = StyleSheet.create({
     color: '#333',
     fontWeight: '500',
     padding: 0,
-    paddingVertical: Platform.OS === 'ios' ? 0 : 4,
+    paddingVertical: 0,
     includeFontPadding: false,
     textAlignVertical: 'center',
   },
@@ -995,18 +950,15 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginHorizontal: 16,
     marginBottom: 24,
+    backgroundColor: '#FF6B35',
     overflow: 'hidden',
   },
-  addButtonGradient: {
+  addButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 16,
     paddingHorizontal: 20,
-  },
-  addButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
   },
   addButtonIconContainer: {
     width: 28,
@@ -1021,6 +973,7 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 17,
     fontWeight: '700',
+    flex: 1,
   },
   addButtonArrow: {
     opacity: 0.9,
@@ -1057,6 +1010,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+    backgroundColor: '#F8F9FA',
+  },
+  defaultAddressIconContainer: {
+    backgroundColor: '#FF6B35',
+  },
+  selectedAddressIconContainer: {
+    backgroundColor: '#4CAF50',
   },
   addressTitleContainer: {
     flex: 1,
@@ -1112,7 +1072,7 @@ const styles = StyleSheet.create({
     paddingRight: 10,
   },
   cardActions: {
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 0.5,
     borderTopColor: '#F0F0F0',
     paddingTop: 16,
     flexDirection: 'row',
@@ -1142,12 +1102,19 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     minWidth: 90,
   },
-  selectButtonGradient: {
+  selectButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  defaultButtonContent: {
+    backgroundColor: '#FF6B35',
+  },
+  selectedButtonContent: {
+    backgroundColor: '#4CAF50',
   },
   selectedButton: {
     shadowColor: '#4CAF50',
@@ -1187,13 +1154,14 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 280,
   },
-  emptyStateButtonGradient: {
+  emptyStateButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 14,
     paddingHorizontal: 20,
     borderRadius: 8,
+    backgroundColor: '#FF6B35',
   },
   emptyStateButtonText: {
     color: '#FFF',
