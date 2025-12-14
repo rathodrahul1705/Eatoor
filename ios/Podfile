@@ -24,8 +24,9 @@ target 'Eatoor' do
   pod 'GoogleMaps'
   # pod 'GoogleUtilities'
   rn_maps_path = '../node_modules/react-native-maps'
+  rn_razorpath_path = '../node_modules/react-native-razorpay'
   pod 'react-native-maps/Google', :path => rn_maps_path
-  
+  pod 'react-native-razorpay', :path => rn_razorpath_path
   # DO NOT include 'Google-Maps-iOS-Utils' here (it's a static lib)
 
   use_react_native!(

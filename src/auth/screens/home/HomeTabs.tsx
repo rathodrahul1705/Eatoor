@@ -159,7 +159,7 @@ const AddressHeaderLeft = () => {
     coords: null,
     showEnableLocationPrompt: false,
     showPermissionPrompt: false,
-    homeType: 'Delivering to',
+    homeType: 'Delivering',
     addressId: null,
   });
 
@@ -193,7 +193,7 @@ const AddressHeaderLeft = () => {
       await AsyncStorage.multiSet([
         [STORAGE_KEYS.ADDRESS_ID, addressData.id?.toString() || ''],
         [STORAGE_KEYS.STREET_ADDRESS, addressData.full_address],
-        [STORAGE_KEYS.HOME_TYPE, addressData.home_type || 'Delivering to'],
+        [STORAGE_KEYS.HOME_TYPE, addressData.home_type || 'Delivering'],
         [STORAGE_KEYS.LATITUDE, addressData.latitude],
         [STORAGE_KEYS.LONGITUDE, addressData.longitude],
       ]);
@@ -220,7 +220,7 @@ const AddressHeaderLeft = () => {
       if (savedAddress && savedLat && savedLng) {
         return {
           address: savedAddress,
-          homeType: savedHomeType || 'Delivering to',
+          homeType: savedHomeType || 'Delivering',
           coords: {
             lat: parseFloat(savedLat),
             lng: parseFloat(savedLng),
@@ -230,7 +230,7 @@ const AddressHeaderLeft = () => {
       }
       return {
         address: '',
-        homeType: 'Delivering to',
+        homeType: 'Delivering',
         coords: null,
         addressId: null,
       };
@@ -238,7 +238,7 @@ const AddressHeaderLeft = () => {
       console.error('Error getting saved address details:', error);
       return {
         address: '',
-        homeType: 'Delivering to',
+        homeType: 'Delivering',
         coords: null,
         addressId: null,
       };
@@ -282,7 +282,7 @@ const AddressHeaderLeft = () => {
       await saveAddressDetails({
         id: isExisting ? id.toString() : null,
         full_address,
-        home_type: home_type || "Delivering to",
+        home_type: home_type || "Delivering",
         latitude: lat.toString(),
         longitude: lng.toString(),
       });
@@ -292,7 +292,7 @@ const AddressHeaderLeft = () => {
         full_address,
         { lat, lng },
         { 
-          homeType: home_type || "Delivering to",
+          homeType: home_type || "Delivering",
           ...(isExisting && { addressId: id.toString() }) // only add addressId if it exists
         }
       );
@@ -683,7 +683,7 @@ const AddressHeaderLeft = () => {
             lng: parseFloat(raw.longitude),
           },
           { 
-            homeType: raw.home_type || 'Delivering to',
+            homeType: raw.home_type || 'Delivering',
             addressId: String(raw.id) || null
           }
         );
@@ -695,7 +695,7 @@ const AddressHeaderLeft = () => {
               await saveAddressDetails({
                 id: String(raw.id),
                 full_address: raw.full_address,
-                home_type: raw.home_type || 'Delivering to',
+                home_type: raw.home_type || 'Delivering',
                 latitude: raw.latitude,
                 longitude: raw.longitude,
               });

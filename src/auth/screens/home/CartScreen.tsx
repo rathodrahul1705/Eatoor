@@ -27,7 +27,6 @@ import { getWalletBalance, debitWallet } from '../../../api/wallet';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BlurView } from '@react-native-community/blur';
 import RazorpayCheckout from 'react-native-razorpay';
-import { RAZORPAY_API_KEY } from '@env';
 
 const { width, height } = Dimensions.get('window');
 
@@ -50,7 +49,7 @@ const FONT = {
 };
 
 // Minimum order value constant
-const MINIMUM_ORDER_VALUE = 5;
+const MINIMUM_ORDER_VALUE = 1;
 
 // Type definitions
 type CartItem = {
@@ -127,6 +126,7 @@ type UserData = {
   full_name: string;
   email: string;
   contact_number: string;
+  wallet_balance?: string;
 };
 
 interface PastKitchenDetails {
@@ -416,7 +416,15 @@ const CartScreen = ({ route, navigation }) => {
         const userData = await AsyncStorage.getItem('user');
         const savedAddressId = await AsyncStorage.getItem('AddressId');
         if (userData) {
-          setUser(JSON.parse(userData));
+          const parsedUser = JSON.parse(userData);
+          setUser(parsedUser);
+          // Set initial wallet balance from user data
+          if (parsedUser.wallet_balance) {
+            setWalletBalance({
+              balance: safePrice(parsedUser.wallet_balance),
+              currency: 'INR'
+            });
+          }
         }
         if (savedAddressId) {
           setAddressId(savedAddressId);
@@ -564,6 +572,18 @@ const CartScreen = ({ route, navigation }) => {
           currency: response.data.currency || 'INR'
         };
         setWalletBalance(balanceData);
+        
+        // Update user data in AsyncStorage
+        try {
+          const userData = await AsyncStorage.getItem('user');
+          if (userData) {
+            const parsedUser = JSON.parse(userData);
+            parsedUser.wallet_balance = balanceData.balance.toString();
+            await AsyncStorage.setItem('user', JSON.stringify(parsedUser));
+          }
+        } catch (storageError) {
+          console.error('Error updating wallet in storage:', storageError);
+        }
         
         // If wallet has balance, check if it should be auto-selected
         if (balanceData.balance > 0 && !selectedPaymentMethod) {
@@ -856,12 +876,22 @@ const CartScreen = ({ route, navigation }) => {
       
       if (response.status === 200) {
         const orderId = response.data.data.id;
+        const razorpay_key = response.data.data.key;
+
         setRazorpayOrderId(orderId);
         razorpayOrderIdRef.current = orderId;
-        return orderId;
+
+        return {
+          orderId: orderId,
+          razorpay_key: razorpay_key,
+        };
+
       } else {
-        throw new Error(response.data.message || 'Failed to create Razorpay order');
+        throw new Error(
+          response.data.message || 'Failed to create Razorpay order'
+        );
       }
+
     } catch (error) {
       console.error('Error creating Razorpay order:', error);
       throw error;
@@ -1376,16 +1406,16 @@ const CartScreen = ({ route, navigation }) => {
     
     try {
       // Create Razorpay order for the remaining amount
-      const orderId = await createRazorpayOrder();
-      
+      const response = await createRazorpayOrder();
+
       const options = {
-        description: `Order from ${cartData.restaurant_name}${useWallet ? ` (Eatoor Money used: ₹${calculateWalletUsage().toFixed(2)})` : ''}`,
+        description: `Order from ${cartData.restaurant_name}`,
         image: 'https://eatoorprod.s3.amazonaws.com/eatoor-logo/fwdeatoorlogofiles/5.png',
         currency: 'INR',
-        key: RAZORPAY_API_KEY,
+        key: response.razorpay_key,
         amount: finalAmount * 100,
-        name: user.full_name,
-        order_id: orderId,
+        name: "Eatoor",
+        order_id: response.orderId,
         prefill: {
           email: user.email,
           contact: user.contact_number,
@@ -1397,46 +1427,55 @@ const CartScreen = ({ route, navigation }) => {
           user_id: userId,
           delivery_offer: cartData.delivery_offer_exist ? 'true' : 'false',
           payment_attempt_id: paymentAttemptId
-        },
-        modal: {
-          backdropclose: false,
-          ondismiss: () => {
-            handlePaymentCancellation({ description: 'Payment modal dismissed' });
-          }
         }
       };
 
-      // Open Razorpay checkout
-      RazorpayCheckout.open(options)
-        .then(async (data: PaymentResponse) => {
-          // Start verification process
-          setPaymentVerification({
-            verifying: true,
-            message: 'Verifying your payment...',
-            success: false
-          });
-          
-          try {
-            await verifyPaymentStatus(data);
-          } catch (verificationError) {
-            showPaymentStatusModal('failed', 'Payment verification failed');
+      if (Platform.OS === 'android') {
+        options.modal = {
+          ondismiss: () => {
+            console.log('Payment modal dismissed on Android');
+            handlePaymentCancellation({ 
+              code: 'USER_CANCELLED', 
+              description: 'Payment modal dismissed by user',
+              source: 'modal_dismiss'
+            });
           }
-        })
-        .catch((error) => {
-          if (isUserCancelledError(error)) {
-            handlePaymentCancellation(error);
-          } else if (isNetworkError(error)) {
-            handleNetworkError(error);
-          } else {
-            handlePaymentFailure(error);
-          }
-        })
-        .finally(() => {
-          paymentInProgressRef.current = false;
-          setIsPaymentInProgress(false);
-          setShowBlurOverlay(false);
+        };
+    } else {
+      // For iOS, we'll handle dismissal through error callback
+      // No modal.ondismiss needed as iOS handles it differently
+    }
+      console.log('Opening Razorpay checkout with options:', options);
+
+      // Open Razorpay checkout with proper error handling
+      try {
+        const data: PaymentResponse = await RazorpayCheckout.open(options);
+        
+        // Start verification process
+        setPaymentVerification({
+          verifying: true,
+          message: 'Verifying your payment...',
+          success: false
         });
+        
+        try {
+          await verifyPaymentStatus(data);
+        } catch (verificationError) {
+          showPaymentStatusModal('failed', 'Payment verification failed');
+        }
+      } catch (error) {
+        console.log('Razorpay checkout error:', error);
+        
+        if (isUserCancelledError(error)) {
+          handlePaymentCancellation(error);
+        } else if (isNetworkError(error)) {
+          handleNetworkError(error);
+        } else {
+          handlePaymentFailure(error);
+        }
+      }
     } catch (error) {
+      console.error('Error initiating online payment:', error);
       showPaymentStatusModal('failed', 'Payment initiation failed');
       paymentInProgressRef.current = false;
       setIsPaymentInProgress(false);
@@ -1445,6 +1484,12 @@ const CartScreen = ({ route, navigation }) => {
   };
 
   const initiatePayment = async () => {
+    // Check if address is selected
+    if (!addressId) {
+      handleAddressChange(); // Navigate to address selection screen
+      return;
+    }
+    
     // Check if payment method is selected
     if (!selectedPaymentMethod) {
       openPaymentMethodModal();
@@ -1814,7 +1859,7 @@ const CartScreen = ({ route, navigation }) => {
             style={styles.addMoneyButton}
             onPress={() => navigation.navigate('EatoorMoneyAdd', { 
               prevScreen: 'CartScreen',
-              amountToAdd: totalAmount
+              amountToAdd: 0
             })}
             disabled={showBlurOverlay || isPaymentInProgress}
           >
@@ -1829,6 +1874,21 @@ const CartScreen = ({ route, navigation }) => {
   // Render payment method dropdown in footer - SIDE BY SIDE with button
   const renderPaymentMethodDropdown = () => {
     const finalAmount = calculateFinalAmount();
+    
+    // Check if address is selected
+    const isAddressSelected = !!addressId;
+    
+    // Determine button text based on address selection
+    let buttonText = '';
+    if (!isAddressSelected) {
+      buttonText = 'Select Location';
+    } else if (selectedPaymentMethod?.type === 'cod') {
+      buttonText = 'Place Order';
+    } else if (finalAmount === 0) {
+      buttonText = 'Place Order';
+    } else {
+      buttonText = `Pay ₹${finalAmount.toFixed(0)}`;
+    }
 
     return (
       <View style={styles.paymentMethodInlineContainer}>
@@ -1847,11 +1907,13 @@ const CartScreen = ({ route, navigation }) => {
                   <Icon 
                     name={selectedPaymentMethod.icon} 
                     size={scale(20)} 
+                    color="#E65C00"
                   />
                 ) : (
                   <Icon 
                     name="card-outline" 
                     size={scale(20)} 
+                    color="#E65C00"
                   />
                 )}
               </View>
@@ -1888,7 +1950,8 @@ const CartScreen = ({ route, navigation }) => {
         <TouchableOpacity 
           style={[
             styles.proceedButton,
-            (isPaymentInProgress || paymentStatus === 'processing') && styles.proceedButtonDisabled
+            (isPaymentInProgress || paymentStatus === 'processing') && styles.proceedButtonDisabled,
+            !isAddressSelected && styles.selectLocationButton
           ]}
           onPress={initiatePayment}
           disabled={paymentStatus === 'processing' || paymentVerification.verifying || showBlurOverlay || isPaymentInProgress}
@@ -1898,8 +1961,7 @@ const CartScreen = ({ route, navigation }) => {
             <ActivityIndicator size="small" color="#fff" />
           ) : (
             <Text style={styles.proceedButtonText}>
-              {selectedPaymentMethod?.type === 'cod' ? 'Place Order' : 
-              finalAmount === 0 ? 'Place Order' : `Pay  ₹${finalAmount.toFixed(0)}`}
+              {buttonText}
             </Text>
           )}
         </TouchableOpacity>
@@ -1957,21 +2019,25 @@ const CartScreen = ({ route, navigation }) => {
             <TouchableOpacity 
               style={[
                 styles.quantityButton,
+                (item.quantity <= 1 || showBlurOverlay || isPaymentInProgress) && styles.disabledButton
               ]} 
               onPress={() => updateItemQuantity(item.item_id, 'decrement')}
-              disabled={showBlurOverlay || isPaymentInProgress}
+              disabled={item.quantity <= 1 || showBlurOverlay || isPaymentInProgress}
             >
               {isUpdating && currentAction === 'decrement' ? (
                 <ActivityIndicator size="small" color="#E65C00" />
               ) : (
-                <Icon name="remove" size={scale(14)} color={item.quantity <= 1 ? "#E65C00" : "#E65C00"} />
+                <Icon name="remove" size={scale(14)} color={item.quantity <= 1 ? "#ccc" : "#E65C00"} />
               )}
             </TouchableOpacity>
             
             <Text style={styles.quantityText}>{safeText(item.quantity, '0')}</Text>
             
             <TouchableOpacity 
-              style={styles.quantityButton} 
+              style={[
+                styles.quantityButton,
+                (showBlurOverlay || isPaymentInProgress) && styles.disabledButton
+              ]} 
               onPress={() => updateItemQuantity(item.item_id, 'increment')}
               disabled={isUpdating || showBlurOverlay || isPaymentInProgress}
             >
@@ -2048,7 +2114,7 @@ const CartScreen = ({ route, navigation }) => {
                 <TouchableOpacity 
                   style={[
                     styles.quantityButton,
-                    quantity <= 1 && styles.disabledButton
+                    (quantity <= 1 || showBlurOverlay || isPaymentInProgress) && styles.disabledButton
                   ]} 
                   onPress={() => updateItemQuantity(item.item_id, 'decrement', 'SUGGESTION')}
                   disabled={isUpdating || quantity <= 1 || showBlurOverlay || isPaymentInProgress}
@@ -2063,7 +2129,10 @@ const CartScreen = ({ route, navigation }) => {
                 <Text style={styles.quantityText}>{safeText(quantity, '0')}</Text>
                 
                 <TouchableOpacity 
-                  style={styles.quantityButton} 
+                  style={[
+                    styles.quantityButton,
+                    (showBlurOverlay || isPaymentInProgress) && styles.disabledButton
+                  ]} 
                   onPress={() => updateItemQuantity(item.item_id, 'increment', 'SUGGESTION')}
                   disabled={isUpdating || showBlurOverlay || isPaymentInProgress}
                 >
@@ -2078,7 +2147,8 @@ const CartScreen = ({ route, navigation }) => {
               <TouchableOpacity 
                 style={[
                   styles.addItemButton,
-                  isUpdating && styles.addItemButtonDisabled
+                  isUpdating && styles.addItemButtonDisabled,
+                  (showBlurOverlay || isPaymentInProgress) && styles.disabledButton
                 ]}
                 onPress={() => updateItemQuantity(item.item_id, 'increment', 'SUGGESTION')}
                 disabled={isUpdating || showBlurOverlay || isPaymentInProgress}
@@ -2806,80 +2876,81 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   // Payment Method Inline Container (SIDE BY SIDE)
-  // Updated styles for clean text alignment
-// Alternative: Minimal clean version
-paymentMethodInlineContainer: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  paddingHorizontal: scale(16),
-  paddingVertical: verticalScale(14),
-  backgroundColor: '#fff',
-  borderTopWidth: 0.5,
-  borderTopColor: '#eee',
-},
-paymentMethodDropdown: {
-  flex: 1,
-  marginRight: scale(16),
-},
-paymentMethodContent: {
-  flexDirection: 'row',
-  alignItems: 'flex-start',
-},
-iconContainer: {
-  marginRight: scale(12),
-  marginTop: verticalScale(2),
-},
-paymentIcon: {
-  width: scale(24),
-  height: scale(24),
-},
-textContainer: {
-  flex: 1,
-},
-topRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  marginBottom: verticalScale(4),
-},
-payUsingLabel: {
-  fontSize: FONT.S,
-  color: '#666',
-  fontWeight: '500',
-  marginRight: scale(6),
-},
-paymentMethodRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  marginBottom: verticalScale(2),
-},
-paymentMethodName: {
-  fontSize: FONT.BASE,
-  fontWeight: '600',
-  color: '#1a1a1a',
-},
-paymentDetails: {
-  fontSize: FONT.SM,
-  color: '#666',
-  fontWeight: '400',
-},
-proceedButton: {
-  backgroundColor: '#E65C00',
-  borderRadius: scale(6),
-  paddingVertical: verticalScale(12),
-  paddingHorizontal: scale(20),
-  minWidth: scale(100),
-  alignItems: 'center',
-  justifyContent: 'center',
-},
-proceedButtonDisabled: {
+  paymentMethodInlineContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(14),
+    backgroundColor: '#fff',
+    borderTopWidth: 0.5,
+    borderTopColor: '#eee',
+  },
+  paymentMethodDropdown: {
+    flex: 1,
+    marginRight: scale(16),
+  },
+  paymentMethodContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  iconContainer: {
+    marginRight: scale(12),
+    marginTop: verticalScale(2),
+  },
+  paymentIcon: {
+    width: scale(24),
+    height: scale(24),
+  },
+  textContainer: {
+    flex: 1,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: verticalScale(4),
+  },
+  payUsingLabel: {
+    fontSize: FONT.S,
+    color: '#666',
+    fontWeight: '500',
+    marginRight: scale(6),
+  },
+  paymentMethodRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: verticalScale(2),
+  },
+  paymentMethodName: {
+    fontSize: FONT.BASE,
+    fontWeight: '600',
+    color: '#1a1a1a',
+  },
+  paymentDetails: {
+    fontSize: FONT.SM,
+    color: '#666',
+    fontWeight: '400',
+  },
+  proceedButton: {
+    backgroundColor: '#E65C00',
+    borderRadius: scale(6),
+    paddingVertical: verticalScale(12),
+    paddingHorizontal: scale(20),
+    minWidth: scale(100),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectLocationButton: {
+    backgroundColor: '#E65C00',
+  },
+  proceedButtonDisabled: {
     opacity: 0.7,
   },
-proceedButtonText: {
-  color: '#fff',
-  fontSize: FONT.BASE,
-  fontWeight: '700',
-},
+  proceedButtonText: {
+    color: '#fff',
+    fontSize: FONT.BASE,
+    fontWeight: '700',
+  },
   // Order Amount Footer
   orderAmountFooterContainer: {
     backgroundColor: '#f8f9fa',
@@ -3258,9 +3329,6 @@ proceedButtonText: {
     fontSize: FONT.SM,
     color: '#E65C00',
     fontWeight: '500',
-  },
-  insufficientBalanceText: {
-    color: '#ff6b6b',
   },
   balanceTextDisabled: {
     color: '#999',
