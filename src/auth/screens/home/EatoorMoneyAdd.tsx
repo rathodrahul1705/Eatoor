@@ -161,6 +161,12 @@ const EatoorMoneyAdd = () => {
       
       const razorpayOptions = {
         description: 'Add Eatoor Money',
+        method: {
+            upi: true,
+            card: true,
+            netbanking: true,
+            wallet: true,
+        },
         image: 'https://eatoorprod.s3.amazonaws.com/eatoor-logo/fwdeatoorlogofiles/5.png',
         currency: 'INR',
         key: orderData.key || 'rzp_live_FHtZiuvJzjmBrk',
