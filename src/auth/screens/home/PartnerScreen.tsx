@@ -22,6 +22,7 @@ import {
   KeyboardAvoidingView,
   TouchableWithoutFeedback,
   AppState,
+  ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import Sound from 'react-native-sound';
@@ -267,6 +268,11 @@ const PartnerScreen = ({ navigation, route }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  const [notificationLoading, setNotificationLoading] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState('');
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [ordersLoading, setOrdersLoading] = useState(false);
   
   const [restaurants, setRestaurants] = useState([]);
   const [ordersData, setOrdersData] = useState({});
@@ -374,6 +380,16 @@ const PartnerScreen = ({ navigation, route }) => {
     }
   }, [dataLoadedRef.current, restaurants.length]);
 
+  const showNotificationLoader = (message) => {
+    setNotificationLoading(true);
+    setNotificationMessage(message);
+  };
+
+  const hideNotificationLoader = () => {
+    setNotificationLoading(false);
+    setNotificationMessage('');
+  };
+
   const handleNotificationData = useCallback(async (notificationData) => {
     try {
       console.log('🎯 Processing notification data:', notificationData);
@@ -381,6 +397,8 @@ const PartnerScreen = ({ navigation, route }) => {
       if (notificationTimeoutRef.current) {
         clearTimeout(notificationTimeoutRef.current);
       }
+      
+      showNotificationLoader('Loading restaurant and order details...');
       
       const { 
         click_action, 
@@ -404,6 +422,12 @@ const PartnerScreen = ({ navigation, route }) => {
       
       if (!finalRestaurantId || !finalOrderId) {
         console.log('❌ Missing restaurantId or orderId in notification');
+        hideNotificationLoader();
+        Alert.alert(
+          'Notification Error',
+          'Missing restaurant or order information in notification.',
+          [{ text: 'OK' }]
+        );
         return;
       }
       
@@ -417,6 +441,7 @@ const PartnerScreen = ({ navigation, route }) => {
       
     } catch (error) {
       console.error('❌ Error processing notification:', error);
+      hideNotificationLoader();
       Alert.alert(
         'Notification Error',
         'Could not process notification. Please try refreshing.',
@@ -438,6 +463,7 @@ const PartnerScreen = ({ navigation, route }) => {
       
       if (restaurants.length === 0) {
         console.log('🏪 No restaurants available, cannot navigate');
+        hideNotificationLoader();
         return;
       }
       
@@ -447,16 +473,14 @@ const PartnerScreen = ({ navigation, route }) => {
       
       if (!targetRestaurant) {
         console.log('❌ Restaurant not found in current list:', restaurantId);
-        Alert.alert(
-          'Restaurant Not Found',
-          'The restaurant from the notification is not available.',
-          [{ text: 'OK' }]
-        );
+        hideNotificationLoader();
         notificationHandledRef.current = false;
         return;
       }
       
       console.log('✅ Found restaurant:', targetRestaurant.restaurant_name);
+      
+      setNotificationMessage(`Switching to ${targetRestaurant.restaurant_name}...`);
       
       const needToSwitch = !selectedRestaurant || 
         selectedRestaurant.restaurant_id.toString() !== restaurantId.toString();
@@ -465,10 +489,12 @@ const PartnerScreen = ({ navigation, route }) => {
         console.log('🔄 Switching to notification restaurant...');
         await switchRestaurant(targetRestaurant);
         
+        setNotificationMessage(`Loading orders for ${targetRestaurant.restaurant_name}...`);
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
       
       console.log('📥 Fetching orders for restaurant:', restaurantId);
+      setNotificationMessage('Fetching order details...');
       await fetchOrdersForRestaurant(restaurantId);
       
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -482,6 +508,7 @@ const PartnerScreen = ({ navigation, route }) => {
       
       if (targetOrder) {
         console.log('✅ Order found, opening modal');
+        hideNotificationLoader();
         setTimeout(() => {
           openOrderModal(targetOrder);
           setNotificationOrderId(null);
@@ -490,6 +517,7 @@ const PartnerScreen = ({ navigation, route }) => {
         }, 500);
       } else {
         console.log('❌ Order not found after fetch');
+        setNotificationMessage('Searching for order...');
         setTimeout(async () => {
           await fetchOrdersForRestaurant(restaurantId);
           
@@ -501,10 +529,12 @@ const PartnerScreen = ({ navigation, route }) => {
             
             if (foundOrder) {
               console.log('✅ Order found on second attempt');
+              hideNotificationLoader();
               openOrderModal(foundOrder);
               setNotificationOrderId(null);
               setNotificationRestaurantId(null);
             } else {
+              hideNotificationLoader();
               Alert.alert(
                 'Order Not Found',
                 'The order from notification could not be found.',
@@ -518,6 +548,7 @@ const PartnerScreen = ({ navigation, route }) => {
       
     } catch (error) {
       console.error('❌ Error navigating to order:', error);
+      hideNotificationLoader();
       Alert.alert(
         'Navigation Error',
         'Could not navigate to the order from notification.',
@@ -667,6 +698,7 @@ const PartnerScreen = ({ navigation, route }) => {
   const fetchRestaurants = useCallback(async (userData = null) => {
     try {
       setLoading(true);
+      setDataLoading(true);
       
       let currentUser = userData || user;
       
@@ -674,6 +706,7 @@ const PartnerScreen = ({ navigation, route }) => {
         currentUser = await fetchUserData();
         if (!currentUser || !currentUser.id) {
           setLoading(false);
+          setDataLoading(false);
           dataLoadedRef.current = true;
           return;
         }
@@ -733,16 +766,19 @@ const PartnerScreen = ({ navigation, route }) => {
         }
         
         setLoading(false);
+        setDataLoading(false);
         dataLoadedRef.current = true;
         
       } else {
         setRestaurants([]);
         setLoading(false);
+        setDataLoading(false);
         dataLoadedRef.current = true;
       }
     } catch (error) {
       console.error('Error fetching restaurants:', error);
       setLoading(false);
+      setDataLoading(false);
       dataLoadedRef.current = true;
     }
   }, [user, notificationRestaurantId, selectedRestaurant]);
@@ -769,6 +805,8 @@ const PartnerScreen = ({ navigation, route }) => {
       if (isPolling) return;
       
       setIsPolling(true);
+      setOrdersLoading(true);
+      
       console.log('📥 Fetching orders for restaurant:', restaurantId);
       const response = await getOrderDetails(restaurantId);
       
@@ -866,6 +904,7 @@ const PartnerScreen = ({ navigation, route }) => {
       console.error('Error fetching orders:', error);
     } finally {
       setIsPolling(false);
+      setOrdersLoading(false);
     }
   }, [isPolling, updateStatsFromOrders]);
 
@@ -978,15 +1017,19 @@ const PartnerScreen = ({ navigation, route }) => {
     const initializeData = async () => {
       if (isInitialMount.current) {
         isInitialMount.current = false;
+        setInitialLoading(true);
         const userData = await fetchUserData();
         if (userData && userData.id) {
           await fetchRestaurants(userData);
+          setInitialLoading(false);
         } else {
           setLoading(false);
+          setInitialLoading(false);
           dataLoadedRef.current = true;
         }
         fetchAttempted.current = true;
       }
+      
     };
 
     initializeData();
@@ -1201,6 +1244,8 @@ const PartnerScreen = ({ navigation, route }) => {
   const switchRestaurant = useCallback(async (restaurant) => {
     try {
       setIsRestaurantChanging(true);
+      setDataLoading(true);
+      
       console.log('🔄 Switching to restaurant:', restaurant.restaurant_id);
       
       if (pollingIntervalRef.current) {
@@ -1247,6 +1292,7 @@ const PartnerScreen = ({ navigation, route }) => {
       return false;
     } finally {
       setIsRestaurantChanging(false);
+      setDataLoading(false);
     }
   }, [fetchOrdersForRestaurant, startPolling, isAlarmPlaying]);
 
@@ -1348,6 +1394,7 @@ const PartnerScreen = ({ navigation, route }) => {
     if (refreshing) return;
     
     setRefreshing(true);
+    setDataLoading(true);
     
     try {
       console.log('🔄 Refreshing data...');
@@ -1376,6 +1423,7 @@ const PartnerScreen = ({ navigation, route }) => {
       console.error('Refresh error:', error);
     } finally {
       setRefreshing(false);
+      setDataLoading(false);
     }
   }, [selectedRestaurant, restaurants, fetchRestaurants, refreshing]);
 
@@ -1697,12 +1745,6 @@ const PartnerScreen = ({ navigation, route }) => {
             ? { ...rest, status: newStatus }
             : rest
         ));
-        
-        Alert.alert(
-          'Success',
-          `Restaurant is now ${newStatus}`,
-          [{ text: 'OK' }]
-        );
       }
     } catch (error) {
       console.error('Error updating restaurant status:', error);
@@ -1712,21 +1754,18 @@ const PartnerScreen = ({ navigation, route }) => {
     }
   };
 
-  if (loading && restaurants.length === 0) {
+  // Initial loading screen
+  if (initialLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Animated.View style={styles.loadingLogo}>
-            <Icon name="restaurant" size={scaleSize(40)} color="#F07119" />
+        <View style={styles.fullscreenLoader}>
+          <Animated.View style={styles.loadingLogoContainer}>
+            <Icon name="restaurant" size={scaleSize(60)} color="#F07119" />
+            <View style={styles.loadingPulse} />
           </Animated.View>
-          <Text style={styles.loadingText}>Loading restaurants...</Text>
-          <TouchableOpacity 
-            style={styles.retryButton}
-            onPress={onRefresh}
-          >
-            <Icon name="refresh" size={scaleSize(16)} color="#fff" />
-            <Text style={styles.retryButtonText}>Refresh</Text>
-          </TouchableOpacity>
+          <Text style={styles.loadingTitle}>Eatoor Partner</Text>
+          <Text style={styles.loadingSubtitle}>Loading your restaurants...</Text>
+          <ActivityIndicator size="large" color="#F07119" style={styles.loadingSpinner} />
         </View>
       </SafeAreaView>
     );
@@ -1790,6 +1829,41 @@ const PartnerScreen = ({ navigation, route }) => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
+      {/* Data Loading Overlay */}
+      {dataLoading && (
+        <View style={styles.dataLoadingOverlay}>
+            <ActivityIndicator size="large" color="#F07119" />
+            <Text style={styles.dataLoadingText}>Loading data...</Text>
+        </View>
+      )}
+      
+      {/* Orders Loading Overlay */}
+      {ordersLoading && selectedRestaurant && (
+        <View style={styles.ordersLoadingOverlay}>
+          <View style={styles.ordersLoadingContainer}>
+            <ActivityIndicator size="small" color="#F07119" />
+            <Text style={styles.ordersLoadingText}>Updating orders...</Text>
+          </View>
+        </View>
+      )}
+      
+      {/* Notification Loader Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={notificationLoading}
+        onRequestClose={() => hideNotificationLoader()}
+        statusBarTranslucent={true}
+      >
+        <View style={styles.loaderModalOverlay}>
+          <View style={styles.loaderModalContainer}>
+            <ActivityIndicator size="large" color="#F07119" />
+            <Text style={styles.loaderModalText}>{notificationMessage}</Text>
+            <Text style={styles.loaderModalSubtext}>Please wait...</Text>
+          </View>
+        </View>
+      </Modal>
+      
       {/* Animated Notification Banner */}
       {hasNewOrder && currentOrder && (
         <Animated.View 
@@ -1842,151 +1916,156 @@ const PartnerScreen = ({ navigation, route }) => {
         </Animated.View>
       )}
 
-      {/* Modern Header */}
-      <View style={styles.headerContainer}>
-        {/* Top Row: Back Button + Restaurant Selector + Refresh */}
-        <View style={styles.headerTopRow}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={handleBackPress}
-            activeOpacity={0.7}
-          >
-            <Icon name="arrow-back" size={scaleSize(24)} color="#111827" />
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.restaurantSelector}
-            onPress={() => setShowRestaurantModal(true)}
-            activeOpacity={0.7}
-            disabled={isRestaurantChanging}
-          >
-            <View style={styles.restaurantSelectorContent}>
-              <View style={styles.restaurantSelectorLeft}>
-                {selectedRestaurant ? (
-                  <>
-                    <View style={styles.restaurantAvatar}>
-                      <Image
-                        source={{ uri: selectedRestaurant.profile_image }}
-                        style={styles.restaurantAvatarImage}
-                        defaultSource={{ uri: 'https://via.placeholder.com/40' }}
-                      />
-                      <View style={[
-                        styles.restaurantStatusIndicator,
-                        { backgroundColor: RESTAURANT_STATUS_COLORS[selectedRestaurant.status] }
-                      ]} />
-                    </View>
-                    <View style={styles.restaurantInfoContainer}>
-                      <Text style={styles.restaurantName} numberOfLines={1}>
-                        {selectedRestaurant.restaurant_name}
-                      </Text>
-                      <Text style={styles.restaurantDetails} numberOfLines={1}>
-                        {getCuisineString(selectedRestaurant.cuisines)} • {getLocationString(selectedRestaurant.location)}
-                      </Text>
-                    </View>
-                  </>
+      {/* Fixed Header Container */}
+      <View style={styles.headerWrapper}>
+        {/* Modern Header */}
+        <View style={styles.headerContainer}>
+          {/* Top Row: Back Button + Restaurant Selector + Refresh */}
+          <View style={styles.headerTopRow}>
+            <TouchableOpacity 
+              style={styles.backButton}
+              onPress={handleBackPress}
+              activeOpacity={0.7}
+            >
+              <Icon name="arrow-back" size={scaleSize(24)} color="#111827" />
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.restaurantSelector}
+              onPress={() => setShowRestaurantModal(true)}
+              activeOpacity={0.7}
+              disabled={isRestaurantChanging || dataLoading}
+            >
+              <View style={styles.restaurantSelectorContent}>
+                <View style={styles.restaurantSelectorLeft}>
+                  {selectedRestaurant ? (
+                    <>
+                      <View style={styles.restaurantAvatar}>
+                        <Image
+                          source={{ uri: selectedRestaurant.profile_image }}
+                          style={styles.restaurantAvatarImage}
+                          defaultSource={{ uri: 'https://via.placeholder.com/40' }}
+                        />
+                        <View style={[
+                          styles.restaurantStatusIndicator,
+                          { backgroundColor: RESTAURANT_STATUS_COLORS[selectedRestaurant.status] }
+                        ]} />
+                      </View>
+                      <View style={styles.restaurantInfoContainer}>
+                        <Text style={styles.restaurantName} numberOfLines={1}>
+                          {selectedRestaurant.restaurant_name}
+                        </Text>
+                        <Text style={styles.restaurantDetails} numberOfLines={1}>
+                          {getCuisineString(selectedRestaurant.cuisines)} • {getLocationString(selectedRestaurant.location)}
+                        </Text>
+                      </View>
+                    </>
+                  ) : (
+                    <Text style={styles.noRestaurantText}>Select a restaurant</Text>
+                  )}
+                </View>
+                {isRestaurantChanging || dataLoading ? (
+                  <ActivityIndicator size="small" color="#F07119" />
                 ) : (
-                  <Text style={styles.noRestaurantText}>Select a restaurant</Text>
+                  <Icon name="chevron-down" size={scaleSize(18)} color="#6B7280" />
                 )}
               </View>
-              {isRestaurantChanging ? (
-                <Animated.View style={{ transform: [{ rotate: '360deg' }] }}>
-                  <Icon name="refresh" size={scaleSize(18)} color="#F07119" />
-                </Animated.View>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.refreshButton}
+              onPress={() => onRefresh()}
+              disabled={refreshing || !selectedRestaurant || updatingStatus || isRestaurantChanging || dataLoading}
+            >
+              {refreshing || dataLoading ? (
+                <ActivityIndicator size="small" color="#F07119" />
               ) : (
-                <Icon name="chevron-down" size={scaleSize(18)} color="#6B7280" />
-              )}
-            </View>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.refreshButton}
-            onPress={() => onRefresh()}
-            disabled={refreshing || !selectedRestaurant || updatingStatus || isRestaurantChanging}
-          >
-            {refreshing ? (
-              <Animated.View style={{ transform: [{ rotate: '360deg' }] }}>
-                <Icon name="refresh" size={scaleSize(22)} color="#F07119" />
-              </Animated.View>
-            ) : (
-              <Icon 
-                name="refresh" 
-                size={scaleSize(22)} 
-                color={refreshing || !selectedRestaurant || updatingStatus || isRestaurantChanging ? "#9CA3AF" : "#F07119"} 
-              />
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {/* Bottom Row: Restaurant Status + Search */}
-        <View style={styles.headerBottomRow}>
-          {/* Restaurant Status Button */}
-          {selectedRestaurant && userPermissions.canManageRestaurant && (
-            <TouchableOpacity 
-              style={[
-                styles.statusButton,
-                { 
-                  backgroundColor: selectedRestaurant.status === 'online' ? '#ECFDF5' : '#FEF2F2',
-                  borderColor: selectedRestaurant.status === 'online' ? '#10B981' : '#EF4444'
-                }
-              ]}
-              onPress={() => toggleRestaurantStatus()}
-              disabled={updatingRestaurantStatus || isRestaurantChanging}
-            >
-              <View style={[
-                styles.statusDot,
-                { backgroundColor: RESTAURANT_STATUS_COLORS[selectedRestaurant.status] }
-              ]} />
-              <Text style={[
-                styles.statusButtonText,
-                { color: RESTAURANT_STATUS_COLORS[selectedRestaurant.status] }
-              ]}>
-                {updatingRestaurantStatus ? 'Updating...' : RESTAURANT_STATUS_DISPLAY[selectedRestaurant.status]}
-              </Text>
-            </TouchableOpacity>
-          )}
-          
-          {/* Search Button/Input */}
-          {!showSearch ? (
-            <TouchableOpacity 
-              style={styles.searchButton}
-              onPress={handleSearchFocus}
-              disabled={!selectedRestaurant || updatingStatus || isRestaurantChanging}
-            >
-              <Icon 
-                name="search" 
-                size={scaleSize(22)} 
-                color={!selectedRestaurant || updatingStatus || isRestaurantChanging ? "#9CA3AF" : "#F07119"} 
-              />
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.searchContainer}>
-              <View style={styles.searchInputContainer}>
-                <Icon name="search" size={scaleSize(18)} color="#9CA3AF" style={styles.searchIcon} />
-                <TextInput
-                  ref={searchInputRef}
-                  style={styles.searchInput}
-                  placeholder="Search orders..."
-                  placeholderTextColor="#9CA3AF"
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  autoFocus={true}
-                  returnKeyType="search"
-                  enablesReturnKeyAutomatically={true}
+                <Icon 
+                  name="refresh" 
+                  size={scaleSize(22)} 
+                  color={refreshing || !selectedRestaurant || updatingStatus || isRestaurantChanging || dataLoading ? "#9CA3AF" : "#F07119"} 
                 />
-                {searchQuery.length > 0 && (
-                  <TouchableOpacity onPress={handleSearchClear} style={styles.clearButton}>
-                    <Icon name="close-circle" size={scaleSize(18)} color="#9CA3AF" />
-                  </TouchableOpacity>
-                )}
-              </View>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Bottom Row: Restaurant Status + Search */}
+          <View style={styles.headerBottomRow}>
+            {/* Restaurant Status Button */}
+            {selectedRestaurant && userPermissions.canManageRestaurant && (
               <TouchableOpacity 
-                onPress={handleSearchCancel} 
-                style={styles.cancelButton}
+                style={[
+                  styles.statusButton,
+                  { 
+                    backgroundColor: selectedRestaurant.status === 'online' ? '#ECFDF5' : '#FEF2F2',
+                    borderColor: selectedRestaurant.status === 'online' ? '#10B981' : '#EF4444'
+                  }
+                ]}
+                onPress={() => toggleRestaurantStatus()}
+                disabled={updatingRestaurantStatus || isRestaurantChanging || dataLoading}
               >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                {updatingRestaurantStatus ? (
+                  <ActivityIndicator size="small" color={RESTAURANT_STATUS_COLORS[selectedRestaurant.status]} />
+                ) : (
+                  <>
+                    <View style={[
+                      styles.statusDot,
+                      { backgroundColor: RESTAURANT_STATUS_COLORS[selectedRestaurant.status] }
+                    ]} />
+                    <Text style={[
+                      styles.statusButtonText,
+                      { color: RESTAURANT_STATUS_COLORS[selectedRestaurant.status] }
+                    ]}>
+                      {RESTAURANT_STATUS_DISPLAY[selectedRestaurant.status]}
+                    </Text>
+                  </>
+                )}
               </TouchableOpacity>
-            </View>
-          )}
+            )}
+            
+            {/* Search Button/Input */}
+            {!showSearch ? (
+              <TouchableOpacity 
+                style={styles.searchButton}
+                onPress={handleSearchFocus}
+                disabled={!selectedRestaurant || updatingStatus || isRestaurantChanging || dataLoading}
+              >
+                <Icon 
+                  name="search" 
+                  size={scaleSize(22)} 
+                  color={!selectedRestaurant || updatingStatus || isRestaurantChanging || dataLoading ? "#9CA3AF" : "#F07119"} 
+                />
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.searchContainer}>
+                <View style={styles.searchInputContainer}>
+                  <Icon name="search" size={scaleSize(18)} color="#9CA3AF" style={styles.searchIcon} />
+                  <TextInput
+                    ref={searchInputRef}
+                    style={styles.searchInput}
+                    placeholder="Search orders..."
+                    placeholderTextColor="#9CA3AF"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    autoFocus={true}
+                    returnKeyType="search"
+                    enablesReturnKeyAutomatically={true}
+                  />
+                  {searchQuery.length > 0 && (
+                    <TouchableOpacity onPress={handleSearchClear} style={styles.clearButton}>
+                      <Icon name="close-circle" size={scaleSize(18)} color="#9CA3AF" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <TouchableOpacity 
+                  onPress={handleSearchCancel} 
+                  style={styles.cancelButton}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
         </View>
       </View>
 
@@ -2005,12 +2084,12 @@ const PartnerScreen = ({ navigation, route }) => {
       <KeyboardAvoidingView
         style={styles.keyboardAvoidView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? scaleSize(100) : scaleSize(20)}
       >
         <ScrollView 
           contentContainerStyle={[
             styles.contentContainer,
-            { paddingBottom: Platform.OS === 'ios' ? scaleSize(90) : scaleSize(20) }
+            { paddingBottom: Platform.OS === 'ios' ? scaleSize(100) : scaleSize(20) }
           ]}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -2118,6 +2197,7 @@ const PartnerScreen = ({ navigation, route }) => {
                     selectedFilter === id && styles.filterButtonActive,
                   ]}
                   onPress={() => setSelectedFilter(id)}
+                  disabled={dataLoading || ordersLoading}
                 >
                   <Icon 
                     name={icon} 
@@ -2169,6 +2249,7 @@ const PartnerScreen = ({ navigation, route }) => {
                       ]}
                       onPress={() => openOrderModal(item)}
                       activeOpacity={0.7}
+                      disabled={dataLoading || ordersLoading}
                     >
                       <View style={styles.orderCardHeader}>
                         <View style={styles.orderCardHeaderLeft}>
@@ -2230,38 +2311,52 @@ const PartnerScreen = ({ navigation, route }) => {
             ) : (
               <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
                 <View style={styles.emptyState}>
-                  <Icon 
-                    name={!selectedRestaurant || selectedRestaurant.status === 'offline' ? 'power-outline' : 
-                           searchQuery.trim() !== '' ? 'search-outline' : 'fast-food-outline'} 
-                    size={scaleSize(50)} 
-                    color="#D1D5DB" 
-                  />
-                  <Text style={styles.emptyStateTitle}>
-                    {searchQuery.trim() !== '' ? 'No Search Results' :
-                     !selectedRestaurant || selectedRestaurant.status === 'offline' ? 'Restaurant Offline' : 'No Orders Found'}
-                  </Text>
-                  <Text style={styles.emptyStateText}>
-                    {searchQuery.trim() !== '' ? `No orders found for "${searchQuery}"` :
-                     !selectedRestaurant ? 'Please select a restaurant' :
-                     selectedRestaurant.status === 'offline' 
-                      ? 'Go online to start accepting orders' 
-                      : selectedFilter === 'pending' ? 'No pending orders at the moment' :
-                      selectedFilter === 'preparing' ? 'No orders in preparation' :
-                      selectedFilter === 'ready' ? 'No orders ready for pickup' :
-                      selectedFilter === 'on_the_way' ? 'No orders on the way' :
-                      selectedFilter === 'delivered' ? 'No delivered orders yet' :
-                      selectedFilter === 'cancelled' ? 'No cancelled orders' :
-                      selectedFilter === 'refunded' ? 'No refunded orders' :
-                      'No orders found for the selected filter'}
-                  </Text>
-                  {searchQuery.trim() !== '' && (
-                    <TouchableOpacity 
-                      style={[styles.simulateSmallButton, { backgroundColor: '#6B7280' }]}
-                      onPress={handleSearchClear}
-                    >
-                      <Icon name="close-circle" size={scaleSize(16)} color="#fff" />
-                      <Text style={styles.simulateSmallButtonText}>Clear Search</Text>
-                    </TouchableOpacity>
+                  {(dataLoading || ordersLoading) ? (
+                    <>
+                      <ActivityIndicator size="large" color="#F07119" style={styles.emptyStateLoader} />
+                      <Text style={styles.emptyStateTitle}>
+                        {dataLoading ? 'Loading data...' : 'Updating orders...'}
+                      </Text>
+                      <Text style={styles.emptyStateText}>
+                        Please wait while we fetch the latest information
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Icon 
+                        name={!selectedRestaurant || selectedRestaurant.status === 'offline' ? 'power-outline' : 
+                               searchQuery.trim() !== '' ? 'search-outline' : 'fast-food-outline'} 
+                        size={scaleSize(50)} 
+                        color="#D1D5DB" 
+                      />
+                      <Text style={styles.emptyStateTitle}>
+                        {searchQuery.trim() !== '' ? 'No Search Results' :
+                         !selectedRestaurant || selectedRestaurant.status === 'offline' ? 'Restaurant Offline' : 'No Orders Found'}
+                      </Text>
+                      <Text style={styles.emptyStateText}>
+                        {searchQuery.trim() !== '' ? `No orders found for "${searchQuery}"` :
+                         !selectedRestaurant ? 'Please select a restaurant' :
+                         selectedRestaurant.status === 'offline' 
+                          ? 'Go online to start accepting orders' 
+                          : selectedFilter === 'pending' ? 'No pending orders at the moment' :
+                          selectedFilter === 'preparing' ? 'No orders in preparation' :
+                          selectedFilter === 'ready' ? 'No orders ready for pickup' :
+                          selectedFilter === 'on_the_way' ? 'No orders on the way' :
+                          selectedFilter === 'delivered' ? 'No delivered orders yet' :
+                          selectedFilter === 'cancelled' ? 'No cancelled orders' :
+                          selectedFilter === 'refunded' ? 'No refunded orders' :
+                          'No orders found for the selected filter'}
+                      </Text>
+                      {searchQuery.trim() !== '' && (
+                        <TouchableOpacity 
+                          style={[styles.simulateSmallButton, { backgroundColor: '#6B7280' }]}
+                          onPress={handleSearchClear}
+                        >
+                          <Icon name="close-circle" size={scaleSize(16)} color="#fff" />
+                          <Text style={styles.simulateSmallButtonText}>Clear Search</Text>
+                        </TouchableOpacity>
+                      )}
+                    </>
                   )}
                 </View>
               </TouchableWithoutFeedback>
@@ -2301,7 +2396,7 @@ const PartnerScreen = ({ navigation, route }) => {
                         selectedRestaurant?.restaurant_id === item.restaurant_id && styles.restaurantItemSelected,
                       ]}
                       onPress={() => switchRestaurant(item)}
-                      disabled={isRestaurantChanging}
+                      disabled={isRestaurantChanging || dataLoading}
                     >
                       <Image
                         source={{ uri: item.profile_image }}
@@ -2348,9 +2443,7 @@ const PartnerScreen = ({ navigation, route }) => {
                           </Text>
                         </View>
                         {isRestaurantChanging && selectedRestaurant?.restaurant_id === item.restaurant_id ? (
-                          <Animated.View style={{ transform: [{ rotate: '360deg' }] }}>
-                            <Icon name="refresh" size={scaleSize(16)} color="#F07119" />
-                          </Animated.View>
+                          <ActivityIndicator size="small" color="#F07119" />
                         ) : (
                           <Icon 
                             name="chevron-forward" 
@@ -2678,10 +2771,14 @@ const PartnerScreen = ({ navigation, route }) => {
                     activeOpacity={0.8}
                     disabled={updatingStatus}
                   >
-                    <Icon name="close-circle" size={scaleSize(16)} color="#fff" />
-                    <Text style={styles.cancelButtonText}>
-                      {updatingStatus ? 'Processing...' : 'Cancel Order'}
-                    </Text>
+                    {updatingStatus ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <Icon name="close-circle" size={scaleSize(16)} color="#fff" />
+                        <Text style={styles.cancelButtonText}>Cancel Order</Text>
+                      </>
+                    )}
                   </TouchableOpacity>
                 )}
                 
@@ -2705,21 +2802,25 @@ const PartnerScreen = ({ navigation, route }) => {
                       activeOpacity={0.8}
                       disabled={updatingStatus}
                     >
-                      <Icon 
-                        name={
-                          buttonConfig.nextStatus === 'confirmed' ? 'checkmark-circle' :
-                          buttonConfig.nextStatus === 'preparing' ? 'fast-food' :
-                          buttonConfig.nextStatus === 'ready' ? 'cube' :
-                          buttonConfig.nextStatus === 'on_the_way' ? 'car' :
-                          buttonConfig.nextStatus === 'delivered' ? 'checkmark-done' :
-                          'checkmark-circle'
-                        } 
-                        size={scaleSize(16)} 
-                        color="#fff" 
-                      />
-                      <Text style={styles.statusUpdateButtonText}>
-                        {updatingStatus ? 'Processing...' : buttonConfig.text}
-                      </Text>
+                      {updatingStatus ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <>
+                          <Icon 
+                            name={
+                              buttonConfig.nextStatus === 'confirmed' ? 'checkmark-circle' :
+                              buttonConfig.nextStatus === 'preparing' ? 'fast-food' :
+                              buttonConfig.nextStatus === 'ready' ? 'cube' :
+                              buttonConfig.nextStatus === 'on_the_way' ? 'car' :
+                              buttonConfig.nextStatus === 'delivered' ? 'checkmark-done' :
+                              'checkmark-circle'
+                            } 
+                            size={scaleSize(16)} 
+                            color="#fff" 
+                          />
+                          <Text style={styles.statusUpdateButtonText}>{buttonConfig.text}</Text>
+                        </>
+                      )}
                     </TouchableOpacity>
                   );
                 })()}
@@ -2777,7 +2878,99 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   contentContainer: {
-    paddingBottom: Platform.OS === 'ios' ? scaleSize(90) : scaleSize(20),
+    paddingTop: Platform.OS === 'ios' ? scaleSize(130) : scaleSize(120),
+    paddingBottom: Platform.OS === 'ios' ? scaleSize(100) : scaleSize(20),
+  },
+  // Fullscreen Initial Loader
+  fullscreenLoader: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  loadingLogoContainer: {
+    position: 'relative',
+    marginBottom: scaleSize(20),
+  },
+  loadingPulse: {
+    position: 'absolute',
+    top: -10,
+    left: -10,
+    right: -10,
+    bottom: -10,
+    backgroundColor: 'rgba(240, 113, 25, 0.1)',
+    borderRadius: scaleSize(40),
+    transform: [{ scale: 1.2 }],
+  },
+  loadingTitle: {
+    fontSize: scaleFont(28),
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: scaleSize(8),
+    letterSpacing: -0.5,
+  },
+  loadingSubtitle: {
+    fontSize: scaleFont(16),
+    color: '#6B7280',
+    marginBottom: scaleSize(30),
+  },
+  loadingSpinner: {
+    marginTop: scaleSize(20),
+  },
+  // Data Loading Overlay
+  dataLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    zIndex: 1001,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dataLoadingText: {
+    fontSize: scaleFont(16),
+    fontWeight: '600',
+    color: '#111827',
+    marginTop: scaleSize(16),
+  },
+  // Orders Loading Overlay
+  ordersLoadingOverlay: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? scaleSize(130) : scaleSize(120),
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    zIndex: 999,
+    paddingVertical: scaleSize(10),
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  ordersLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ordersLoadingText: {
+    fontSize: scaleFont(14),
+    color: '#6B7280',
+    marginLeft: scaleSize(10),
+  },
+  // Header Wrapper to fix header position
+  headerWrapper: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+    backgroundColor: '#fff',
+    paddingTop: Platform.OS === 'ios' ? scaleSize(40) : scaleSize(10),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: scaleSize(2) },
+    shadowOpacity: 0.1,
+    shadowRadius: scaleSize(4),
+    elevation: 5,
   },
   // Loading States
   loadingContainer: {
@@ -2838,16 +3031,11 @@ const styles = StyleSheet.create({
   // Modern Header
   headerContainer: {
     backgroundColor: '#fff',
-    paddingTop: Platform.OS === 'ios' ? scaleSize(8) : scaleSize(12),
+    paddingTop: Platform.OS === 'ios' ? 0 : scaleSize(42),
     paddingBottom: scaleSize(12),
     paddingHorizontal: scaleSize(16),
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: scaleSize(2) },
-    shadowOpacity: 0.05,
-    shadowRadius: scaleSize(4),
-    elevation: 2,
   },
   headerTopRow: {
     flexDirection: 'row',
@@ -3006,6 +3194,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   searchResultsInfo: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? scaleSize(130) : scaleSize(120),
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -3014,6 +3206,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFBEB',
     borderBottomWidth: 1,
     borderBottomColor: '#FDE68A',
+    zIndex: 999,
   },
   searchResultsText: {
     fontSize: scaleFont(12),
@@ -3027,10 +3220,44 @@ const styles = StyleSheet.create({
     color: '#F07119',
     fontWeight: '600',
   },
+  // Notification Loader Modal
+  loaderModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loaderModalContainer: {
+    backgroundColor: '#fff',
+    padding: scaleSize(30),
+    borderRadius: scaleSize(20),
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: scaleSize(280),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: scaleSize(4) },
+    shadowOpacity: 0.3,
+    shadowRadius: scaleSize(8),
+    elevation: 10,
+  },
+  loaderModalText: {
+    fontSize: scaleFont(16),
+    fontWeight: '600',
+    color: '#111827',
+    marginTop: scaleSize(20),
+    textAlign: 'center',
+    lineHeight: scaleSize(22),
+  },
+  loaderModalSubtext: {
+    fontSize: scaleFont(14),
+    color: '#6B7280',
+    marginTop: scaleSize(8),
+    textAlign: 'center',
+  },
   // Notification Banner
   notificationBanner: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? scaleSize(40) : scaleSize(20),
+    top: Platform.OS === 'ios' ? scaleSize(100) : scaleSize(80),
     left: scaleSize(12),
     right: scaleSize(12),
     backgroundColor: '#F07119',
@@ -3101,7 +3328,7 @@ const styles = StyleSheet.create({
   // Modern Stats Container
   statsContainer: {
     marginHorizontal: scaleSize(16),
-    marginTop: scaleSize(16),
+    marginTop: scaleSize(40),
     backgroundColor: '#fff',
     borderRadius: scaleSize(20),
     padding: scaleSize(20),
@@ -3402,6 +3629,9 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#E5E7EB',
     marginTop: scaleSize(8),
+  },
+  emptyStateLoader: {
+    marginBottom: scaleSize(20),
   },
   emptyStateTitle: {
     fontSize: scaleFont(18),
