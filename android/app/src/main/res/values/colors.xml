@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Add notification color -->
+    <color name="notification_color">#231F7C</color>
+    
+    <!-- If you want different colors for different types -->
+    <color name="notification_color_general">#231F7C</color>
+    <color name="notification_color_order">#4CAF50</color>
+    <color name="notification_color_promotion">#FF9800</color>
+    <color name="notification_color_alert">#FF5722</color>
+    <color name="notification_color_chat">#2196F3</color>
+</resources>
