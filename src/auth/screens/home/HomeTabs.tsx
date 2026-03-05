@@ -23,21 +23,24 @@ import {
   ScrollView,
   Easing,
   ImageBackground,
-  PanResponder
+  PanResponder,
+  Modal
 } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
+import Icon2 from 'react-native-vector-icons/MaterialCommunityIcons';
 import * as Animatable from 'react-native-animatable';
 import Geolocation from '@react-native-community/geolocation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LinearGradient from 'react-native-linear-gradient';
 import Video from 'react-native-video';
+import { BlurView } from '@react-native-community/blur';
 import PartnerScreen from './PartnerScreen';
 import EatmartScreen from '../../../eatmart/EatmartScreen';
 import ReorderScreen from '../../screens/home/ReorderScreen';
-import { HomeStackParamList, HomeTabParamList } from '../../../types/navigation.d';
+import { HomeStackParamList, HomeTabParamList } from '../../../types/navigation';
 import { getUserAddress } from '../../../api/address';
 import { AuthContext } from '../../../context/AuthContext';
 import { getKitchenList, updateFavouriteKitchen } from '../../../api/home';
@@ -53,94 +56,88 @@ Icon.loadFont();
 const Tab = createBottomTabNavigator<HomeTabParamList>();
 const Stack = createNativeStackNavigator<HomeStackParamList>();
 
-// Get screen dimensions
+// ============== CONSTANTS & CONFIGURATION ==============
+
+// Screen dimensions
 const { width, height } = Dimensions.get('window');
-const isSmallDevice = height < 700;
-const isMediumDevice = height >= 700 && height <= 800;
-const isLargeDevice = height > 800;
+const screenWidth = width;
+const screenHeight = height;
 
-// Calculate header height based on device
-const HEADER_HEIGHT = isSmallDevice ? height * 0.3 : isMediumDevice ? height * 0.35 : height * 0.4;
-
-// Responsive scaling functions with better precision
+// Responsive scaling functions
 const scale = (size: number) => {
   const baseWidth = 375;
-  const scaleWidth = width / baseWidth;
-  return Math.max(1, Math.round(size * scaleWidth));
+  const scaleFactor = screenWidth / baseWidth;
+  return Math.round(size * Math.min(1.6, Math.max(0.8, scaleFactor)));
 };
 
 const verticalScale = (size: number) => {
   const baseHeight = 812;
-  const scaleHeight = height / baseHeight;
-  return Math.max(1, Math.round(size * scaleHeight));
+  const scaleFactor = screenHeight / baseHeight;
+  return Math.round(size * Math.min(1.4, Math.max(0.7, scaleFactor)));
 };
 
-const moderateScale = (size: number, factor = 0.5) => {
-  const baseWidth = 375;
-  const scaleWidth = width / baseWidth;
-  return Math.max(1, Math.round(size + (scaleWidth * size - size) * factor));
-};
-
-// Calculate responsive font sizes
 const fontScale = (size: number) => {
   const baseWidth = 375;
-  const scaleFactor = width / baseWidth;
-  const scaledSize = size * scaleFactor;
-  
-  // Cap the minimum and maximum sizes
-  const minSize = size * 0.9;
-  const maxSize = size * 1.2;
-  
-  return Math.max(minSize, Math.min(maxSize, scaledSize));
+  const scaleFactor = screenWidth / baseWidth;
+  const scaledSize = size * Math.min(1.3, Math.max(0.85, scaleFactor));
+  return Math.round(scaledSize);
 };
 
-const isAndroid = Platform.OS === 'android';
-
-// Define the tabs that actually exist in your app
-type AppTabs = 'Kitchen' | 'Eatmart' | 'Reorder' | 'Partner';
-
-// Tab icons for normal and focused states
-const tabIcons: Record<AppTabs, string> = {
-  Kitchen: 'fast-food-outline',
-  Eatmart: 'restaurant-outline',
-  Reorder: 'repeat-outline',
-  Partner: 'people-outline',
-};
-
-const tabIconsFocused: Record<AppTabs, string> = {
-  Kitchen: 'fast-food',
-  Eatmart: 'restaurant',
-  Reorder: 'repeat',
-  Partner: 'people',
-};
-
-// Colors
+// Color Palette - UPDATED: Kitchen/Eatmart/Reorder/Partner color changed to #E55C18
 const COLORS = {
-  gradientStart: '#E65C00',
-  gradientEnd: '#DD2476',
-  primary: '#E65C00',
+  primary: '#E55C18',
+  primaryGradient: ['#E55C18', '#F15A2E', '#FF6B4A'],
+  secondary: '#00B8A9',
+  accent: '#6C5CE7',
+  success: '#00B894',
+  warning: '#FDCB6E',
+  danger: '#FF7675',
   background: '#FFFFFF',
-  text: '#1C1C1C',
-  textLight: '#696969',
-  textLighter: '#A9A9A9',
-  textDark: '#696969',
   card: '#FFFFFF',
-  zomatoGray: '#F8F8F8',
-  zomatoLightGray: '#F0F0F0',
-  headerIcon: '#FFFFFF',
-  filterVegActive: '#059669',
-  success: '#34C759',
-  refreshSuccess: '#34C759',
-  searchBackground: 'rgba(255, 255, 255, 0.95)',
-  searchBorder: 'rgba(255, 255, 255, 0.3)',
-  searchText: '#666666',
-  searchPlaceholder: '#9A9A9A',
-  searchAndroidBorder: '#E0E0E0',
-  overlayDark: 'rgba(0, 0, 0, 0.4)',
-  overlayDarker: 'rgba(0, 0, 0, 0.6)',
+  cardAlt: '#F9FAFC',
+  text: {
+    primary: '#1E293B',
+    secondary: '#64748B',
+    tertiary: '#94A3B8',
+    light: '#FFFFFF',
+    dark: '#0F172A',
+  },
+  gradient: {
+    start: '#E55C18',
+    end: '#FF6B4A',
+    overlay: ['rgba(0,0,0,0.6)', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.1)'],
+    card: ['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.98)'],
+  },
+  border: {
+    light: '#F1F5F9',
+    default: '#E2E8F0',
+  },
+  zomato: {
+    pink: '#FF7E7E',
+    red: '#E55C18',
+    orange: '#F15A2E',
+    gray: '#F8FAFC',
+    dark: '#1E293B',
+  }
 };
 
-// Storage keys
+// Typography
+const TYPOGRAPHY = {
+  h1: { fontSize: fontScale(28), lineHeight: fontScale(34), fontWeight: '700' as const },
+  h2: { fontSize: fontScale(24), lineHeight: fontScale(30), fontWeight: '700' as const },
+  h3: { fontSize: fontScale(20), lineHeight: fontScale(26), fontWeight: '600' as const },
+  h4: { fontSize: fontScale(18), lineHeight: fontScale(24), fontWeight: '600' as const },
+  body1: { fontSize: fontScale(16), lineHeight: fontScale(24), fontWeight: '400' as const },
+  body2: { fontSize: fontScale(14), lineHeight: fontScale(20), fontWeight: '400' as const },
+  caption: { fontSize: fontScale(12), lineHeight: fontScale(16), fontWeight: '400' as const },
+  button: { fontSize: fontScale(15), lineHeight: fontScale(20), fontWeight: '600' as const },
+};
+
+// Dynamic header height - INCREASED with bottom radius
+const HEADER_HEIGHT = screenHeight * (Platform.OS === 'ios' ? 0.52 : 0.48);
+const STICKY_HEADER_HEIGHT = verticalScale(120);
+
+// Storage Keys
 const STORAGE_KEYS = {
   ADDRESS_ID: 'AddressId',
   STREET_ADDRESS: 'StreetAddress',
@@ -152,107 +149,352 @@ const STORAGE_KEYS = {
   PAST_KITCHEN_DETAILS: 'pastKitchenDetails',
   USER: 'user',
   SESSION_ID: 'sessionId',
-  IS_RESTAURANT_REGISTER: 'is_restaurant_register'
+  IS_RESTAURANT_REGISTER: 'is_restaurant_register',
+  HEADER_OFFERS: 'headerOffers'
 };
 
-// Font family handling with better Android/iOS support
-const FONTS = {
-  bold: Platform.select({ 
-    ios: 'Inter-Bold', 
-    android: 'sans-serif-condensed' 
-  }),
-  semiBold: Platform.select({ 
-    ios: 'Inter-SemiBold', 
-    android: 'sans-serif-medium' 
-  }),
-  medium: Platform.select({ 
-    ios: 'Inter-Medium', 
-    android: 'sans-serif' 
-  }),
-  regular: Platform.select({ 
-    ios: 'Inter-Regular', 
-    android: 'sans-serif' 
-  }),
-  light: Platform.select({ 
-    ios: 'Inter-Light', 
-    android: 'sans-serif-light' 
-  }),
-};
+// Default Assets
+const DEFAULT_BANNER_IMAGE = "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1200&h=600&fit=crop&crop=center&q=80";
+const DEFAULT_CATEGORY_ICON = "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=200&h=200&fit=crop&crop=center&q=80";
+const DEFAULT_RESTAURANT_IMAGE = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=300&fit=crop&crop=center&q=80";
 
-const DEFAULT_BANNER_IMAGE = "https://eatoorprod.s3.eu-north-1.amazonaws.com/uploads/thumbnail_image_v1.png";
-const DEFAULT_CATEGORY_ICON = "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=60&h=60&fit=crop&crop=center";
-const ACTIVE_ORDERS_LIMIT = 3;
-
-// Updated search placeholders
+// Search Placeholders
 const SEARCH_PLACEHOLDERS = [
-  "Search for restaurants or dishes",
-  "Find your favorite meals...",
-  "Craving something delicious?",
-  "Discover amazing places...",
-  "Search desserts or snacks..."
+  "Pizza, burger, pasta...",
+  "Chinese, Thai, Asian...",
+  "Biryani, Shawarma...",
+  "Desserts, Sweets...",
+  "Healthy, Salad, Bowl..."
 ];
 
-// Types
+// ============== HEADER OFFERS CONFIGURATION ==============
+const HEADER_OFFERS = []
+// const HEADER_OFFERS = [
+//   {
+//     id: '1',
+//     title: 'FLAT 40% OFF',
+//     subtitle: 'Get Biryani @99',
+//     discount: '40%',
+//     kitchenId: 'STA59068507',
+//     image: 'https://eatoorprod.s3.amazonaws.com/menu_images/5df3397c503b4ad09da617107984f682.jpg',
+//     offerCode: '',
+//     validUntil: '2024-12-31',
+//     isActive: true,
+//     backgroundColor: 'rgba(229, 92, 24, 0.9)' // Made slightly transparent
+//   },
+//   {
+//     id: '2',
+//     title: 'FLAT 20% OFF',
+//     subtitle: 'Get Waffle @49',
+//     discount: '20%',
+//     kitchenId: 'WAF67901458',
+//     image: 'https://eatoorprod.s3.amazonaws.com/menu_images/fbeb16c5a4534abeb02b40c736cc1fd6.jpg',
+//     offerCode: '',
+//     validUntil: '2024-12-31',
+//     isActive: true,
+//     backgroundColor: 'rgba(78, 205, 196, 0.9)' // Made slightly transparent
+//   },
+//   {
+//     id: '3',
+//     title: 'FLAT 30% OFF',
+//     subtitle: 'Pizza Mania',
+//     discount: '30%',
+//     kitchenId: 'PIZ12345678',
+//     image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&h=400&fit=crop&crop=center&q=80',
+//     offerCode: 'PIZZA30',
+//     validUntil: '2024-12-31',
+//     isActive: true,
+//     backgroundColor: 'rgba(168, 230, 207, 0.9)' // Made slightly transparent
+//   },
+//   {
+//     id: '4',
+//     title: 'BUY 1 GET 1',
+//     subtitle: 'On all burgers',
+//     discount: 'BOGO',
+//     kitchenId: 'BUR56789012',
+//     image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&h=400&fit=crop&crop=center&q=80',
+//     offerCode: 'BOGOBURGER',
+//     validUntil: '2024-12-31',
+//     isActive: true,
+//     backgroundColor: 'rgba(255, 217, 61, 0.9)' // Made slightly transparent
+//   },
+//   {
+//     id: '5',
+//     title: 'FLAT 50% OFF',
+//     subtitle: 'Healthy bowls',
+//     discount: '50%',
+//     kitchenId: 'BOWL34567890',
+//     image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&h=400&fit=crop&crop=center&q=80',
+//     offerCode: 'HEALTHY50',
+//     validUntil: '2024-12-31',
+//     isActive: true,
+//     backgroundColor: 'rgba(108, 92, 231, 0.9)' // Made slightly transparent
+//   }
+// ];
+
+// ============== TYPES ==============
+
+interface LocationData {
+  address: string;
+  loading: boolean;
+  error: string | null;
+  coords: { lat: number; lng: number } | null;
+  showEnableLocationPrompt: boolean;
+  showPermissionPrompt: boolean;
+  homeType: string;
+  addressId: string | null;
+}
+
+interface AddressHeaderLeftProps {
+  isGuest: boolean;
+  onAddressUpdate?: (address: string, homeType: string) => void;
+}
+
 interface BannerItem {
   id: string;
   name: string;
   icon: string;
-  document_type: 1 | 2; // 1: image, 2: video
+  document_type: 1 | 2;
   thumbnail?: string;
 }
 
-// Types for the video player (simplified for autoplay)
+interface BannerComponentProps {
+  banner: BannerItem | null;
+  isVisible: boolean;
+}
+
+interface ImageBannerProps {
+  imageUrl: string;
+  thumbnailUrl?: string;
+}
+
 interface VideoBannerProps {
   videoUrl: string;
   isVisible: boolean;
   thumbnailUrl?: string;
 }
 
-// Updated Video Banner Component - FIXED: Changed black background to white
-const VideoBanner: React.FC<VideoBannerProps> = React.memo(({ videoUrl, isVisible, thumbnailUrl }) => {
+interface SearchInputProps {
+  onPress: () => void;
+  placeholder: string;
+}
+
+interface Category {
+  id: number;
+  name: string;
+  icon: string;
+}
+
+interface Kitchen {
+  restaurant_id: string;
+  restaurant_name: string;
+  restaurant_image: string;
+  item_cuisines: string;
+  rating: string;
+  delivery_time: string;
+  avg_price_range: string;
+  is_favourite: boolean;
+  discount?: number;
+  distance?: string;
+  review_count?: number;
+  is_new?: boolean;
+  is_trending?: boolean;
+}
+
+interface ApiResponse {
+  data: {
+    success: boolean;
+    data: {
+      FeatureKitchenList: Kitchen[];
+      KitchenList: Kitchen[];
+      CategoryList: Category[];
+      final_banner_image: BannerItem;
+    };
+  };
+}
+
+interface ActiveOrder {
+  id: string;
+  orderNumber: string;
+  status: 'pending' | 'confirmed' | 'preparing' | 'on-the-way' | 'delivered' | 'cancelled';
+  statusText: string;
+  kitchenId: string;
+  kitchenName: string;
+  kitchenImage: string;
+  estimatedArrival: string;
+  placedOn: string;
+}
+
+interface PastKitchenDetails {
+  id: string;
+  name: string;
+  image: string;
+  itemCount: number;
+}
+
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  mobile: string;
+}
+
+interface SearchItem {
+  id: string;
+  name: string;
+  image: string;
+  type: 'food' | 'restaurant' | 'trending';
+  category?: string;
+  price?: string;
+  foodType?: string;
+  restaurant?: string;
+  rating?: number;
+  deliveryTime?: string;
+  distance?: string;
+  originalData?: any;
+}
+
+interface SearchRestaurant {
+  restaurant_id: string;
+  restaurant_name: string;
+  profile_image: string;
+  rating: string;
+  delivery_time: string;
+  distance: string;
+  cuisines: Array<{ cuisine_name: string }>;
+}
+
+interface SearchSuggestionResponse {
+  menus: Array<{
+    menu_name: string;
+    items: Array<{
+      id: string;
+      item_name: string;
+      item_image: string;
+      item_price: string;
+      food_type: string;
+      restaurant: string;
+    }>;
+  }>;
+  restaurants: SearchRestaurant[];
+  trending_items?: Array<{
+    id: string;
+    name: string;
+    image: string;
+  }>;
+}
+
+type AppTabs = 'Kitchen' | 'Eatmart' | 'Reorder' | 'Partner';
+
+interface OfferCard {
+  id: string;
+  title: string;
+  subtitle: string;
+  discount: string;
+  kitchenId: string;
+  image: string;
+  offerCode?: string;
+  validUntil?: string;
+  isActive?: boolean;
+  backgroundColor?: string;
+}
+
+// ============== CUSTOM HOOKS ==============
+
+const useDebounce = (value: string, delay: number) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+};
+
+// ============== PREMIUM COMPONENTS ==============
+
+// FIXED: Animated Loading Icon Component - Works on both iOS and Android
+const AnimatedLoadingIcon = ({ name, size, color }: { name: string; size: number; color: string }) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const opacityAnim = useRef(new Animated.Value(0.7)).current;
+
+  useEffect(() => {
+    const animation = Animated.parallel([
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(scaleAnim, {
+            toValue: 1.2,
+            duration: 800,
+            useNativeDriver: true,
+            easing: Easing.inOut(Easing.ease),
+          }),
+          Animated.timing(scaleAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+            easing: Easing.inOut(Easing.ease),
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(opacityAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+            easing: Easing.inOut(Easing.ease),
+          }),
+          Animated.timing(opacityAnim, {
+            toValue: 0.7,
+            duration: 800,
+            useNativeDriver: true,
+            easing: Easing.inOut(Easing.ease),
+          }),
+        ])
+      ),
+    ]);
+
+    animation.start();
+
+    return () => {
+      animation.stop();
+    };
+  }, [scaleAnim, opacityAnim]);
+
+  return (
+    <Animated.View style={{
+      transform: [{ scale: scaleAnim }],
+      opacity: opacityAnim,
+    }}>
+      <Icon2 name={name} size={size} color={color} />
+    </Animated.View>
+  );
+};
+
+// Premium Video Banner Component
+const PremiumVideoBanner: React.FC<VideoBannerProps> = React.memo(({ videoUrl, isVisible, thumbnailUrl }) => {
   const videoRef = useRef<Video>(null);
   const [hasError, setHasError] = useState(false);
   const [isReady, setIsReady] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
+  const scaleAnim = useRef(new Animated.Value(1.1)).current;
 
-  // Handle video errors gracefully
-  const handleVideoError = useCallback((error: any) => {
-    console.log('Video loading error:', error);
-    setHasError(true);
-    setIsReady(false);
-    
-    // Retry logic for network issues
-    if (retryCount < 2) {
-      setTimeout(() => {
-        setRetryCount(prev => prev + 1);
-        setHasError(false);
-        if (videoRef.current) {
-          videoRef.current.seek(0);
-        }
-      }, 2000);
+  useEffect(() => {
+    if (isVisible) {
+      Animated.timing(scaleAnim, {
+        toValue: 1,
+        duration: 8000,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.cubic),
+      }).start();
     }
-  }, [retryCount]);
+  }, [isVisible, scaleAnim]);
 
-  // Handle video load - start playing immediately
-  const handleVideoLoad = useCallback(() => {
-    console.log('Video loaded successfully');
-    setHasError(false);
-    setIsReady(true);
-    
-    // Start playing immediately when loaded
-    if (videoRef.current && isVisible) {
-      setTimeout(() => {
-        videoRef.current?.resume?.();
-      }, 100);
-    }
-  }, [isVisible]);
-
-  // Handle buffer - no UI changes, just internal state
-  const handleBuffer = useCallback(() => {
-    // No UI updates, just handle buffering internally
-  }, []);
-
-  // Handle app state changes for video playback
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (videoRef.current) {
@@ -269,319 +511,312 @@ const VideoBanner: React.FC<VideoBannerProps> = React.memo(({ videoUrl, isVisibl
     };
   }, [isVisible]);
 
-  // Reset when video URL changes
-  useEffect(() => {
+  const handleVideoLoad = useCallback(() => {
     setHasError(false);
-    setIsReady(false);
-    setRetryCount(0);
-  }, [videoUrl]);
+    setIsReady(true);
+    if (videoRef.current && isVisible) {
+      setTimeout(() => videoRef.current?.resume?.(), 100);
+    }
+  }, [isVisible]);
 
-  // Show fallback image on error - use thumbnailUrl if available
+  const handleVideoError = useCallback(() => {
+    setHasError(true);
+    setIsReady(false);
+  }, []);
+
   if (hasError || !videoUrl) {
     return (
-      <View style={styles.videoBannerContainer}>
+      <Animated.View style={[styles.premiumBannerContainer, { transform: [{ scale: scaleAnim }] }]}>
         <Image
           source={{ uri: thumbnailUrl || DEFAULT_BANNER_IMAGE }}
-          style={styles.videoFallbackImage}
+          style={styles.premiumBannerImage}
           resizeMode="cover"
         />
-        {/* Dark overlay for better text readability */}
-        <LinearGradient
-          colors={['rgba(0,0,0,0.5)', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.1)']}
-          style={styles.videoOverlay}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-        />
-      </View>
+        <View style={[StyleSheet.absoluteFillObject, styles.premiumBannerOverlay]} />
+      </Animated.View>
     );
   }
 
   return (
-    <View style={styles.videoBannerContainer}>
-      {/* Video player - completely hidden controls, autoplay */}
-      <Video
-        ref={videoRef}
-        source={{ uri: videoUrl }}
-        style={styles.videoPlayer}
-        resizeMode="cover"
-        paused={!isVisible}
-        repeat={true}
-        muted={true}
-        volume={0}
-        playWhenInactive={false}
-        playInBackground={false}
-        ignoreSilentSwitch="ignore"
-        onError={handleVideoError}
-        onLoad={handleVideoLoad}
-        onBuffer={handleBuffer}
-        onReadyForDisplay={() => {
-          setIsReady(true);
-          if (videoRef.current && isVisible) {
-            setTimeout(() => {
-              videoRef.current?.resume?.();
-            }, 50);
-          }
-        }}
-        // Remove all controls and progress indicators
-        controls={false}
-        hideShutterView={true}
-        // Optimize for performance
-        bufferConfig={{
-          minBufferMs: 1000,
-          maxBufferMs: 5000,
-          bufferForPlaybackMs: 250,
-          bufferForPlaybackAfterRebufferMs: 500,
-        }}
-        // Use thumbnail as poster
-        poster={thumbnailUrl || DEFAULT_BANNER_IMAGE}
-        posterResizeMode="cover"
-        // Preload for better performance
-        rate={1.0}
-        automaticallyWaitsToMinimizeStalling={true}
-        // Remove any visual feedback
-        progressUpdateInterval={1000}
-        allowsExternalPlayback={false}
-        filterEnabled={false}
-      />
-      
-      {/* Dark overlay for better text readability */}
-      <LinearGradient
-        colors={['rgba(0,0,0,0.5)', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.1)']}
-        style={styles.videoOverlay}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-      />
-      
-      {/* Fallback image that shows initially until video is ready */}
+    <View style={styles.premiumBannerContainer}>
+      <Animated.View style={{ transform: [{ scale: scaleAnim }], flex: 1 }}>
+        <Video
+          ref={videoRef}
+          source={{ uri: videoUrl }}
+          style={styles.premiumBannerVideo}
+          resizeMode="cover"
+          paused={!isVisible}
+          repeat={true}
+          muted={true}
+          volume={0}
+          playInBackground={false}
+          onError={handleVideoError}
+          onLoad={handleVideoLoad}
+          controls={false}
+          hideShutterView={true}
+          poster={thumbnailUrl || DEFAULT_BANNER_IMAGE}
+          posterResizeMode="cover"
+          rate={1.0}
+          bufferConfig={{
+            minBufferMs: 1000,
+            maxBufferMs: 5000,
+            bufferForPlaybackMs: 250,
+            bufferForPlaybackAfterRebufferMs: 500,
+          }}
+        />
+      </Animated.View>
+      <View style={[StyleSheet.absoluteFillObject, styles.premiumBannerOverlay]} />
       {!isReady && (
-        <View style={styles.videoFallbackContainer}>
+        <View style={StyleSheet.absoluteFillObject}>
           <Image
             source={{ uri: thumbnailUrl || DEFAULT_BANNER_IMAGE }}
-            style={styles.videoFallbackImage}
+            style={styles.premiumBannerImage}
             resizeMode="cover"
           />
+          <View style={[StyleSheet.absoluteFillObject, styles.premiumBannerOverlay]} />
         </View>
       )}
     </View>
   );
 });
 
-// Enhanced Image Banner Component (for image banners) - FIXED: Changed black background to white
-interface ImageBannerProps {
-  imageUrl: string;
-  thumbnailUrl?: string;
-}
-
-const ImageBanner: React.FC<ImageBannerProps> = React.memo(({ imageUrl, thumbnailUrl }) => {
-  const [imageLoaded, setImageLoaded] = useState(false);
-
-  const handleImageError = useCallback(() => {
-    console.log('Image loading error');
-    setImageLoaded(false);
-  }, []);
-
-  const handleImageLoad = useCallback(() => {
-    setImageLoaded(true);
-  }, []);
-
-  const source = !imageUrl 
-    ? { uri: thumbnailUrl || DEFAULT_BANNER_IMAGE }
-    : { uri: imageUrl };
-
-  return (
-    <View style={styles.imageBannerContainer}>
-      <Image
-        source={source}
-        style={styles.imageBanner}
-        resizeMode="cover"
-        onError={handleImageError}
-        onLoad={handleImageLoad}
-        defaultSource={{ uri: thumbnailUrl || DEFAULT_BANNER_IMAGE }}
-      />
-      {/* Dark overlay for better text readability */}
-      <LinearGradient
-        colors={['rgba(0,0,0,0.5)', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.1)']}
-        style={styles.imageOverlay}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-      />
-    </View>
-  );
-});
-
-// Banner Component that handles single banner object
-interface BannerComponentProps {
-  banner: BannerItem | null;
-  isVisible: boolean;
-}
-
-const BannerComponent: React.FC<BannerComponentProps> = React.memo(({ banner, isVisible }) => {
-  const isMounted = useRef(true);
+// Premium Image Banner Component
+const PremiumImageBanner: React.FC<ImageBannerProps> = React.memo(({ imageUrl, thumbnailUrl }) => {
+  const scaleAnim = useRef(new Animated.Value(1.1)).current;
 
   useEffect(() => {
-    return () => {
-      isMounted.current = false;
-    };
-  }, []);
+    Animated.timing(scaleAnim, {
+      toValue: 1,
+      duration: 6000,
+      useNativeDriver: true,
+      easing: Easing.out(Easing.cubic),
+    }).start();
+  }, [scaleAnim]);
 
-  if (!banner) {
-    return (
-      <View style={styles.bannerContainer}>
-        <ImageBanner 
-          imageUrl={DEFAULT_BANNER_IMAGE} 
-          thumbnailUrl={DEFAULT_BANNER_IMAGE}
-        />
-      </View>
-    );
-  }
-  
-  if (banner.document_type === 2) { // Video
-    return (
-      <View style={styles.bannerContainer}>
-        <VideoBanner
-          videoUrl={banner.icon}
-          isVisible={isVisible}
-          thumbnailUrl={banner.thumbnail || DEFAULT_BANNER_IMAGE}
-        />
-      </View>
-    );
-  }
-  
-  // Image (document_type === 1)
   return (
-    <View style={styles.bannerContainer}>
-      <ImageBanner 
-        imageUrl={banner.icon || DEFAULT_BANNER_IMAGE} 
-        thumbnailUrl={banner.thumbnail || DEFAULT_BANNER_IMAGE}
+    <View style={styles.premiumBannerContainer}>
+      <Animated.Image
+        source={{ uri: imageUrl || thumbnailUrl || DEFAULT_BANNER_IMAGE }}
+        style={[styles.premiumBannerImage, { transform: [{ scale: scaleAnim }] }]}
+        resizeMode="cover"
       />
+      <View style={[StyleSheet.absoluteFillObject, styles.premiumBannerOverlay]} />
     </View>
   );
 });
 
-// Favorite Button Component
-const FavoriteButton = () => {
-  const navigation = useNavigation<NavigationProp>();
-  const { isGuest } = useContext(AuthContext);
+// Premium Banner Component
+const PremiumBannerComponent: React.FC<BannerComponentProps> = React.memo(({ banner, isVisible }) => {
+  if (!banner) {
+    return <PremiumImageBanner imageUrl={DEFAULT_BANNER_IMAGE} />;
+  }
   
-  const handleFavoritePress = useCallback(() => {
-    if (isGuest) {
-      navigation.navigate('LoginScreen' as never);
-    } else {
-      navigation.navigate('FavoritesScreen' as never);
+  if (banner.document_type === 2) {
+    return (
+      <PremiumVideoBanner
+        videoUrl={banner.icon}
+        isVisible={isVisible}
+        thumbnailUrl={banner.thumbnail}
+      />
+    );
+  }
+  
+  return <PremiumImageBanner imageUrl={banner.icon} thumbnailUrl={banner.thumbnail} />;
+});
+
+// FIXED: Premium Header Offer Cards Component - Platform specific styling for proper transparency and alignment
+const PremiumHeaderOfferCards = React.memo(() => {
+  const navigation = useNavigation();
+  const [offers, setOffers] = useState<OfferCard[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Load offers from AsyncStorage or use default
+  useEffect(() => {
+    loadOffers();
+  }, []);
+
+  const loadOffers = async () => {
+    try {
+      const storedOffers = await AsyncStorage.getItem(STORAGE_KEYS.HEADER_OFFERS);
+      if (storedOffers) {
+        setOffers(JSON.parse(storedOffers));
+      } else {
+        // Use default offers and save to storage - only active and first 2
+        const activeOffers = HEADER_OFFERS.filter(offer => offer.isActive).slice(0, 2);
+        setOffers(activeOffers);
+        await AsyncStorage.setItem(STORAGE_KEYS.HEADER_OFFERS, JSON.stringify(activeOffers));
+      }
+    } catch (error) {
+      console.error('Error loading header offers:', error);
+      setOffers(HEADER_OFFERS.filter(offer => offer.isActive).slice(0, 2));
+    } finally {
+      setLoading(false);
     }
-  }, [navigation, isGuest]);
+  };
+
+  const navigateToOffer = useCallback((kitchenId: string, offer: OfferCard) => {
+    navigation.navigate('HomeKitchenDetails', { 
+      kitchenId,
+      offerDetails: {
+        title: offer.title,
+        discount: offer.discount,
+        offerCode: offer.offerCode
+      }
+    });
+  }, [navigation]);
+
+  // Animation values for each offer
+  const slideAnims = useRef(offers.map(() => new Animated.Value(50))).current;
+  const scaleAnims = useRef(offers.map(() => new Animated.Value(0.9))).current;
+
+  useEffect(() => {
+    // Update animations when offers change
+    if (slideAnims.length !== offers.length) {
+      // Reinitialize animations if offers length changes
+      while (slideAnims.length < offers.length) {
+        slideAnims.push(new Animated.Value(50));
+        scaleAnims.push(new Animated.Value(0.9));
+      }
+    }
+
+    const animations = offers.flatMap((_, index) => [
+      Animated.spring(slideAnims[index], {
+        toValue: 0,
+        useNativeDriver: true,
+        damping: 15,
+        delay: 200 + (index * 100),
+      }),
+      Animated.spring(scaleAnims[index], {
+        toValue: 1,
+        useNativeDriver: true,
+        damping: 15,
+        delay: 200 + (index * 100),
+      }),
+    ]);
+
+    Animated.parallel(animations).start();
+  }, [offers]);
+
+  if (loading || offers.length === 0) {
+    return null;
+  }
 
   return (
-    <TouchableOpacity
-      onPress={handleFavoritePress}
-      activeOpacity={0.7}
-      style={styles.iconButton}
-    >
-      <Icon 
-        name="heart-outline" 
-        size={scale(22)} 
-        color={COLORS.headerIcon} 
-      />
-    </TouchableOpacity>
+    <View style={styles.premiumHeaderOfferCardsContainer}>
+      {offers.map((offer, index) => (
+        <Animated.View 
+          key={offer.id}
+          style={[
+            styles.premiumHeaderOfferCard,
+            {
+              transform: [
+                { translateX: slideAnims[index] || new Animated.Value(50) },
+                { scale: scaleAnims[index] || new Animated.Value(0.9) }
+              ]
+            }
+          ]}
+        >
+          <TouchableOpacity 
+            activeOpacity={0.95} 
+            onPress={() => navigateToOffer(offer.kitchenId, offer)}
+            style={{ flex: 1 }}
+          >
+            {/* FIXED: Platform specific implementation for proper transparency */}
+            <View style={[
+              styles.premiumHeaderOfferCardContent,
+              { backgroundColor: offer.backgroundColor || 'rgba(229, 92, 24, 0.85)' }
+            ]}>
+              {/* iOS: Use BlurView for glass effect */}
+              {Platform.OS === 'ios' && (
+                <BlurView
+                  style={StyleSheet.absoluteFillObject}
+                  blurType="light"
+                  blurAmount={10}
+                  reducedTransparencyFallbackColor={offer.backgroundColor || 'rgba(229, 92, 24, 0.85)'}
+                />
+              )}
+              
+              {/* Android: Use additional semi-transparent overlay for better transparency effect */}
+              {Platform.OS === 'android' && (
+                <View style={[
+                  StyleSheet.absoluteFillObject,
+                  styles.premiumHeaderOfferAndroidOverlay
+                ]} />
+              )}
+              
+              <View style={styles.premiumHeaderOfferInner}>
+                <View style={styles.premiumHeaderOfferContent}>
+                  <Text style={styles.premiumHeaderOfferTitle} numberOfLines={1}>
+                    {offer.title}
+                  </Text>
+                  <Text style={styles.premiumHeaderOfferSubtitle} numberOfLines={1}>
+                    {offer.subtitle}
+                  </Text>
+                  
+                  {offer.offerCode && (
+                    <View style={styles.premiumHeaderOfferChip}>
+                      <Text style={styles.premiumHeaderOfferChipText} numberOfLines={1}>
+                        Code: {offer.offerCode}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                
+                <View style={styles.premiumHeaderOfferImageContainer}>
+                  <Image 
+                    source={{ uri: offer.image }} 
+                    style={styles.premiumHeaderOfferImage}
+                    resizeMode="cover"
+                  />
+                </View>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </Animated.View>
+      ))}
+    </View>
   );
-};
+});
 
-// Profile Button Component
-const ProfileButton = () => {
-  const navigation = useNavigation<NavigationProp>();
-  const { isGuest } = useContext(AuthContext);
-  
-  const handleProfilePress = useCallback(() => {
-    if (isGuest) {
-      navigation.navigate('LoginScreen' as never);
-    } else {
-      navigation.navigate('ProfileScreen' as never);
-    }
-  }, [navigation, isGuest]);
-
-  return (
-    <TouchableOpacity
-      onPress={handleProfilePress}
-      activeOpacity={0.7}
-      style={styles.iconButton}
-    >
-      <Icon 
-        name="person-circle-outline" 
-        size={scale(26)} 
-        color={COLORS.headerIcon} 
-      />
-    </TouchableOpacity>
-  );
-};
-
-// Wallet Button Component
-const WalletButton = () => {
-  const navigation = useNavigation<NavigationProp>();
-  const { isGuest } = useContext(AuthContext);
-  
-  const handleWalletPress = useCallback(() => {
-    if (isGuest) {
-      navigation.navigate('LoginScreen' as never);
-    } else {
-      navigation.navigate('EatoorMoneyScreen' as never);
-    }
-  }, [navigation, isGuest]);
-
-  return (
-    <TouchableOpacity
-      onPress={handleWalletPress}
-      activeOpacity={0.7}
-      style={styles.iconButton}
-    >
-      <Icon
-        name="wallet-outline"
-        size={scale(22)}
-        color={COLORS.headerIcon}
-      />
-    </TouchableOpacity>
-  );
-};
-
-interface AddressHeaderLeftProps {
-  isGuest: boolean;
-  onAddressUpdate?: (address: string, homeType: string) => void;
-}
-
-const AddressHeaderLeft = React.memo(({ isGuest, onAddressUpdate }: AddressHeaderLeftProps) => {
-  const navigation = useNavigation<NavigationProp>();
+// Premium Address Header Component
+const PremiumAddressHeader = React.memo(({ isGuest, onAddressUpdate }: AddressHeaderLeftProps) => {
+  const navigation = useNavigation<any>();
   const [location, setLocation] = useState<LocationData>({
-    address: 'Fetching location...',
+    address: 'Delivering to...',
     loading: true,
     error: null,
     coords: null,
     showEnableLocationPrompt: false,
     showPermissionPrompt: false,
-    homeType: 'Delivering',
+    homeType: 'Home',
     addressId: null,
   });
 
-  // Track app state
   const [appState, setAppState] = useState(AppState.currentState);
-  
-  // Use refs to avoid function recreation
-  const onAddressUpdateRef = useRef(onAddressUpdate);
-  
-  // Update ref when prop changes
-  useEffect(() => {
-    onAddressUpdateRef.current = onAddressUpdate;
-  }, [onAddressUpdate]);
+  const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  // Update location state without calling parent callback during render
-  const updateLocationState = useCallback((newState: Partial<LocationData>) => {
-    setLocation(prev => ({ ...prev, ...newState }));
-  }, []);
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.98,
+      useNativeDriver: true,
+      damping: 15,
+    }).start();
+  };
 
-  // Use effect to notify parent when location changes
-  useEffect(() => {
-    if (onAddressUpdateRef.current && !location.loading && location.address && location.homeType) {
-      onAddressUpdateRef.current(location.address, location.homeType);
-    }
-  }, [location.address, location.homeType, location.loading]);
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      damping: 15,
+    }).start();
+  };
+
+  const truncateAddress = (address: string, maxWords: number = 4) => {
+    if (!address) return '';
+    const words = address.split(' ');
+    if (words.length <= maxWords) return address;
+    return words.slice(0, maxWords).join(' ') + '...';
+  };
 
   const saveAddressDetails = useCallback(async (addressData: {
     id?: string;
@@ -594,12 +829,12 @@ const AddressHeaderLeft = React.memo(({ isGuest, onAddressUpdate }: AddressHeade
       await AsyncStorage.multiSet([
         [STORAGE_KEYS.ADDRESS_ID, addressData.id?.toString() || ''],
         [STORAGE_KEYS.STREET_ADDRESS, addressData.full_address],
-        [STORAGE_KEYS.HOME_TYPE, addressData.home_type || 'Delivering'],
+        [STORAGE_KEYS.HOME_TYPE, addressData.home_type || 'Home'],
         [STORAGE_KEYS.LATITUDE, addressData.latitude],
         [STORAGE_KEYS.LONGITUDE, addressData.longitude],
       ]);
     } catch (error) {
-      console.error('Error saving address details:', error);
+      console.error('Error saving address:', error);
     }
   }, []);
 
@@ -621,7 +856,7 @@ const AddressHeaderLeft = React.memo(({ isGuest, onAddressUpdate }: AddressHeade
       if (savedAddress && savedLat && savedLng) {
         return {
           address: savedAddress,
-          homeType: savedHomeType || 'Delivering',
+          homeType: savedHomeType || 'Home',
           coords: {
             lat: parseFloat(savedLat),
             lng: parseFloat(savedLng),
@@ -631,15 +866,15 @@ const AddressHeaderLeft = React.memo(({ isGuest, onAddressUpdate }: AddressHeade
       }
       return {
         address: '',
-        homeType: 'Delivering',
+        homeType: 'Home',
         coords: null,
         addressId: null,
       };
     } catch (error) {
-      console.error('Error getting saved address details:', error);
+      console.error('Error getting saved address:', error);
       return {
         address: '',
-        homeType: 'Delivering',
+        homeType: 'Home',
         coords: null,
         addressId: null,
       };
@@ -656,48 +891,70 @@ const AddressHeaderLeft = React.memo(({ isGuest, onAddressUpdate }: AddressHeade
 
       const addressData = response?.data;
       if (!addressData) {
-        console.warn("No address data found for given location.");
         return false;
       }
 
       const { id, full_address, home_type } = addressData;
       const isExisting = Boolean(id);
 
-      // Save address (with or without id)
       await saveAddressDetails({
         id: isExisting ? id.toString() : undefined,
         full_address,
-        home_type: home_type || "Delivering",
+        home_type: home_type || "Home",
         latitude: lat.toString(),
         longitude: lng.toString(),
       });
 
-      // Update location state
-      updateLocationState({
+      setLocation(prev => ({
+        ...prev,
         address: full_address,
         coords: { lat, lng },
-        homeType: home_type || "Delivering",
+        homeType: home_type || "Home",
         addressId: isExisting ? id.toString() : null,
         loading: false,
         error: null,
         showEnableLocationPrompt: false,
         showPermissionPrompt: false,
-      });
+      }));
+
+      if (onAddressUpdate) {
+        onAddressUpdate(full_address, home_type || "Home");
+      }
 
       return isExisting;
     } catch (error) {
-      console.error("Error checking location in database:", error);
+      console.error("Error checking location:", error);
       return false;
     }
-  }, [isGuest, saveAddressDetails, updateLocationState]);
+  }, [isGuest, saveAddressDetails, onAddressUpdate]);
 
   const checkLocationEnabled = useCallback(async (): Promise<boolean> => {
-    try {
+    return new Promise((resolve) => {
+      Geolocation.getCurrentPosition(
+        () => resolve(true),
+        (error) => {
+          if (error.code === 1 || error.code === 2) {
+            resolve(false);
+          } else {
+            resolve(true);
+          }
+        },
+        { 
+          enableHighAccuracy: false, 
+          timeout: 3000, 
+          maximumAge: 10000 
+        }
+      );
+    });
+  }, []);
+
+  const requestLocationPermission = useCallback(async (): Promise<boolean> => {
+    if (Platform.OS === 'ios') {
       return new Promise((resolve) => {
         Geolocation.getCurrentPosition(
           () => resolve(true),
           (error) => {
-            if (error.code === 1 || error.code === 2) {
+            if (error.code === 1) {
               resolve(false);
             } else {
               resolve(true);
@@ -705,38 +962,13 @@ const AddressHeaderLeft = React.memo(({ isGuest, onAddressUpdate }: AddressHeade
           },
           { 
             enableHighAccuracy: false, 
-            timeout: 3000, 
-            maximumAge: 10000 
+            timeout: 5000, 
+            maximumAge: 60000 
           }
         );
       });
-    } catch (error) {
-      console.error('Error checking location services:', error);
-      return true;
-    }
-  }, []);
-
-  const requestLocationPermission = useCallback(async (): Promise<boolean> => {
-    try {
-      if (Platform.OS === 'ios') {
-        return new Promise((resolve) => {
-          Geolocation.getCurrentPosition(
-            () => resolve(true),
-            (error) => {
-              if (error.code === 1) {
-                resolve(false);
-              } else {
-                resolve(true);
-              }
-            },
-            { 
-              enableHighAccuracy: false, 
-              timeout: 5000, 
-              maximumAge: 60000 
-            }
-          );
-        });
-      } else {
+    } else {
+      try {
         const hasPermission = await PermissionsAndroid.check(
           PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
         );
@@ -749,88 +981,71 @@ const AddressHeaderLeft = React.memo(({ isGuest, onAddressUpdate }: AddressHeade
           PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
           {
             title: 'Location Permission',
-            message: 'This app needs access to your location to show nearby kitchens',
+            message: 'This app needs access to your location to show nearby restaurants',
             buttonPositive: 'Allow',
             buttonNegative: 'Deny',
           }
         );
 
         return granted === PermissionsAndroid.RESULTS.GRANTED;
+      } catch (error) {
+        console.error('Error requesting permission:', error);
+        return false;
       }
-    } catch (error) {
-      console.error('Error requesting location permission:', error);
-      return false;
     }
   }, []);
 
   const getCurrentLocation = useCallback(async (): Promise<void> => {
-    updateLocationState({ loading: true, error: null });
+    setLocation(prev => ({ ...prev, loading: true, error: null }));
 
     try {
-      // First, check if we have saved address details in local storage
       const savedDetails = await getSavedAddressDetails();
       if (savedDetails.address && savedDetails.coords) {
-        updateLocationState({
+        setLocation(prev => ({
+          ...prev,
           address: savedDetails.address,
           coords: savedDetails.coords,
           homeType: savedDetails.homeType,
           addressId: savedDetails.addressId,
           loading: false,
           error: null,
-        });
+        }));
+        if (onAddressUpdate) {
+          onAddressUpdate(savedDetails.address, savedDetails.homeType);
+        }
         return;
       }
 
-      // Check if location services are enabled
       const locationEnabled = await checkLocationEnabled();
       if (!locationEnabled) {
-        updateLocationState({
+        setLocation(prev => ({
+          ...prev,
           address: 'Location services disabled',
           coords: null,
           error: 'Location services disabled',
           showEnableLocationPrompt: true,
           loading: false,
-        });
+        }));
         return;
       }
 
-      // Check and request permission
       const hasPermission = await requestLocationPermission();
       if (!hasPermission) {
-        updateLocationState({
+        setLocation(prev => ({
+          ...prev,
           address: 'Location permission required',
           coords: null,
           error: 'Location permission required',
           showPermissionPrompt: true,
           loading: false,
-        });
+        }));
         return;
       }
 
-      // Get current position
       const position = await new Promise<Geolocation.GeoPosition>((resolve, reject) => {
         Geolocation.getCurrentPosition(
           resolve,
-          (error) => {
-            if (Platform.OS === 'ios') {
-              if (error.code === 1) {
-                error.message = 'Location permission denied';
-              } else if (error.code === 2) {
-                error.message = 'Location unavailable. Please check your network connection';
-              } else if (error.code === 3) {
-                error.message = 'Location request timed out. Please try again';
-              }
-            } else {
-              if (error.code === 2) {
-                error.message = 'Unable to determine location. Please check your network connection';
-              } else if (error.code === 3) {
-                error.message = 'Location request timed out. Please try again';
-              } else if (error.code === 1) {
-                error.message = 'Location permission denied';
-              }
-            }
-            reject(error);
-          },
+          reject,
           {
             enableHighAccuracy: Platform.OS === 'ios',
             timeout: Platform.OS === 'ios' ? 15000 : 30000,
@@ -841,8 +1056,6 @@ const AddressHeaderLeft = React.memo(({ isGuest, onAddressUpdate }: AddressHeade
       });
 
       const { latitude, longitude } = position.coords;
-      
-      // Send coordinates to API to get address information
       await checkLocationInDatabase(latitude, longitude);
       
     } catch (error: any) {
@@ -857,79 +1070,81 @@ const AddressHeaderLeft = React.memo(({ isGuest, onAddressUpdate }: AddressHeade
         errorMessage = 'Location permission denied';
         promptForPermission = true;
         
-        // Clear any previously saved address if permission is denied
-        try {
-          await AsyncStorage.multiRemove([
-            STORAGE_KEYS.ADDRESS_ID,
-            STORAGE_KEYS.STREET_ADDRESS,
-            STORAGE_KEYS.HOME_TYPE,
-            STORAGE_KEYS.LATITUDE,
-            STORAGE_KEYS.LONGITUDE,
-          ]);
-        } catch (storageError) {
-          console.error('Error clearing saved address:', storageError);
-        }
+        await AsyncStorage.multiRemove([
+          STORAGE_KEYS.ADDRESS_ID,
+          STORAGE_KEYS.STREET_ADDRESS,
+          STORAGE_KEYS.HOME_TYPE,
+          STORAGE_KEYS.LATITUDE,
+          STORAGE_KEYS.LONGITUDE,
+        ]);
       } else if (error.message?.includes('disabled')) {
         errorMessage = 'Location services disabled';
         promptForEnable = true;
       }
       
-      updateLocationState({
+      setLocation(prev => ({
+        ...prev,
         address: errorMessage,
         coords: null,
         error: errorMessage,
         showEnableLocationPrompt: promptForEnable,
         showPermissionPrompt: promptForPermission,
         loading: false,
-      });
+      }));
     }
-  }, [checkLocationEnabled, requestLocationPermission, checkLocationInDatabase, updateLocationState, getSavedAddressDetails]);
+  }, [checkLocationEnabled, requestLocationPermission, checkLocationInDatabase, getSavedAddressDetails, onAddressUpdate]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      if (appState.match(/inactive|background/) && nextAppState === 'active') {
+        getCurrentLocation();
+      }
+      setAppState(nextAppState);
+    });
+    return () => subscription.remove();
+  }, [appState, getCurrentLocation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      getCurrentLocation();
+    }, [getCurrentLocation])
+  );
 
   const showLocationSettingsAlert = useCallback(() => {
     Alert.alert(
       'Location Services Required',
-      'To find kitchens near you, please enable location services in your device settings',
+      'To find restaurants near you, please enable location services',
       [
         {
           text: 'Not Now',
           style: 'cancel',
-          onPress: () => updateLocationState({ showEnableLocationPrompt: false })
+          onPress: () => setLocation(prev => ({ ...prev, showEnableLocationPrompt: false }))
         },
         {
           text: 'Open Settings',
           onPress: async () => {
-            updateLocationState({ showEnableLocationPrompt: false });
-            try {
-              if (Platform.OS === 'ios') {
-                await Linking.openURL('app-settings:');
-              } else {
-                await Linking.sendIntent('android.settings.LOCATION_SOURCE_SETTINGS');
-              }
-            } catch (error) {
-              console.error('Error opening settings:', error);
-              await Linking.openSettings();
-            }
+            setLocation(prev => ({ ...prev, showEnableLocationPrompt: false }));
+            await Linking.openSettings();
           },
         },
-      ],
-      { cancelable: false }
+      ]
     );
-  }, [updateLocationState]);
+  }, []);
 
   const showPermissionAlert = useCallback(() => {
     Alert.alert(
       'Location Permission Required',
-      'This app needs access to your location to show nearby kitchens',
+      'This app needs access to your location to show nearby restaurants',
       [
         {
           text: 'Cancel',
           style: 'cancel',
-          onPress: () => updateLocationState({ showPermissionPrompt: false })
+          onPress: () => setLocation(prev => ({ ...prev, showPermissionPrompt: false }))
         },
         {
           text: 'Allow',
           onPress: async () => {
-            updateLocationState({ showPermissionPrompt: false });
+            setLocation(prev => ({ ...prev, showPermissionPrompt: false }));
             const granted = await requestLocationPermission();
             if (granted) {
               getCurrentLocation();
@@ -939,48 +1154,15 @@ const AddressHeaderLeft = React.memo(({ isGuest, onAddressUpdate }: AddressHeade
                 'To enable location, please grant permission in app settings',
                 [
                   { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Open Settings',
-                    onPress: async () => {
-                      try {
-                        if (Platform.OS === 'ios') {
-                          await Linking.openURL('app-settings:');
-                        } else {
-                          await Linking.openSettings();
-                      }
-                      } catch (error) {
-                        console.error('Error opening settings:', error);
-                      }
-                    },
-                  },
+                  { text: 'Open Settings', onPress: () => Linking.openSettings() },
                 ]
               );
             }
           },
         },
-      ],
-      { cancelable: false }
+      ]
     );
-  }, [getCurrentLocation, requestLocationPermission, updateLocationState]);
-
-  // Handle app state changes
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
-      if (appState.match(/inactive|background/) && nextAppState === 'active') {
-        getCurrentLocation();
-      }
-      setAppState(nextAppState);
-    });
-    return () => {
-      subscription.remove();
-    };
-  }, [appState, getCurrentLocation]);
-
-  useFocusEffect(
-    useCallback(() => {
-      getCurrentLocation();
-    }, [getCurrentLocation])
-  );
+  }, [getCurrentLocation, requestLocationPermission]);
 
   useEffect(() => {
     if (location.showEnableLocationPrompt) {
@@ -1002,634 +1184,660 @@ const AddressHeaderLeft = React.memo(({ isGuest, onAddressUpdate }: AddressHeade
         longitude: location.coords.lng
       } : null,
       currentAddress: location.address || 'Select delivery location',
-      onAddressSelect: (selectedAddressObj) => {
+      onAddressSelect: (selectedAddressObj: any) => {
         const raw = selectedAddressObj.rawAddress;
-
-        // Update UI
-        updateLocationState({
-          address: raw.full_address,
-          coords: {
-            lat: parseFloat(raw.latitude),
-            lng: parseFloat(raw.longitude),
-          },
-          homeType: raw.home_type || 'Delivering',
-          addressId: String(raw.id) || null,
-          loading: false,
-          error: null,
-        });
-
-        // Save address details
         if (raw.full_address && raw.latitude && raw.longitude) {
-          (async () => {
-            try {
-              await saveAddressDetails({
-                id: String(raw.id),
-                full_address: raw.full_address,
-                home_type: raw.home_type || 'Delivering',
-                latitude: raw.latitude,
-                longitude: raw.longitude,
-              });
-            } catch (error) {
-              console.error('Error saving selected address:', error);
-            }
-          })();
+          saveAddressDetails({
+            id: String(raw.id),
+            full_address: raw.full_address,
+            home_type: raw.home_type || 'Home',
+            latitude: raw.latitude,
+            longitude: raw.longitude,
+          });
+          setLocation(prev => ({
+            ...prev,
+            address: raw.full_address,
+            coords: {
+              lat: parseFloat(raw.latitude),
+              lng: parseFloat(raw.longitude),
+            },
+            homeType: raw.home_type || 'Home',
+            addressId: String(raw.id),
+            loading: false,
+            error: null,
+          }));
+          if (onAddressUpdate) {
+            onAddressUpdate(raw.full_address, raw.home_type || 'Home');
+          }
         }
       }
-    } as never);
-  }, [navigation, location.coords, location.address, updateLocationState, saveAddressDetails]);
+    });
+  }, [navigation, location.coords, location.address, saveAddressDetails, onAddressUpdate]);
 
-  // Function to truncate address based on screen width
-  const truncateAddress = useCallback((address: string): string => {
-    if (!address) return '';
-    
-    const maxLength = width < 360 ? 25 : width < 400 ? 30 : width < 450 ? 35 : 40;
-    if (address.length <= maxLength) return address;
-    
-    return address.substring(0, maxLength - 3).trim() + '...';
-  }, [width]);
+  const displayAddress = location.loading 
+    ? 'Fetching location...' 
+    : location.error || truncateAddress(location.address, 4);
 
   return (
-    <TouchableOpacity
-      onPress={handleAddressPress}
-      activeOpacity={0.7}
-      style={styles.addressContainer}
-    >
-      <View style={styles.addressRow}>
-        <Icon
-          name="location-outline" 
-          size={scale(18)} 
-          color="#FFFFFF" 
-          style={styles.simpleLocationIcon}
-        />
-        <View style={styles.addressTextContainer}>
-          <View style={styles.homeTypeContainer}>
-            <Text style={styles.homeTypeText} numberOfLines={1}>
-              {location.homeType || 'Delivering'}
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <TouchableOpacity
+        onPress={handleAddressPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        activeOpacity={0.9}
+        style={styles.premiumAddressContainer}
+      >
+        <View>
+          <View>
+            <View style={styles.premiumAddressHomeTypeRow}>
+              <Text style={styles.premiumAddressHomeTypeLabel} numberOfLines={1}>
+                {location.loading ? 'Fetching...' : location.homeType}
+              </Text>
+              <Icon name="chevron-down" size={scale(12)} color="#FFFFFF" />
+            </View>
+            <Text style={styles.premiumAddressMainLabel} numberOfLines={1}>
+              {displayAddress}
             </Text>
-            <Icon 
-              name="chevron-down" 
-              size={scale(14)} 
-              color="#FFFFFF" 
-              style={styles.chevronIcon} 
-            />
           </View>
-          
-          <Text style={styles.addressMainText} numberOfLines={1}>
-            {location.error ? location.error : truncateAddress(location.address)}
-          </Text>
         </View>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </Animated.View>
   );
 });
 
-// Custom hook for debouncing
-const useDebounce = (value: string, delay: number) => {
-  const [debouncedValue, setDebouncedValue] = useState(value);
+// Premium Search Bar Component - iOS Optimized
+const PremiumSearchBar: React.FC<SearchInputProps> = React.memo(({ onPress, placeholder }) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const translateYAnim = useRef(new Animated.Value(0)).current;
+
+  const handlePressIn = () => {
+    Animated.parallel([
+      Animated.spring(scaleAnim, {
+        toValue: 0.98,
+        useNativeDriver: true,
+        damping: 15,
+      }),
+      Animated.spring(translateYAnim, {
+        toValue: -2,
+        useNativeDriver: true,
+        damping: 15,
+      }),
+    ]).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.parallel([
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        damping: 15,
+      }),
+      Animated.spring(translateYAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        damping: 15,
+      }),
+    ]).start();
+  };
+
+  // iOS specific styles
+  const iosStyles = Platform.select({
+    ios: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.2,
+      shadowRadius: 12,
+    },
+    android: {}
+  });
+
+  return (
+    <Animated.View style={{
+      transform: [{ scale: scaleAnim }, { translateY: translateYAnim }],
+      width: '100%',
+    }}>
+      <TouchableOpacity
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        activeOpacity={0.95}
+        style={[styles.premiumSearchContainer, iosStyles]}
+      >
+        {Platform.OS === 'ios' ? (
+          <BlurView
+            style={StyleSheet.absoluteFillObject}
+            blurType="light"
+            blurAmount={20}
+            reducedTransparencyFallbackColor="rgba(255,255,255,0.3)"
+          />
+        ) : (
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(255,255,255,0.25)' }]} />
+        )}
+        <View style={styles.premiumSearchContent}>
+          <View style={styles.premiumSearchIconWrapper}>
+            <Icon name="search" size={scale(18)} color="#FFFFFF" />
+          </View>
+          <Text style={styles.premiumSearchPlaceholder} numberOfLines={1}>
+            {placeholder}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+});
+
+// Premium Category Card Component
+const PremiumCategoryCard = ({ 
+  category, 
+  isActive, 
+  onPress,
+  index 
+}: { 
+  category: Category; 
+  isActive: boolean; 
+  onPress: () => void;
+  index: number;
+}) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const translateYAnim = useRef(new Animated.Value(20)).current;
 
   useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
+    Animated.timing(translateYAnim, {
+      toValue: 0,
+      duration: 300,
+      delay: index * 50,
+      useNativeDriver: true,
+      easing: Easing.out(Easing.cubic),
+    }).start();
+  }, [index, translateYAnim]);
 
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [value, delay]);
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.92,
+      useNativeDriver: true,
+      damping: 15,
+    }).start();
+  };
 
-  return debouncedValue;
-};
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      damping: 15,
+    }).start();
+  };
 
-// Enhanced Search Input Component - ZOMATO STYLE
-interface SearchInputProps {
-  onPress: () => void;
-  placeholder: string;
+  return (
+    <Animated.View style={{
+      transform: [{ scale: scaleAnim }, { translateY: translateYAnim }],
+      opacity: translateYAnim.interpolate({
+        inputRange: [0, 20],
+        outputRange: [1, 0],
+        extrapolate: 'clamp',
+      }),
+    }}>
+      <TouchableOpacity
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        activeOpacity={0.9}
+        style={[
+          styles.premiumCategoryCard,
+          isActive && styles.premiumCategoryCardActive
+        ]}
+      >
+        <View style={[
+          styles.premiumCategoryIconContainer,
+          isActive && styles.premiumCategoryIconContainerActive
+        ]}>
+          <Image 
+            source={{ uri: category.icon || DEFAULT_CATEGORY_ICON }} 
+            style={styles.premiumCategoryIcon}
+            resizeMode="cover"
+            defaultSource={{ uri: DEFAULT_CATEGORY_ICON }}
+          />
+        </View>
+        <Text style={[
+          styles.premiumCategoryText,
+          isActive && styles.premiumCategoryTextActive
+        ]} numberOfLines={1}>
+          {category.name}
+        </Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
 }
 
-const SearchInput: React.FC<SearchInputProps> = React.memo(({ onPress, placeholder }) => {
-  const scaleAnim = useState(() => new Animated.Value(1))[0];
+// Sticky Categories Header Component
+const StickyCategoriesHeader = React.memo(({ 
+  categories, 
+  activeCategory, 
+  onCategoryPress,
+  visible 
+}: { 
+  categories: Category[];
+  activeCategory: number | null;
+  onCategoryPress: (id: number, name: string) => void;
+  visible: boolean;
+}) => {
+  const translateY = useRef(new Animated.Value(-100)).current;
+
+  useEffect(() => {
+    Animated.timing(translateY, {
+      toValue: visible ? 0 : -100,
+      duration: 300,
+      useNativeDriver: true,
+      easing: Easing.out(Easing.cubic),
+    }).start();
+  }, [visible, translateY]);
+
+  if (!visible) return null;
+
+  return (
+    <Animated.View style={[
+      styles.stickyCategoriesContainer,
+      {
+        transform: [{ translateY }],
+      }
+    ]}>
+      {Platform.OS === 'ios' ? (
+        <BlurView
+          style={StyleSheet.absoluteFillObject}
+          blurType="light"
+          blurAmount={20}
+        />
+      ) : (
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#FFFFFF' }]} />
+      )}
+      <View style={styles.stickyCategoriesContent}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.stickyCategoriesScrollContent}
+        >
+          {categories.map((category, index) => (
+            <TouchableOpacity
+              key={category.id}
+              style={[
+                styles.stickyCategoryItem,
+                activeCategory === index && styles.stickyCategoryItemActive
+              ]}
+              onPress={() => onCategoryPress(category.id, category.name)}
+              activeOpacity={0.7}
+            >
+              <View style={[
+                styles.stickyCategoryIconWrapper,
+                activeCategory === index && styles.stickyCategoryIconWrapperActive
+              ]}>
+                <Image 
+                  source={{ uri: category.icon || DEFAULT_CATEGORY_ICON }} 
+                  style={styles.stickyCategoryIcon}
+                  resizeMode="cover"
+                />
+              </View>
+              <Text style={[
+                styles.stickyCategoryText,
+                activeCategory === index && styles.stickyCategoryTextActive
+              ]} numberOfLines={1}>
+                {category.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+    </Animated.View>
+  );
+});
+
+// Premium Restaurant Card Component
+const PremiumRestaurantCard = ({ 
+  kitchen, 
+  onPress, 
+  onToggleFavorite, 
+  favoriteLoading,
+  isGuest,
+  isTopRestaurant = false
+}: { 
+  kitchen: Kitchen; 
+  onPress: (kitchen: Kitchen) => void; 
+  onToggleFavorite: (kitchenId: string) => void; 
+  favoriteLoading: string | null;
+  isGuest: boolean;
+  isTopRestaurant?: boolean;
+}) => {
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [hasImageError, setHasImageError] = useState(false);
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const imageScaleAnim = useRef(new Animated.Value(1)).current;
+  const favoriteAnim = useRef(new Animated.Value(kitchen.is_favourite ? 1 : 0)).current;
+  
+  const rating = kitchen.rating || (Math.random() * 1 + 4.2).toFixed(1);
+  const deliveryTime = kitchen.delivery_time?.replace('min', '').trim() || '25-35';
+  const discount = kitchen.discount || Math.floor(Math.random() * 30) + 20;
+
+  useEffect(() => {
+    Animated.spring(favoriteAnim, {
+      toValue: kitchen.is_favourite ? 1 : 0,
+      useNativeDriver: true,
+      damping: 15,
+    }).start();
+  }, [kitchen.is_favourite, favoriteAnim]);
 
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {
       toValue: 0.98,
       useNativeDriver: true,
+      damping: 15,
+    }).start();
+    Animated.spring(imageScaleAnim, {
+      toValue: 1.05,
+      useNativeDriver: true,
+      damping: 15,
     }).start();
   };
 
   const handlePressOut = () => {
     Animated.spring(scaleAnim, {
       toValue: 1,
-      friction: 5,
-      tension: 100,
       useNativeDriver: true,
+      damping: 15,
+    }).start();
+    Animated.spring(imageScaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      damping: 15,
     }).start();
   };
 
+  const handleFavoritePress = (e: any) => {
+    e.stopPropagation();
+    if (isGuest) {
+      Alert.alert('Login Required', 'Please login to add favorites');
+      return;
+    }
+    onToggleFavorite(kitchen.restaurant_id);
+  };
+
+  const handleImageError = () => {
+    setHasImageError(true);
+    setImageLoaded(false);
+  };
+
+  const handleImageLoad = () => {
+    setImageLoaded(true);
+    setHasImageError(false);
+  };
+
+  const imageSource = hasImageError 
+    ? { uri: DEFAULT_RESTAURANT_IMAGE }
+    : { uri: kitchen.restaurant_image || DEFAULT_RESTAURANT_IMAGE };
+
+  const cardWidth = isTopRestaurant 
+    ? (screenWidth - scale(48)) / 3.2
+    : (screenWidth - scale(48)) / 2;
+
   return (
-    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-      {/* FIXED: Use View instead of TouchableOpacity for Android to avoid ripple effect */}
-      {Platform.OS === 'android' ? (
-        <View 
-          style={[
-            styles.searchInputTouchable,
-            styles.searchInputTouchableAndroid,
-            styles.searchInputTouchableAndroidFix // Added fix for Android
-          ]}
-        >
-          <TouchableOpacity 
-            style={styles.searchInputInnerTouchable}
-            onPress={onPress}
-            onPressIn={handlePressIn}
-            onPressOut={handlePressOut}
-            activeOpacity={0.9}
-            // FIXED: Disable Android ripple effect
-            android_ripple={{ color: 'transparent' }}
-          >
-            <View style={styles.searchInputContent}>
-              <Icon 
-                name="search" 
-                size={scale(20)}
-                color="#FFFFFF"
-                style={styles.searchLeftIcon}
-              />
-              <View style={styles.searchTextContainer}>
-                <Text 
-                  style={[
-                    styles.searchPlaceholderText,
-                    styles.searchPlaceholderTextAndroid
-                  ]} 
-                  numberOfLines={1}
-                  selectable={false}
-                  selectionColor="transparent"
-                  // FIXED: Additional Android text properties
-                  textBreakStrategy="simple"
-                  ellipsizeMode="tail"
-                >
-                  {placeholder}
-                </Text>
-              </View>
-              <Icon 
-                name="mic-outline" 
-                size={scale(20)}
-                color="#FFFFFF"
-                style={styles.searchRightIcon}
-              />
+    <Animated.View style={{
+      transform: [{ scale: scaleAnim }],
+      width: cardWidth,
+    }}>
+      <TouchableOpacity
+        onPress={() => onPress(kitchen)}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        activeOpacity={0.95}
+        style={[
+          styles.premiumRestaurantCard,
+          isTopRestaurant && styles.premiumTopRestaurantCard
+        ]}
+      >
+        <View style={styles.premiumRestaurantImageContainer}>
+          <Animated.Image
+            source={imageSource}
+            style={[
+              styles.premiumRestaurantImage,
+              { transform: [{ scale: imageScaleAnim }] }
+            ]}
+            resizeMode="cover"
+            onLoad={handleImageLoad}
+            onError={handleImageError}
+            defaultSource={{ uri: DEFAULT_RESTAURANT_IMAGE }}
+          />
+          
+          {!imageLoaded && !hasImageError && (
+            <View style={styles.premiumRestaurantImagePlaceholder}>
+              <ActivityIndicator size="small" color={COLORS.primary} />
             </View>
+          )}
+
+          <View style={styles.premiumRestaurantImageGradient} />
+
+          <TouchableOpacity 
+            style={[
+              styles.premiumRestaurantFavorite,
+              isTopRestaurant && styles.premiumTopRestaurantFavorite
+            ]}
+            onPress={handleFavoritePress}
+            disabled={favoriteLoading === kitchen.restaurant_id}
+          >
+            <Animated.View style={{
+              transform: [{
+                scale: favoriteAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [1, 1.2],
+                  extrapolate: 'clamp',
+                })
+              }]
+            }}>
+              <Icon 
+                name={kitchen.is_favourite ? "heart" : "heart-outline"} 
+                size={isTopRestaurant ? scale(16) : scale(20)} 
+                color={kitchen.is_favourite ? COLORS.primary : "#FFFFFF"} 
+              />
+            </Animated.View>
           </TouchableOpacity>
+
+          {kitchen.is_new && (
+            <View style={styles.premiumRestaurantNewBadge}>
+              <Text style={styles.premiumRestaurantNewBadgeText}>NEW</Text>
+            </View>
+          )}
         </View>
-      ) : (
-        // iOS version remains the same
-        <TouchableOpacity 
-          style={[
-            styles.searchInputTouchable,
-            styles.searchInputTouchableIOS
-          ]}
-          onPress={onPress}
-          onPressIn={handlePressIn}
-          onPressOut={handlePressOut}
-          activeOpacity={0.9}
-        >
-          <View style={styles.searchInputContent}>
-            <Icon 
-              name="search" 
-              size={scale(20)}
-              color="#FFFFFF"
-              style={styles.searchLeftIcon}
-            />
-            <View style={styles.searchTextContainer}>
-              <Text style={styles.searchPlaceholderText} numberOfLines={1}>
-                {placeholder}
+
+        <View style={[
+          styles.premiumRestaurantInfo,
+          isTopRestaurant && styles.premiumTopRestaurantInfo
+        ]}>
+          <Text style={[
+            styles.premiumRestaurantName,
+            isTopRestaurant && styles.premiumTopRestaurantName
+          ]} numberOfLines={1}>
+            {kitchen.restaurant_name}
+          </Text>
+          
+          <View style={styles.premiumRestaurantMeta}>
+            <View style={styles.premiumRestaurantCuisine}>
+              <Text style={[
+                styles.premiumRestaurantCuisineText,
+                isTopRestaurant && styles.premiumTopRestaurantCuisineText
+              ]} numberOfLines={1}>
+                {kitchen.item_cuisines?.split(', ').slice(0, 1).join(' ') || 'Various'}
               </Text>
             </View>
-            <Icon 
-              name="mic-outline" 
-              size={scale(20)}
-              color="#FFFFFF"
-              style={styles.searchRightIcon}
-            />
+            <View style={styles.premiumRestaurantDelivery}>
+              <Icon2 name="clock-outline" size={isTopRestaurant ? scale(10) : scale(12)} color={COLORS.text.secondary} />
+              <Text style={[
+                styles.premiumRestaurantDeliveryText,
+                isTopRestaurant && styles.premiumTopRestaurantDeliveryText
+              ]}>{deliveryTime} min</Text>
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
+// Premium Active Order Card Component
+const PremiumActiveOrderCard = ({ 
+  order, 
+  onPress 
+}: { 
+  order: ActiveOrder; 
+  onPress: (order: ActiveOrder) => void;
+}) => {
+  const statusColors = {
+    'pending': '#FDCB6E',
+    'confirmed': '#00B894',
+    'preparing': '#6C5CE7',
+    'on-the-way': '#0984E3',
+    'delivered': '#00B894',
+    'cancelled': '#FF7675',
+  };
+
+  return (
+    <TouchableOpacity
+      onPress={() => onPress(order)}
+      activeOpacity={0.95}
+      style={styles.premiumActiveOrderCard}
+    >
+      <View style={styles.premiumActiveOrderContent}>
+        <Image 
+          source={{ 
+            uri: order.kitchenImage || DEFAULT_CATEGORY_ICON 
+          }} 
+          style={styles.premiumActiveOrderImage}
+          defaultSource={{ uri: DEFAULT_CATEGORY_ICON }}
+        />
+        
+        <View style={styles.premiumActiveOrderDetails}>
+          <View style={styles.premiumActiveOrderHeader}>
+            <Text style={styles.premiumActiveOrderKitchen} numberOfLines={1}>
+              {order.kitchenName}
+            </Text>
+            <View style={[
+              styles.premiumActiveOrderStatusBadge,
+              { backgroundColor: `${statusColors[order.status]}20` }
+            ]}>
+              <View style={[
+                styles.premiumActiveOrderStatusDot,
+                { backgroundColor: statusColors[order.status] }
+              ]} />
+              <Text style={[
+                styles.premiumActiveOrderStatusText,
+                { color: statusColors[order.status] }
+              ]}>
+                {order.statusText}
+              </Text>
+            </View>
+          </View>
+
+          <Text style={styles.premiumActiveOrderNumber}>
+            Order #{order.orderNumber}
+          </Text>
+
+          {order.status !== 'cancelled' && order.status !== 'delivered' && (
+            <View style={styles.premiumActiveOrderTimeContainer}>
+              <Icon2 name="timer-sand" size={scale(14)} color={COLORS.primary} />
+              <Text style={styles.premiumActiveOrderTime}>
+                {order.estimatedArrival} • {order.placedOn}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.premiumActiveOrderArrow}>
+          <Icon name="chevron-forward" size={scale(20)} color={COLORS.text.secondary} />
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+// UPDATED: Premium Cart Summary Component - No LinearGradient, iOS optimized
+const PremiumCartSummary = ({ 
+  pastKitchenDetails, 
+  onViewCart, 
+  onBackToKitchen 
+}: { 
+  pastKitchenDetails: PastKitchenDetails; 
+  onViewCart: () => void; 
+  onBackToKitchen: () => void;
+}) => {
+  const slideAnim = useRef(new Animated.Value(100)).current;
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        damping: 20,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        damping: 20,
+      }),
+    ]).start();
+  }, [slideAnim, scaleAnim]);
+
+  return (
+    <Animated.View style={[
+      styles.premiumCartSummary,
+      {
+        transform: [
+          { translateY: slideAnim },
+          { scale: scaleAnim }
+        ]
+      }
+    ]}>
+      <View style={styles.premiumCartSummaryContent}>
+        <View style={styles.premiumCartSummaryInfo}>
+          <Image 
+            source={{ 
+              uri: pastKitchenDetails.image || DEFAULT_RESTAURANT_IMAGE 
+            }} 
+            style={styles.premiumCartSummaryImage}
+            defaultSource={{ uri: DEFAULT_RESTAURANT_IMAGE }}
+          />
+          <View style={styles.premiumCartSummaryText}>
+            <Text style={styles.premiumCartSummaryTitle} numberOfLines={1}>
+              {pastKitchenDetails.name}
+            </Text>
+            <TouchableOpacity onPress={onBackToKitchen}>
+              <Text style={styles.premiumCartSummarySubtitle}>Add more items</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        
+        <TouchableOpacity 
+          style={styles.premiumCartSummaryButton}
+          onPress={onViewCart}
+          activeOpacity={0.9}
+        >
+          <View style={styles.premiumCartSummaryButtonContent}>
+            <Text style={styles.premiumCartSummaryButtonText}>View Cart</Text>
+            <View style={styles.premiumCartBadge}>
+              <Text style={styles.premiumCartBadgeText}>
+                {pastKitchenDetails.itemCount}
+              </Text>
+            </View>
           </View>
         </TouchableOpacity>
-      )}
-    </Animated.View>
-  );
-});
-
-// New Sticky Header Component with Search and Categories
-const StickyHeader = ({ 
-  onSearchPress, 
-  categories, 
-  activeCategory, 
-  onCategoryPress,
-  searchPlaceholder,
-  homeType,
-  address
-}: { 
-  onSearchPress: () => void;
-  categories: Category[];
-  activeCategory: number | null;
-  onCategoryPress: (id: number, name: string) => void;
-  searchPlaceholder: string;
-  homeType: string;
-  address: string;
-}) => {
-  return (
-    <View style={styles.stickyHeader}>
-      {/* Search Bar - Zomato Style */}
-      <TouchableOpacity 
-        style={[
-          styles.stickySearchBar,
-          Platform.select({
-            android: styles.stickySearchBarAndroid,
-            ios: styles.stickySearchBarIOS
-          })
-        ]}
-        onPress={onSearchPress}
-        activeOpacity={0.9}
-        // Add these to prevent text selection on Android
-        onLongPress={() => {}}
-        delayLongPress={0}
-      >
-        <Icon 
-          name="search" 
-          size={scale(20)}
-          color={COLORS.searchPlaceholder} 
-          style={styles.stickySearchIcon} 
-        />
-        {/* FIXED: Added Platform.select for Android placeholder text selection prevention */}
-        {Platform.select({
-          android: (
-            <Text 
-              style={[
-                styles.stickySearchPlaceholder,
-                styles.stickySearchPlaceholderAndroid // Added specific style for Android
-              ]} 
-              numberOfLines={1}
-              // Prevent text selection on Android
-              selectable={false}
-              selectionColor="transparent"
-            >
-              {searchPlaceholder}
-            </Text>
-          ),
-          ios: (
-            <Text style={styles.stickySearchPlaceholder} numberOfLines={1}>
-              {searchPlaceholder}
-            </Text>
-          )
-        })}
-      </TouchableOpacity>
-
-      {/* Categories Scroll - Zomato style */}
-      {categories && categories.length > 0 && (
-        <View style={styles.stickyCategoriesContainer}>
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            style={styles.stickyCategoriesScroll}
-            contentContainerStyle={styles.stickyCategoriesContent}
-          >
-            {categories.map((category, index) => (
-              <TouchableOpacity
-                key={category.id}
-                style={[
-                  styles.stickyCategoryItem,
-                  activeCategory === index && styles.stickyCategoryItemActive
-                ]}
-                onPress={() => onCategoryPress(category.id, category.name)}
-                activeOpacity={0.8}
-              >
-                <View style={styles.stickyCategoryIconContainer}>
-                  <Image 
-                    source={{ uri: category.icon || DEFAULT_CATEGORY_ICON }} 
-                    style={styles.stickyCategoryIcon}
-                    resizeMode="cover"
-                    defaultSource={{ uri: DEFAULT_CATEGORY_ICON }}
-                  />
-                </View>
-                <Text style={[
-                  styles.stickyCategoryText,
-                  activeCategory === index && styles.stickyCategoryTextActive
-                ]} numberOfLines={1}>
-                  {category.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
-    </View>
-  );
-};
-
-// Top Restaurant Card (Side by side like Zomato) - Updated to show 2 restaurants per frame
-const TopRestaurantCard = ({ 
-  kitchen, 
-  onPress, 
-  onToggleFavorite, 
-  favoriteLoading,
-  isGuest
-}: { 
-  kitchen: Kitchen; 
-  onPress: (kitchen: Kitchen) => void; 
-  onToggleFavorite: (kitchenId: string) => void; 
-  favoriteLoading: string | null;
-  isGuest: boolean;
-}) => {
-  const [imageLoaded, setImageLoaded] = useState(false);
-  const [hasImageError, setHasImageError] = useState(false);
-  const scaleAnim = useState(() => new Animated.Value(1))[0];
-  
-  const rating = kitchen.rating || (Math.random() * 1 + 4).toFixed(1);
-  const deliveryTime = kitchen.delivery_time || '30-40 min';
-
-  const handlePressIn = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 0.95,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      friction: 5,
-      tension: 100,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const handleImageError = () => {
-    setHasImageError(true);
-    setImageLoaded(false);
-  };
-
-  const handleImageLoad = () => {
-    setImageLoaded(true);
-    setHasImageError(false);
-  };
-
-  return (
-    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-      <TouchableOpacity
-        onPress={() => onPress(kitchen)}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        activeOpacity={0.9}
-        style={styles.topRestaurantCard}
-      >
-        <View style={styles.topRestaurantImageContainer}>
-          {!imageLoaded && !hasImageError && (
-            <View style={[styles.topRestaurantImage, styles.imagePlaceholder]}>
-              <ActivityIndicator size="small" color={COLORS.gradientStart} />
-            </View>
-          )}
-          
-          <Image 
-            source={{ 
-              uri: hasImageError 
-                ? 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=150&h=150&fit=crop&crop=center'
-                : kitchen.restaurant_image || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=150&h=150&fit=crop&crop=center'
-            }} 
-            style={styles.topRestaurantImage}
-            resizeMode="cover"
-            onError={handleImageError}
-            onLoad={handleImageLoad}
-            defaultSource={{ uri: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=150&h=150&fit=crop&crop=center' }}
-          />
-          
-          <View style={styles.topRestaurantRatingBadge}>
-            <Icon name="star" size={scale(10)} color="#FFF" />
-            <Text style={styles.topRestaurantRatingText}>{rating}</Text>
-          </View>
-          
-          <TouchableOpacity 
-            style={styles.topRestaurantFavoriteButton}
-            onPress={(e) => {
-              e.stopPropagation();
-              onToggleFavorite(kitchen.restaurant_id);
-            }}
-            disabled={favoriteLoading === kitchen.restaurant_id}
-          >
-            <Icon 
-              name={kitchen.is_favourite ? "heart" : "heart-outline"} 
-              size={scale(16)} 
-              color={kitchen.is_favourite ? COLORS.gradientStart : "#fff"} 
-            />
-          </TouchableOpacity>
-        </View>
-        
-        <View style={styles.topRestaurantInfo}>
-          <Text style={styles.topRestaurantName} numberOfLines={1}>
-            {kitchen.restaurant_name}
-          </Text>
-          
-          <View style={styles.topRestaurantMeta}>
-            <Text style={styles.topRestaurantCuisine} numberOfLines={1}>
-              {kitchen.item_cuisines?.split(', ').slice(0, 2).join(', ')}
-            </Text>
-            <View style={styles.topRestaurantDelivery}>
-              <Icon name="time-outline" size={scale(10)} color={COLORS.textLight} />
-              <Text style={styles.topRestaurantDeliveryText}>{deliveryTime}</Text>
-            </View>
-          </View>
-        </View>
-      </TouchableOpacity>
+      </View>
     </Animated.View>
   );
 };
 
-// Restaurant Card (2 in a row for "Restaurant Near You")
-const RestaurantCard = ({ 
-  kitchen, 
-  onPress, 
-  onToggleFavorite, 
-  favoriteLoading,
-  isGuest
-}: { 
-  kitchen: Kitchen; 
-  onPress: (kitchen: Kitchen) => void; 
-  onToggleFavorite: (kitchenId: string) => void; 
-  favoriteLoading: string | null;
-  isGuest: boolean;
-}) => {
-  const [imageLoaded, setImageLoaded] = useState(false);
-  const [hasImageError, setHasImageError] = useState(false);
-  const scaleAnim = useState(() => new Animated.Value(1))[0];
-  
-  const rating = kitchen.rating || (Math.random() * 1 + 4).toFixed(1);
-  const deliveryTime = kitchen.delivery_time || '30-40 min';
+// ============== MAIN KITCHEN SCREEN ==============
 
-  const handlePressIn = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 0.95,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      friction: 5,
-      tension: 100,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const handleImageError = () => {
-    setHasImageError(true);
-    setImageLoaded(false);
-  };
-
-  const handleImageLoad = () => {
-    setImageLoaded(true);
-    setHasImageError(false);
-  };
-
-  return (
-    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-      <TouchableOpacity
-        onPress={() => onPress(kitchen)}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        activeOpacity={0.9}
-        style={styles.restaurantCard}
-      >
-        <View style={styles.restaurantImageContainer}>
-          {!imageLoaded && !hasImageError && (
-            <View style={[styles.restaurantImage, styles.imagePlaceholder]}>
-              <ActivityIndicator size="small" color={COLORS.gradientStart} />
-            </View>
-          )}
-          
-          <Image 
-            source={{ 
-              uri: hasImageError 
-                ? 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=150&h=150&fit=crop&crop=center'
-                : kitchen.restaurant_image || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=150&h=150&fit=crop&crop=center'
-            }} 
-            style={styles.restaurantImage}
-            resizeMode="cover"
-            onError={handleImageError}
-            onLoad={handleImageLoad}
-            defaultSource={{ uri: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=150&h=150&fit=crop&crop=center' }}
-          />
-          
-          <View style={styles.restaurantRatingBadge}>
-            <Icon name="star" size={scale(10)} color="#FFF" />
-            <Text style={styles.restaurantRatingText}>{rating}</Text>
-          </View>
-          
-          <TouchableOpacity 
-            style={styles.restaurantFavoriteButton}
-            onPress={(e) => {
-              e.stopPropagation();
-              onToggleFavorite(kitchen.restaurant_id);
-            }}
-            disabled={favoriteLoading === kitchen.restaurant_id}
-          >
-            <Icon 
-              name={kitchen.is_favourite ? "heart" : "heart-outline"} 
-              size={scale(16)} 
-              color={kitchen.is_favourite ? COLORS.gradientStart : "#fff"} 
-            />
-          </TouchableOpacity>
-        </View>
-        
-        <View style={styles.restaurantInfo}>
-          <Text style={styles.restaurantName} numberOfLines={1}>
-            {kitchen.restaurant_name}
-          </Text>
-          
-          <View style={styles.restaurantMeta}>
-            <Text style={styles.restaurantCuisine} numberOfLines={1}>
-              {kitchen.item_cuisines?.split(', ').slice(0, 2).join(', ')}
-            </Text>
-            <View style={styles.restaurantDelivery}>
-              <Icon name="time-outline" size={scale(10)} color={COLORS.textLight} />
-              <Text style={styles.restaurantDeliveryText}>{deliveryTime}</Text>
-            </View>
-          </View>
-          
-          <Text style={styles.restaurantPrice}>₹{kitchen.avg_price_range || '200'} for one</Text>
-        </View>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-};
-
-// Custom Refresh Indicator Component
-const CustomRefreshIndicator = ({ progress, refreshing }: { progress: number; refreshing: boolean }) => {
-  const rotation = useRef(new Animated.Value(0)).current;
-  
-  useEffect(() => {
-    if (refreshing) {
-      Animated.loop(
-        Animated.timing(rotation, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-          easing: Easing.linear,
-        })
-      ).start();
-    } else {
-      rotation.setValue(0);
-    }
-  }, [refreshing]);
-
-  const rotate = rotation.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-
-  if (progress === 0 && !refreshing) return null;
-
-  return (
-    <View style={styles.customRefreshIndicator}>
-      <Animated.View style={{ transform: [{ rotate }] }}>
-        <Icon 
-          name="refresh" 
-          size={scale(24)} 
-          color={COLORS.gradientStart} 
-        />
-      </Animated.View>
-      <Text style={styles.customRefreshText}>
-        {refreshing ? 'Refreshing...' : progress > 1 ? 'Release to refresh' : 'Pull to refresh'}
-      </Text>
-    </View>
-  );
-};
-
-// Refresh Success Feedback Component
-const RefreshSuccessFeedback = ({ visible }: { visible: boolean }) => {
-  const opacity = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (visible) {
-      Animated.sequence([
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.delay(1500),
-        Animated.timing(opacity, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }, [visible]);
-
-  if (!visible) return null;
-};
-
-// Kitchen Screen Component
 const KitchenScreenTabs: React.FC = () => {
-  const navigation = useNavigation<NavigationProp>();
+  const navigation = useNavigation<any>();
   const { isGuest, userToken } = useContext(AuthContext);
   const insets = useSafeAreaInsets();
   
+  // ============== STATE HOOKS ==============
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [apiData, setApiData] = useState<ApiResponse | null>(null);
@@ -1649,83 +1857,91 @@ const KitchenScreenTabs: React.FC = () => {
   const [searchHistory, setSearchHistory] = useState<SearchItem[]>([]);
   const [searchSuggestionsData, setSearchSuggestionsData] = useState<SearchSuggestionResponse | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [homeType, setHomeType] = useState<string>('Delivering');
+  const [homeType, setHomeType] = useState<string>('Home');
   const [address, setAddress] = useState<string>('Fetching location...');
   const [showRefreshSuccess, setShowRefreshSuccess] = useState(false);
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [headerLoader, setHeaderLoader] = useState(true);
-
-  // Track header visibility for video playback
   const [isHeaderVisible, setIsHeaderVisible] = useState(true);
-  
-  // Scroll animation refs
+  const [headerLoader, setHeaderLoader] = useState(true);
+  const [showStickyCategories, setShowStickyCategories] = useState(false);
+  const [headerOffers, setHeaderOffers] = useState<OfferCard[]>([]);
+
+  // ============== REF HOOKS ==============
   const scrollY = useRef(new Animated.Value(0)).current;
   const scrollViewRef = useRef<ScrollView>(null);
-  const isAtTop = useRef(true);
-  
-  // Pre-banner loading state
-  const [bannerReady, setBannerReady] = useState(false);
+  const searchInputRef = useRef<TextInput>(null);
+  const placeholderInterval = useRef<NodeJS.Timeout>();
 
-  // Debounced search query
-  const debouncedSearchQuery = useDebounce(searchQuery, 300);
-
-  // Calculate header animations with insets
+  // ============== ANIMATION INTERPOLATIONS ==============
   const headerTranslateY = scrollY.interpolate({
-    inputRange: [0, HEADER_HEIGHT],
-    outputRange: [0, -HEADER_HEIGHT],
+    inputRange: [0, HEADER_HEIGHT * 0.6],
+    outputRange: [0, -HEADER_HEIGHT * 0.5],
     extrapolate: 'clamp',
   });
 
   const headerOpacity = scrollY.interpolate({
-    inputRange: [0, HEADER_HEIGHT / 2],
+    inputRange: [0, HEADER_HEIGHT * 0.4],
     outputRange: [1, 0],
     extrapolate: 'clamp',
   });
 
-  // Track header visibility
-  useEffect(() => {
-    const listenerId = scrollY.addListener(({ value }) => {
-      setIsHeaderVisible(value <= HEADER_HEIGHT / 2);
-    });
-
-    return () => {
-      scrollY.removeListener(listenerId);
-    };
-  }, []);
-
-  // Sticky header animation - appears at top
-  const stickyHeaderTranslateY = scrollY.interpolate({
-    inputRange: [0, HEADER_HEIGHT - 100, HEADER_HEIGHT],
-    outputRange: [-HEADER_HEIGHT, -HEADER_HEIGHT, 0],
+  const categoriesTranslateY = scrollY.interpolate({
+    inputRange: [0, HEADER_HEIGHT * 0.3],
+    outputRange: [0, -40],
     extrapolate: 'clamp',
   });
 
-  // Handle address update from AddressHeaderLeft
-  const handleAddressUpdate = useCallback((newAddress: string, newHomeType: string) => {
-    setAddress(newAddress);
-    setHomeType(newHomeType);
-  }, []);
+  const categoriesOpacity = scrollY.interpolate({
+    inputRange: [0, HEADER_HEIGHT * 0.3],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
 
-  // Enhanced placeholder animation
+  const headerScale = scrollY.interpolate({
+    inputRange: [0, HEADER_HEIGHT * 0.3],
+    outputRange: [1, 0.92],
+    extrapolate: 'clamp',
+  });
+
+  // ============== HEADER VISIBILITY ==============
   useEffect(() => {
-    let mounted = true;
-    let interval: NodeJS.Timeout;
-    
-    if (mounted) {
-      interval = setInterval(() => {
-        if (mounted) {
-          setCurrentPlaceholderIndex(prev => (prev + 1) % SEARCH_PLACEHOLDERS.length);
-        }
-      }, 3000);
-    }
+    const listenerId = scrollY.addListener(({ value }) => {
+      setIsHeaderVisible(value < HEADER_HEIGHT * 0.5);
+      setShowStickyCategories(value > HEADER_HEIGHT * 0.4);
+    });
+    return () => scrollY.removeListener(listenerId);
+  }, [scrollY]);
 
+  // ============== PLACEHOLDER ANIMATION ==============
+  useEffect(() => {
+    placeholderInterval.current = setInterval(() => {
+      setCurrentPlaceholderIndex(prev => (prev + 1) % SEARCH_PLACEHOLDERS.length);
+    }, 3000);
     return () => {
-      mounted = false;
-      if (interval) clearInterval(interval);
+      if (placeholderInterval.current) {
+        clearInterval(placeholderInterval.current);
+      }
     };
   }, []);
 
-  // Fetch user data
+  // ============== LOAD HEADER OFFERS ==============
+  const loadHeaderOffers = useCallback(async () => {
+    try {
+      const storedOffers = await AsyncStorage.getItem(STORAGE_KEYS.HEADER_OFFERS);
+      if (storedOffers) {
+        setHeaderOffers(JSON.parse(storedOffers));
+      } else {
+        // Filter active offers and take first 2
+        const activeOffers = HEADER_OFFERS.filter(offer => offer.isActive).slice(0, 2);
+        setHeaderOffers(activeOffers);
+        await AsyncStorage.setItem(STORAGE_KEYS.HEADER_OFFERS, JSON.stringify(activeOffers));
+      }
+    } catch (error) {
+      console.error('Error loading header offers:', error);
+      setHeaderOffers(HEADER_OFFERS.filter(offer => offer.isActive).slice(0, 2));
+    }
+  }, []);
+
+  // ============== API FUNCTIONS ==============
   const fetchUserData = useCallback(async () => {
     try {
       if (userToken) {
@@ -1743,64 +1959,62 @@ const KitchenScreenTabs: React.FC = () => {
     }
   }, [userToken]);
 
-  // Fetch recent searches and search history
-  const fetchRecentSearches = useCallback(async () => {
+  const fetchKitchens = useCallback(async () => {
     try {
-      const [recent, history] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_KEYS.RECENT_SEARCHES),
-        AsyncStorage.getItem(STORAGE_KEYS.SEARCH_HISTORY)
-      ]);
+      const response = await getKitchenList();
       
-      if (recent) setRecentSearches(JSON.parse(recent));
-      if (history) setSearchHistory(JSON.parse(history));
+      if (response.data?.success) {
+        const processedData = {
+          ...response.data,
+          data: {
+            ...response.data.data,
+            FeatureKitchenList: (response.data.data.FeatureKitchenList || []).map((k: any) => ({
+              ...k,
+              review_count: Math.floor(Math.random() * 100) + 1,
+              is_favourite: k.is_favourite || false,
+              rating: (Math.random() * 1 + 4.2).toFixed(1),
+              delivery_time: `${Math.floor(Math.random() * 15) + 25}-${Math.floor(Math.random() * 20) + 40} min`,
+              discount: Math.random() > 0.7 ? Math.floor(Math.random() * 30) + 20 : 0,
+              is_new: Math.random() > 0.8,
+              is_trending: Math.random() > 0.9,
+              distance: `${(Math.random() * 5 + 0.5).toFixed(1)} km`,
+            })),
+            KitchenList: (response.data.data.KitchenList || []).map((k: any) => ({
+              ...k,
+              review_count: Math.floor(Math.random() * 100) + 1,
+              is_favourite: k.is_favourite || false,
+              rating: (Math.random() * 1 + 4).toFixed(1),
+              delivery_time: `${Math.floor(Math.random() * 15) + 25}-${Math.floor(Math.random() * 20) + 40} min`,
+              discount: Math.random() > 0.7 ? Math.floor(Math.random() * 30) + 20 : 0,
+              is_new: Math.random() > 0.8,
+              is_trending: Math.random() > 0.9,
+              distance: `${(Math.random() * 5 + 0.5).toFixed(1)} km`,
+            })),
+            CategoryList: (response.data.data.CategoryList || []).map((c: any) => ({
+              ...c,
+              icon: c.icon || DEFAULT_CATEGORY_ICON
+            })),
+            final_banner_image: response.data.data.final_banner_image ? {
+              ...response.data.data.final_banner_image,
+              icon: response.data.data.final_banner_image.icon || DEFAULT_BANNER_IMAGE,
+              thumbnail: response.data.data.final_banner_image.thumbnail || DEFAULT_BANNER_IMAGE,
+              document_type: response.data.data.final_banner_image.document_type || 1
+            } : {
+              icon: DEFAULT_BANNER_IMAGE,
+              thumbnail: DEFAULT_BANNER_IMAGE,
+              document_type: 1 as const
+            }
+          }
+        };
+        
+        setApiData(processedData);
+        setTimeout(() => setHeaderLoader(false), 1000);
+      }
     } catch (error) {
-      console.error('Error fetching search data:', error);
+      console.error('Error fetching kitchens:', error);
     }
   }, []);
 
-  // Save search data
-  const saveToRecentSearches = useCallback(async (query: string, item?: SearchItem) => {
-    try {
-      const updatedSearches = [
-        query,
-        ...recentSearches.filter(search => search.toLowerCase() !== query.toLowerCase())
-      ].slice(0, 5);
-      
-      setRecentSearches(updatedSearches);
-      await AsyncStorage.setItem(STORAGE_KEYS.RECENT_SEARCHES, JSON.stringify(updatedSearches));
-
-      if (item) {
-        const updatedHistory = [
-          { ...item, searchedAt: new Date().toISOString() },
-          ...searchHistory.filter(hist => hist.id !== item.id)
-        ].slice(0, 10);
-        
-        setSearchHistory(updatedHistory);
-        await AsyncStorage.setItem(STORAGE_KEYS.SEARCH_HISTORY, JSON.stringify(updatedHistory));
-      }
-    } catch (error) {
-      console.error('Error saving search data:', error);
-    }
-  }, [recentSearches, searchHistory]);
-
-  const updateCartItemUser = useCallback(async (userId: string) => {
-    try {
-      const payload = { 
-        user_id: userId,
-        session_id: sessionId, 
-        cart_status: 2, 
-        restaurant_id: pastKitchenDetails?.id, 
-      };
-
-      const response = await updateCartUserDetails(payload);
-      return response?.status === 200;
-    } catch (error) {
-      console.error('Error updating cart user details:', error);
-      return false;
-    }
-  }, [sessionId, pastKitchenDetails?.id]);
-
-  // Fetch active orders
   const fetchActiveOrders = useCallback(async (userId: string) => {
     try {
       setOrdersLoading(true);
@@ -1808,8 +2022,8 @@ const KitchenScreenTabs: React.FC = () => {
       const response = await getActiveOrders(payload);
 
       if (response?.status === 200) {
-        const formattedOrders: ActiveOrder[] = response.data.orders
-          .map(order => {
+        const formattedOrders: ActiveOrder[] = (response.data.orders || [])
+          .map((order: any) => {
             const now = moment();
             const deliveryTime = moment(order.estimated_delivery);
             const minutesRemaining = deliveryTime.diff(now, 'minutes');
@@ -1859,9 +2073,9 @@ const KitchenScreenTabs: React.FC = () => {
               placedOn: moment(order.placed_on).format('MMM D, h:mm A'),
             };
           })
-          .filter(order => order.status !== 'delivered');
+          .filter((order: ActiveOrder) => order.status !== 'delivered');
 
-        formattedOrders.sort((a, b) => {
+        formattedOrders.sort((a: ActiveOrder, b: ActiveOrder) => {
           const aMinutes = parseInt(a.estimatedArrival);
           const bMinutes = parseInt(b.estimatedArrival);
           return aMinutes - bMinutes;
@@ -1876,7 +2090,6 @@ const KitchenScreenTabs: React.FC = () => {
     }
   }, []);
 
-  // Past kitchen details
   const savePastKitchenDetails = useCallback(async (details: PastKitchenDetails) => {
     try {
       await AsyncStorage.setItem(STORAGE_KEYS.PAST_KITCHEN_DETAILS, JSON.stringify(details));
@@ -1885,21 +2098,19 @@ const KitchenScreenTabs: React.FC = () => {
       console.error('Error saving past kitchen details:', error);
     }
   }, []);
-  
+
   const fetchPastKitchenDetails = useCallback(async (userId: string | null) => {
     try {
-      // Try to get stored details first
       const storedDetails = await AsyncStorage.getItem(STORAGE_KEYS.PAST_KITCHEN_DETAILS);
-      const sessionId = await getSessionId();
 
       if (storedDetails) {
         setPastKitchenDetails(JSON.parse(storedDetails));
         return;
       }
 
-      // If no stored details, fetch from API
+      const session = await getSessionId();
       const payload = { 
-        session_id: userId ? null : sessionId, 
+        session_id: userId ? null : session, 
         user_id: userId 
       };
       const response = await getCart(payload);
@@ -1914,7 +2125,6 @@ const KitchenScreenTabs: React.FC = () => {
             itemCount: response?.data?.total_item_count || 0
           };
           await savePastKitchenDetails(newPastKitchenDetails);
-          setPastKitchenDetails(newPastKitchenDetails);
         }
       } else {
         setPastKitchenDetails(null);
@@ -1924,77 +2134,80 @@ const KitchenScreenTabs: React.FC = () => {
     }
   }, [savePastKitchenDetails]);
 
-  // Fetch kitchens with enhanced data - UPDATED TO INCLUDE THUMBNAIL
-  const fetchKitchens = useCallback(async () => {
+  const updateCartItemUser = useCallback(async (userId: string) => {
     try {
-      setLoading(true);
-      const response = await getKitchenList();
-      
-      if (response.data?.success) {
-        const processedData = {
-          ...response.data,
-          data: {
-            ...response.data.data,
-            FeatureKitchenList: response.data.data.FeatureKitchenList.map(k => ({
-              ...k,
-              review_count: Math.floor(Math.random() * 100) + 1,
-              is_favourite: k.is_favourite || false,
-              rating: (Math.random() * 1 + 4).toFixed(1),
-              delivery_time: `${Math.floor(Math.random() * 15) + 20}-${Math.floor(Math.random() * 20) + 35} min`,
-              discount: Math.random() > 0.7 ? Math.floor(Math.random() * 30) + 10 : 0,
-              is_new: Math.random() > 0.8,
-              is_trending: Math.random() > 0.9,
-              distance: `${(Math.random() * 5).toFixed(1)} km`,
-              restaurant_image: k.restaurant_image || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=150&h=150&fit=crop&crop=center'
-            })),
-            KitchenList: response.data.data.KitchenList.map(k => ({
-              ...k,
-              review_count: Math.floor(Math.random() * 100) + 1,
-              is_favourite: k.is_favourite || false,
-              rating: (Math.random() * 1 + 4).toFixed(1),
-              delivery_time: `${Math.floor(Math.random() * 15) + 20}-${Math.floor(Math.random() * 20) + 35} min`,
-              discount: Math.random() > 0.7 ? Math.floor(Math.random() * 30) + 10 : 0,
-              is_new: Math.random() > 0.8,
-              is_trending: Math.random() > 0.9,
-              distance: `${(Math.random() * 5).toFixed(1)} km`,
-              restaurant_image: k.restaurant_image || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=150&h=150&fit=crop&crop=center'
-            })),
-            CategoryList: response.data.data.CategoryList.map(c => ({
-              ...c,
-              icon: c.icon || DEFAULT_CATEGORY_ICON
-            })),
-            // Process banner data - now includes thumbnail from API
-            final_banner_image: response.data.data.final_banner_image ? {
-              ...response.data.data.final_banner_image,
-              icon: response.data.data.final_banner_image.icon || DEFAULT_BANNER_IMAGE,
-              thumbnail: response.data.data.final_banner_image.thumbnail || DEFAULT_BANNER_IMAGE,
-              document_type: response.data.data.final_banner_image.document_type || 1
-            } : {
-              icon: DEFAULT_BANNER_IMAGE,
-              thumbnail: DEFAULT_BANNER_IMAGE,
-              document_type: 1 as const
-            }
-          }
-        };
-        
-        setApiData(processedData);
-        setIsInitialLoad(false);
-        
-        // Hide header loader after 1 second
-        setTimeout(() => {
-          setHeaderLoader(false);
-        }, 1000);
-      }
+      const payload = { 
+        user_id: userId,
+        session_id: sessionId, 
+        cart_status: 2, 
+        restaurant_id: pastKitchenDetails?.id, 
+      };
+      await updateCartUserDetails(payload);
     } catch (error) {
-      Alert.alert('Error', 'Failed to fetch kitchens. Please try again later.');
-      console.error('Error fetching kitchens:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      console.error('Error updating cart user details:', error);
+    }
+  }, [sessionId, pastKitchenDetails?.id]);
+
+  const fetchRecentSearches = useCallback(async () => {
+    try {
+      const [recent, history] = await Promise.all([
+        AsyncStorage.getItem(STORAGE_KEYS.RECENT_SEARCHES),
+        AsyncStorage.getItem(STORAGE_KEYS.SEARCH_HISTORY)
+      ]);
+      
+      if (recent) setRecentSearches(JSON.parse(recent));
+      if (history) setSearchHistory(JSON.parse(history));
+    } catch (error) {
+      console.error('Error fetching search data:', error);
     }
   }, []);
 
-  // Enhanced search functionality
+  const saveToRecentSearches = useCallback(async (query: string, item?: SearchItem) => {
+    try {
+      const updatedSearches = [
+        query,
+        ...recentSearches.filter(search => search.toLowerCase() !== query.toLowerCase())
+      ].slice(0, 5);
+      
+      setRecentSearches(updatedSearches);
+      await AsyncStorage.setItem(STORAGE_KEYS.RECENT_SEARCHES, JSON.stringify(updatedSearches));
+
+      if (item) {
+        const updatedHistory = [
+          { ...item, searchedAt: new Date().toISOString() },
+          ...searchHistory.filter(hist => hist.id !== item.id)
+        ].slice(0, 10);
+        
+        setSearchHistory(updatedHistory);
+        await AsyncStorage.setItem(STORAGE_KEYS.SEARCH_HISTORY, JSON.stringify(updatedHistory));
+      }
+    } catch (error) {
+      console.error('Error saving search data:', error);
+    }
+  }, [recentSearches, searchHistory]);
+
+  const initializeSession = useCallback(async () => {
+    try {
+      const storedSessionId = await AsyncStorage.getItem(STORAGE_KEYS.SESSION_ID);
+      if (storedSessionId) {
+        setSessionId(storedSessionId);
+        return storedSessionId;
+      }
+
+      const newSessionId = await getSessionId();
+      if (newSessionId) {
+        setSessionId(newSessionId);
+        await AsyncStorage.setItem(STORAGE_KEYS.SESSION_ID, newSessionId);
+        return newSessionId;
+      }
+      return null;
+    } catch (error) {
+      console.error("Error initializing session:", error);
+      const fallbackSession = await getSessionId();
+      return fallbackSession;
+    }
+  }, []);
+
   const fetchSearchSuggestions = useCallback(async (query: string) => {
     if (query.length < 1) {
       setSearchSuggestionsData(null);
@@ -2005,16 +2218,15 @@ const KitchenScreenTabs: React.FC = () => {
 
     try {
       setSearchLoading(true);
-
       const response = await searchSuggestions(query);
+      
       if (response?.data) {
         setSearchSuggestionsData(response.data);
         
         const transformedResults: SearchItem[] = [];
         
-        // Transform menu items
-        response.data.menus.forEach(menu => {
-          menu.items.forEach(item => {
+        response.data.menus?.forEach((menu: any) => {
+          menu.items?.forEach((item: any) => {
             transformedResults.push({
               id: `menu-${item.id}`,
               name: item.item_name || menu.menu_name,
@@ -2031,29 +2243,27 @@ const KitchenScreenTabs: React.FC = () => {
           });
         });
         
-        // Transform restaurants
-        response.data.restaurants.forEach(restaurant => {
+        response.data.restaurants?.forEach((restaurant: any) => {
           const cuisineNames = restaurant.cuisines
-            .filter(cuisine => cuisine.cuisine_name)
-            .map(cuisine => cuisine.cuisine_name)
-            .join(', ');
+            ?.filter((cuisine: any) => cuisine.cuisine_name)
+            .map((cuisine: any) => cuisine.cuisine_name)
+            .join(', ') || 'Various cuisines';
             
           transformedResults.push({
             id: `restaurant-${restaurant.restaurant_id}`,
             name: restaurant.restaurant_name,
             image: restaurant.profile_image,
             type: 'restaurant',
-            category: cuisineNames || 'Various cuisines',
+            category: cuisineNames,
             originalData: restaurant,
-            rating: restaurant.rating || Math.random() * 2 + 3,
+            rating: restaurant.rating || (Math.random() * 2 + 3).toFixed(1),
             deliveryTime: restaurant.delivery_time || `${Math.floor(Math.random() * 20) + 15}-${Math.floor(Math.random() * 20) + 35} min`,
             distance: restaurant.distance || `${(Math.random() * 5).toFixed(1)} km`
           });
         });
 
-        // Add trending items if available
         if (response.data.trending_items) {
-          response.data.trending_items.forEach(item => {
+          response.data.trending_items.forEach((item: any) => {
             transformedResults.unshift({
               id: `trending-${item.id}`,
               name: item.name,
@@ -2065,8 +2275,6 @@ const KitchenScreenTabs: React.FC = () => {
         }
 
         setSearchResults(transformedResults);
-      } else {
-        setSearchResults([]);
       }
     } catch (error) {
       console.error('Error fetching search suggestions:', error);
@@ -2076,267 +2284,17 @@ const KitchenScreenTabs: React.FC = () => {
     }
   }, []);
 
-  // Initialize session ID
-  const initializeSession = useCallback(async () => {
-    try {
-      if (sessionId) {
-        return sessionId;
-      }
-      
-      const storedSessionId = await AsyncStorage.getItem(STORAGE_KEYS.SESSION_ID);
-      if (storedSessionId) {
-        setSessionId(storedSessionId);
-        return storedSessionId;
-      }
-
-      const newSessionId = await getSessionId();
-      
-      if (newSessionId) {
-        setSessionId(newSessionId);
-        await AsyncStorage.setItem(STORAGE_KEYS.SESSION_ID, newSessionId);
-        return newSessionId;
-      }
-      return null;
-    } catch (error) {
-      console.error("Error initializing session:", error);
-      const fallbackSession = await getSessionId();
-      return fallbackSession;
-    }
-  }, [sessionId]);
-
-  useEffect(() => {
-    initializeSession();
-  }, []);
-
-  // Initial data loading
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadData = async () => {
-      if (!isMounted) return;
-      
-      const userData = await fetchUserData();
-      await fetchKitchens();
-      await fetchRecentSearches();
-
-      if (userData) {
-        await Promise.all([
-          fetchActiveOrders(userData.id),
-          fetchPastKitchenDetails(userData.id)
-        ]);
-      } else {
-        await fetchPastKitchenDetails(null);
-      }
-    };
-
-    loadData();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (
-      user?.id &&
-      sessionId &&
-      pastKitchenDetails?.id
-    ) {
-      updateCartItemUser(user.id);
-    }
-  }, [
-    user?.id,
-    sessionId,
-    pastKitchenDetails?.id,
-    updateCartItemUser,
-  ]);
-
-  // Search effect
-  useEffect(() => {
-    if (debouncedSearchQuery && isSearchModalVisible) {
-      fetchSearchSuggestions(debouncedSearchQuery);
-    } else if (debouncedSearchQuery.length === 0 && isSearchModalVisible) {
-      setSearchResults([]);
-    }
-  }, [debouncedSearchQuery, isSearchModalVisible, fetchSearchSuggestions]);
-
-  // Enhanced refresh control with smooth animation
-  const handleRefresh = useCallback(async () => {
-    if (refreshing) return;
-    
-    setRefreshing(true);
-    setShowRefreshSuccess(false);
-    
-    try {
-      // Add haptic feedback for iOS
-      if (Platform.OS === 'ios') {
-        const HapticFeedback = require('react-native-haptic-feedback');
-        HapticFeedback.trigger('impactLight');
-      }
-      
-      // Add a minimum delay for better UX
-      const minDelay = new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const userData = await fetchUserData();
-      
-      // Execute all requests in parallel
-      await Promise.all([
-        fetchKitchens(),
-        userData ? fetchActiveOrders(userData.id) : Promise.resolve(null),
-        userData ? fetchPastKitchenDetails(userData.id) : fetchPastKitchenDetails(null),
-        fetchRecentSearches(),
-      ]);
-
-      // Wait for minimum delay to show loading animation
-      await minDelay;
-      
-      // Show success feedback
-      setShowRefreshSuccess(true);
-      
-      // Hide success feedback after 2 seconds
-      setTimeout(() => {
-        setShowRefreshSuccess(false);
-      }, 2000);
-      
-    } catch (error) {
-      console.error('Refresh error:', error);
-      
-      // Show error feedback
-      Alert.alert(
-        'Refresh Failed',
-        'Unable to refresh data. Please check your connection and try again.',
-        [{ text: 'OK', style: 'cancel' }]
-      );
-    } finally {
-      setRefreshing(false);
-    }
-  }, [
-    refreshing, 
-    fetchKitchens, 
-    fetchActiveOrders, 
-    fetchPastKitchenDetails, 
-    fetchUserData, 
-    fetchRecentSearches
-  ]);
-
-  // Enhanced Search handlers
-  const openSearchModal = useCallback(() => {
-    setIsSearchModalVisible(true);
-  }, []);
-
-  const closeSearchModal = useCallback(() => {
-    setIsSearchModalVisible(false);
-    setSearchQuery('');
-    setSearchResults([]);
-    setSearchSuggestionsData(null);
-  }, []);
-
-  const handleSearchChange = useCallback((text: string) => {
-    setSearchQuery(text);
-  }, []);
-
-  const handleSearchSubmit = useCallback(async () => {
-    if (searchQuery.trim()) {
-      try {
-        await saveToRecentSearches(searchQuery);
-        closeSearchModal();
-        
-        navigation.navigate('HomeKitchenNavigate', { 
-          screen: 'SearchResults', 
-          params: { 
-            query: searchQuery,
-            suggestionsData: searchSuggestionsData
-          } 
-        } as never);
-      } catch (error) {
-        console.error('Error handling search submit:', error);
-      }
-    }
-  }, [searchQuery, navigation, closeSearchModal, saveToRecentSearches, searchSuggestionsData]);
-
-  const handleRecentSearchPress = useCallback((query: string) => {
-    setSearchQuery(query);
-    setTimeout(() => {
-      handleSearchSubmit();
-    }, 100);
-  }, [handleSearchSubmit]);
-
-  const handlePopularSearchPress = useCallback((query: string) => {
-    setSearchQuery(query);
-    setTimeout(() => {
-      handleSearchSubmit();
-    }, 100);
-  }, [handleSearchSubmit]);
-
-  const handleSearchResultPress = useCallback((item: SearchItem) => {
-    saveToRecentSearches(item.name, item);
-    closeSearchModal();
-    
-    if (item.type === 'restaurant') {
-      navigation.navigate('HomeKitchenDetails', { 
-        kitchenId: (item.originalData as SearchRestaurant)?.restaurant_id || item.id.replace('restaurant-', '')
-      } as never);
-    } else {
-      navigation.navigate('HomeKitchenNavigate', { 
-        screen: 'SearchResults', 
-        params: { 
-          query: item.name,
-          itemId: item.id.replace('menu-', ''),
-          suggestionsData: searchSuggestionsData
-        } 
-      } as never);
-    }
-  }, [closeSearchModal, navigation, saveToRecentSearches, searchSuggestionsData]);
-
-  const clearRecentSearches = useCallback(async () => {
-    try {
-      setRecentSearches([]);
-      setSearchHistory([]);
-      await AsyncStorage.removeItem(STORAGE_KEYS.RECENT_SEARCHES);
-      await AsyncStorage.removeItem(STORAGE_KEYS.SEARCH_HISTORY);
-    } catch (error) {
-      console.error('Error clearing search history:', error);
-    }
-  }, []);
-
-  // Order handlers
-  const handleOrderPress = useCallback((order: ActiveOrder) => {
-    navigation.navigate('TrackOrder', { order: { order_number: order.orderNumber } } as never);
-  }, [navigation]);
-
-  const handleViewAllOrders = useCallback(() => {
-    navigation.navigate('ActiveOrders', { orders: activeOrders } as never);
-  }, [navigation, activeOrders]);
-
-  const toggleShowAllActiveOrders = useCallback(() => {
-    setShowAllActiveOrders(prev => !prev);
-  }, []);
-
-  // Category press handler - Fixed: Only opens search with category name
-  const handleCategoryPress = useCallback((categoryId: number, categoryName: string) => {
-    // Only set active category state (visual feedback)
-    const categoryIndex = apiData?.data.CategoryList.findIndex(cat => cat.id === categoryId) ?? -1;
-    setActiveCategory(categoryIndex === activeCategory ? null : categoryIndex);
-    
-    // Open search modal with category name
-    setIsSearchModalVisible(true);
-    setSearchQuery(categoryName);
-  }, [activeCategory, apiData]);
-
-  // Toggle favorite with isGuest check
   const toggleFavorite = useCallback(async (kitchenId: string) => {
     if (favoriteLoading) return;
 
     if (isGuest) {
-      navigation.navigate('LoginScreen', { 
-        callback: 'HomeTabs',
-        message: 'Please login to add to favorites' 
-      } as never);
+      Alert.alert('Login Required', 'Please login to add favorites');
       return;
     }
 
     try {
       setFavoriteLoading(kitchenId);
+      
       setApiData(prev => {
         if (!prev) return null;
         return {
@@ -2356,68 +2314,239 @@ const KitchenScreenTabs: React.FC = () => {
           }
         };
       });
+
       await updateFavouriteKitchen({ restaurant_id: kitchenId });
     } catch (error) {
       console.error('Error toggling favorite:', error);
-      Alert.alert('Error', 'Failed to update favorite status. Please try again.');
+      Alert.alert('Error', 'Failed to update favorite status');
     } finally {
       setFavoriteLoading(null);
     }
-  }, [favoriteLoading, navigation, isGuest]);
+  }, [favoriteLoading, isGuest]);
 
-  const BackToKitchen = useCallback(() => {
-    if (pastKitchenDetails?.id) {
-      navigation.navigate('HomeKitchenDetails', { kitchenId: pastKitchenDetails.id } as never);
+  // ============== HANDLERS ==============
+  const handleAddressUpdate = useCallback((newAddress: string, newHomeType: string) => {
+    setAddress(newAddress);
+    setHomeType(newHomeType);
+  }, []);
+
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return;
+    
+    setRefreshing(true);
+    setShowRefreshSuccess(false);
+    
+    try {
+      const minDelay = new Promise(resolve => setTimeout(resolve, 1000));
+      const userData = await fetchUserData();
+      
+      await Promise.all([
+        fetchKitchens(),
+        loadHeaderOffers(),
+        userData ? fetchActiveOrders(userData.id) : Promise.resolve(null),
+        userData ? fetchPastKitchenDetails(userData.id) : fetchPastKitchenDetails(null),
+        fetchRecentSearches(),
+      ]);
+
+      await minDelay;
+      setShowRefreshSuccess(true);
+      setTimeout(() => setShowRefreshSuccess(false), 2000);
+    } catch (error) {
+      console.error('Refresh error:', error);
+    } finally {
+      setRefreshing(false);
     }
-  }, [navigation, pastKitchenDetails]);
+  }, [refreshing, fetchKitchens, loadHeaderOffers, fetchActiveOrders, fetchPastKitchenDetails, fetchUserData, fetchRecentSearches]);
+
+  const handleCategoryPress = useCallback((categoryId: number, categoryName: string) => {
+    const categoryIndex = apiData?.data.CategoryList.findIndex(cat => cat.id === categoryId) ?? -1;
+    setActiveCategory(categoryIndex === activeCategory ? null : categoryIndex);
+    setIsSearchModalVisible(true);
+    setSearchQuery(categoryName);
+  }, [activeCategory, apiData]);
+
+  const handleOrderPress = useCallback((order: ActiveOrder) => {
+    navigation.navigate('TrackOrder', { order: { order_number: order.orderNumber } });
+  }, [navigation]);
 
   const handleViewCart = useCallback(() => {
     if (pastKitchenDetails?.id) {
-      navigation.navigate('CartScreen', { pastkitcheId: pastKitchenDetails.id } as never);
+      navigation.navigate('CartScreen', { pastkitcheId: pastKitchenDetails.id });
     }
   }, [navigation, pastKitchenDetails]);
+
+  const handleBackToKitchen = useCallback(() => {
+    if (pastKitchenDetails?.id) {
+      navigation.navigate('HomeKitchenDetails', { kitchenId: pastKitchenDetails.id });
+    }
+  }, [navigation, pastKitchenDetails]);
+
+  const handleSearchPress = useCallback(() => {
+    setIsSearchModalVisible(true);
+  }, []);
+
+  const handleSearchClose = useCallback(() => {
+    setIsSearchModalVisible(false);
+    setSearchQuery('');
+    setSearchResults([]);
+    setSearchSuggestionsData(null);
+  }, []);
+
+  const handleSearchChange = useCallback((text: string) => {
+    setSearchQuery(text);
+  }, []);
+
+  const handleSearchSubmit = useCallback(async () => {
+    if (searchQuery.trim()) {
+      await saveToRecentSearches(searchQuery);
+      handleSearchClose();
+      navigation.navigate('HomeKitchenNavigate', { 
+        screen: 'SearchResults', 
+        params: { 
+          query: searchQuery,
+          suggestionsData: searchSuggestionsData
+        } 
+      });
+    }
+  }, [searchQuery, navigation, handleSearchClose, saveToRecentSearches, searchSuggestionsData]);
+
+  const handleRecentSearchPress = useCallback((query: string) => {
+    setSearchQuery(query);
+    setTimeout(() => handleSearchSubmit(), 100);
+  }, [handleSearchSubmit]);
+
+  const handleSearchResultPress = useCallback((item: SearchItem) => {
+    saveToRecentSearches(item.name, item);
+    handleSearchClose();
+    
+    if (item.type === 'restaurant') {
+      navigation.navigate('HomeKitchenDetails', { 
+        kitchenId: (item.originalData as SearchRestaurant)?.restaurant_id || item.id.replace('restaurant-', '')
+      });
+    } else {
+      navigation.navigate('HomeKitchenNavigate', { 
+        screen: 'SearchResults', 
+        params: { 
+          query: item.name,
+          itemId: item.id.replace('menu-', ''),
+          suggestionsData: searchSuggestionsData
+        } 
+      });
+    }
+  }, [handleSearchClose, navigation, saveToRecentSearches, searchSuggestionsData]);
+
+  const clearRecentSearches = useCallback(async () => {
+    setRecentSearches([]);
+    setSearchHistory([]);
+    await AsyncStorage.removeItem(STORAGE_KEYS.RECENT_SEARCHES);
+    await AsyncStorage.removeItem(STORAGE_KEYS.SEARCH_HISTORY);
+  }, []);
 
   const handleRemoveRecentSearch = useCallback((query: string) => {
     setRecentSearches(prev => prev.filter(item => item !== query));
   }, []);
 
-  const displayedActiveOrders = showAllActiveOrders ? activeOrders : activeOrders.slice(0, ACTIVE_ORDERS_LIMIT);
-  const searchInputRef = useRef<TextInput>(null);
-  
-  // Loading state
-  if (loading && !refreshing) {
+  const toggleShowAllActiveOrders = useCallback(() => {
+    setShowAllActiveOrders(prev => !prev);
+  }, []);
+
+  // ============== EFFECTS ==============
+  useEffect(() => {
+    const init = async () => {
+      const session = await initializeSession();
+      const userData = await fetchUserData();
+      await fetchKitchens();
+      await fetchRecentSearches();
+      await loadHeaderOffers();
+
+      if (userData) {
+        await Promise.all([
+          fetchActiveOrders(userData.id),
+          fetchPastKitchenDetails(userData.id)
+        ]);
+      } else {
+        await fetchPastKitchenDetails(null);
+      }
+
+      setLoading(false);
+    };
+
+    init();
+  }, []);
+
+  useEffect(() => {
+    if (user?.id && sessionId && pastKitchenDetails?.id) {
+      updateCartItemUser(user.id);
+    }
+  }, [user?.id, sessionId, pastKitchenDetails?.id, updateCartItemUser]);
+
+  // ============== COMPUTED VALUES ==============
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+  const displayedActiveOrders = showAllActiveOrders ? activeOrders : activeOrders.slice(0, 1);
+
+  // ============== SEARCH EFFECT ==============
+  useEffect(() => {
+    if (debouncedSearchQuery && isSearchModalVisible) {
+      fetchSearchSuggestions(debouncedSearchQuery);
+    } else if (debouncedSearchQuery.length === 0 && isSearchModalVisible) {
+      setSearchResults([]);
+    }
+  }, [debouncedSearchQuery, isSearchModalVisible, fetchSearchSuggestions]);
+
+  // ============== LOADING STATES ==============
+  if (loading) {
     return (
-      <SafeAreaView style={[styles.homeTabsContainer, styles.homeTabsLoadingContainer]}>
-        <View style={styles.homeTabsLoadingContent}>
-          <ActivityIndicator size="large" color={COLORS.gradientStart} />
-          <Text style={styles.homeTabsLoadingText}>Discovering amazing kitchens...</Text>
+      <View style={styles.premiumLoadingContainer}>
+        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+        <View style={[StyleSheet.absoluteFillObject, styles.premiumLoadingGradient]} />
+        <View style={styles.premiumLoadingContent}>
+          {/* FIXED: Replaced Animatable.View with custom Animated component */}
+          {/* <AnimatedLoadingIcon name="food-variant" size={scale(80)} color="#FFF" /> */}
+          <Text style={styles.premiumLoadingTitle}>Eatoor</Text>
+          <Text style={styles.premiumLoadingText}>Discover amazing food...</Text>
+          <ActivityIndicator size="large" color="#FFF" style={styles.premiumLoadingSpinner} />
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (!apiData) {
     return (
-      <SafeAreaView style={[styles.homeTabsContainer, styles.homeTabsEmptyContainer]}>
-        <Icon name="alert-circle-outline" size={scale(60)} color={COLORS.textLight} />
-        <Text style={styles.homeTabsEmptyText}>No data available</Text>
-        <TouchableOpacity 
-          style={styles.homeTabsRetryButton}
-          onPress={fetchKitchens}
-          activeOpacity={0.7}
+      <View style={styles.premiumErrorContainer}>
+        <View style={[StyleSheet.absoluteFillObject, styles.premiumErrorGradient]} />
+        <Icon2 name="food-off" size={scale(80)} color={COLORS.text.tertiary} />
+        <Text style={styles.premiumErrorTitle}>Oops! Something went wrong</Text>
+        <Text style={styles.premiumErrorText}>Unable to load restaurants</Text>
+        <TouchableOpacity
+          onPress={() => {
+            setLoading(true);
+            initializeSession().then(() => {
+              fetchUserData();
+              fetchKitchens();
+              setLoading(false);
+            });
+          }}
+          style={styles.premiumErrorButton}
+          activeOpacity={0.9}
         >
-          <Text style={styles.homeTabsRetryButtonText}>Retry</Text>
+          <View style={styles.premiumErrorButtonContent}>
+            <Text style={styles.premiumErrorButtonText}>Try Again</Text>
+            <Icon name="refresh" size={scale(20)} color="#FFF" />
+          </View>
         </TouchableOpacity>
-      </SafeAreaView>
+      </View>
     );
   }
 
+  // ============== MAIN RENDER ==============
   return (
-    <View style={styles.homeTabsContainer}>
-      {/* Search Modal - Fixed to be full screen and not affect tab bar */}
+    <View style={styles.premiumContainer}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+
+      {/* Search Modal */}
       <SearchModal
         isVisible={isSearchModalVisible}
-        onClose={closeSearchModal}
+        onClose={handleSearchClose}
         searchQuery={searchQuery}
         onSearchChange={handleSearchChange}
         searchInputRef={searchInputRef}
@@ -2427,444 +2556,365 @@ const KitchenScreenTabs: React.FC = () => {
         searchResults={searchResults}
         searchLoading={searchLoading}
         onRecentSearchPress={handleRecentSearchPress}
-        onPopularSearchPress={handlePopularSearchPress}
+        onPopularSearchPress={handleRecentSearchPress}
         onSearchResultPress={handleSearchResultPress}
         onClearRecentSearches={clearRecentSearches}
         onRemoveRecentSearch={handleRemoveRecentSearch}
         tabBarHeight={scale(70)}
       />
-      
-      {/* Refresh Success Feedback */}
-      <RefreshSuccessFeedback visible={showRefreshSuccess} />
-      
-      {/* Main Header with Animation and Background Image/Video - FIXED LAYOUT */}
+
+      {/* Sticky Categories Header - Appears when scrolling */}
+      {apiData.data.CategoryList.length > 0 && (
+        <StickyCategoriesHeader
+          categories={apiData.data.CategoryList}
+          activeCategory={activeCategory}
+          onCategoryPress={handleCategoryPress}
+          visible={showStickyCategories}
+        />
+      )}
+
+      {/* Premium Header with Parallax - INCREASED HEIGHT and BOTTOM RADIUS */}
       <Animated.View style={[
-        styles.homeTabsMainHeader,
+        styles.premiumHeader,
         {
-          transform: [{ translateY: headerTranslateY }],
-          opacity: headerOpacity,
           height: HEADER_HEIGHT,
+          transform: [
+            { translateY: headerTranslateY },
+            { scale: headerScale }
+          ],
+          opacity: headerOpacity,
         }
       ]}>
-        {/* Background Banner (Image or Video) - Positioned absolutely behind content */}
-        <View style={styles.headerBackgroundContainer}>
-          <BannerComponent 
-            banner={apiData?.data?.final_banner_image || null}
-            isVisible={isHeaderVisible}
-          />
-        </View>
-        
-        {/* Header Content - Positioned above the banner */}
-        <View style={[styles.headerContentContainer, { 
-          paddingTop: insets.top + verticalScale(10),
-          paddingHorizontal: scale(16)
-        }]}>
-          {/* Top section with address and icons */}
-          <View style={styles.headerTopRow}>
-            <AddressHeaderLeft isGuest={isGuest} onAddressUpdate={handleAddressUpdate} />
-            <View style={styles.headerIcons}>
-              <FavoriteButton />
-              <WalletButton />
-              <ProfileButton />
+        <PremiumBannerComponent
+          banner={apiData?.data?.final_banner_image || null}
+          isVisible={isHeaderVisible}
+        />
+
+        {/* Header Bottom Radius Overlay */}
+        <View style={styles.premiumHeaderBottomRadius} />
+
+        {/* Header Content */}
+        <View style={[
+          styles.premiumHeaderContent, 
+          { 
+            paddingTop: insets.top + verticalScale(16),
+            paddingBottom: verticalScale(20)
+          }
+        ]}>
+          {/* Location and Profile Section */}
+          <View style={styles.premiumHeaderTop}>
+            <PremiumAddressHeader isGuest={isGuest} onAddressUpdate={handleAddressUpdate} />
+            
+            <View style={styles.premiumHeaderActions}>
+              <TouchableOpacity 
+                style={styles.premiumHeaderAction}
+                onPress={() => isGuest ? navigation.navigate('LoginScreen') : navigation.navigate('FavoritesScreen')}
+              >
+                <View style={styles.premiumHeaderActionGradient}>
+                  <Icon name="heart-outline" size={scale(20)} color="#FFFFFF" />
+                </View>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.premiumHeaderAction}
+                onPress={() => isGuest ? navigation.navigate('LoginScreen') : navigation.navigate('EatoorMoneyScreen')}
+              >
+                <View style={styles.premiumHeaderActionGradient}>
+                  <Icon name="wallet-outline" size={scale(20)} color="#FFFFFF" />
+                </View>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.premiumHeaderAction}
+                onPress={() => isGuest ? navigation.navigate('LoginScreen') : navigation.navigate('ProfileScreen')}
+              >
+                <View style={styles.premiumHeaderActionGradient}>
+                  <Icon name="person-outline" size={scale(20)} color="#FFFFFF" />
+                </View>
+              </TouchableOpacity>
             </View>
           </View>
-          
-          {/* Search Input with consistent sizing and alignment */}
-          <View style={styles.headerSearchContainer}>
-            <SearchInput
-              onPress={openSearchModal}
+
+          {/* Search Bar */}
+          <View style={styles.premiumSearchWrapper}>
+            <PremiumSearchBar
+              onPress={handleSearchPress}
               placeholder={SEARCH_PLACEHOLDERS[currentPlaceholderIndex]}
             />
           </View>
         </View>
+
+        {/* Dynamic Header Offer Cards from JSON - Transparent Background */}
+        {headerOffers.length > 0 && <PremiumHeaderOfferCards />}
       </Animated.View>
 
-      {/* Sticky Header (Appears on scroll) */}
-      <Animated.View 
-        style={[
-          styles.stickyHeaderContainer,
-          {
-            transform: [{ translateY: stickyHeaderTranslateY }],
-            paddingTop: insets.top + verticalScale(10),
-          }
-        ]}
-      >
-        <StickyHeader
-          onSearchPress={openSearchModal}
-          categories={apiData.data.CategoryList.slice(0, 8)}
-          activeCategory={activeCategory}
-          onCategoryPress={handleCategoryPress}
-          searchPlaceholder={SEARCH_PLACEHOLDERS[currentPlaceholderIndex]}
-          homeType={homeType}
-          address={address}
-        />
-      </Animated.View>
-
-      {/* Main Content with Enhanced Refresh Control */}
+      {/* Main Content */}
       <Animated.ScrollView
         ref={scrollViewRef}
-        style={styles.mainScrollContainer}
+        style={styles.premiumScrollView}
         contentContainerStyle={[
-          styles.scrollContent,
-          { paddingTop: HEADER_HEIGHT + verticalScale(16) }
+          styles.premiumScrollContent,
+          { 
+            paddingTop: HEADER_HEIGHT + verticalScale(8),
+            paddingBottom: verticalScale(120)
+          }
         ]}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            colors={[COLORS.gradientStart]}
-            tintColor={COLORS.gradientStart}
-            title="Pull to refresh"
-            titleColor={COLORS.gradientStart}
-            progressBackgroundColor="#fff"
-            style={Platform.OS === 'ios' ? styles.iosRefreshControl : undefined}
-            size={Platform.OS === 'android' ? RefreshControl.SIZE : undefined}
-            progressViewOffset={HEADER_HEIGHT}
-          />
-        }
+        scrollEventThrottle={16}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           { useNativeDriver: true }
         )}
-        scrollEventThrottle={16}
-        overScrollMode="always"
-        bounces={true}
-        bouncesZoom={true}
-        alwaysBounceVertical={true}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={COLORS.primary}
+            colors={[COLORS.primary]}
+            progressViewOffset={HEADER_HEIGHT}
+          />
+        }
       >
-        {/* Categories Section with Images - Fixed scrolling (Zomato Style) */}
-        {apiData.data.CategoryList && apiData.data.CategoryList.length > 0 && (
-          <View style={styles.categoriesSection}>
-            <ScrollView 
-              horizontal 
+        {/* Categories Section */}
+        {apiData.data.CategoryList.length > 0 && (
+          <Animated.View style={[
+            styles.premiumCategoriesContainer,
+            {
+              opacity: categoriesOpacity,
+              transform: [{ translateY: categoriesTranslateY }]
+            }
+          ]}>
+            <ScrollView
+              horizontal
               showsHorizontalScrollIndicator={false}
-              style={styles.categoriesScrollView}
-              contentContainerStyle={styles.categoriesContent}
+              contentContainerStyle={styles.premiumCategoriesContent}
             >
               {apiData.data.CategoryList.map((category, index) => (
-                <TouchableOpacity
+                <PremiumCategoryCard
                   key={category.id}
-                  style={[
-                    styles.categoryItem,
-                    activeCategory === index && styles.categoryItemActive
-                  ]}
+                  category={category}
+                  isActive={activeCategory === index}
                   onPress={() => handleCategoryPress(category.id, category.name)}
-                  activeOpacity={0.8}
-                >
-                  <View style={[
-                    styles.categoryIconContainer,
-                    activeCategory === index && styles.categoryIconContainerActive
-                  ]}>
-                    <Image 
-                      source={{ uri: category.icon || DEFAULT_CATEGORY_ICON }} 
-                      style={styles.categoryIcon}
-                      resizeMode="cover"
-                      defaultSource={{ uri: DEFAULT_CATEGORY_ICON }}
-                    />
-                  </View>
-                  <Text style={[
-                    styles.categoryText,
-                    activeCategory === index && styles.categoryTextActive
-                  ]} numberOfLines={1}>
-                    {category.name}
-                  </Text>
-                </TouchableOpacity>
+                  index={index}
+                />
+              ))}
+            </ScrollView>
+          </Animated.View>
+        )}
+
+        {/* Top Restaurants Section */}
+        {apiData.data.FeatureKitchenList?.length > 0 && (
+          <View style={styles.premiumSection}>
+            <View style={styles.premiumSectionHeader}>
+              <View>
+                <Text style={styles.premiumSectionTitle}>Top Rated</Text>
+                <Text style={styles.premiumSectionSubtitle}>
+                  Most loved restaurants near you
+                </Text>
+              </View>
+            </View>
+            
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.premiumTopRestaurantsContent}
+              decelerationRate="fast"
+              snapToInterval={screenWidth * 0.3 + scale(10)}
+              snapToAlignment="start"
+            >
+              {apiData.data.FeatureKitchenList.slice(0, 10).map((kitchen, index) => (
+                <PremiumRestaurantCard
+                  key={kitchen.restaurant_id}
+                  kitchen={kitchen}
+                  onPress={(k) => navigation.navigate('HomeKitchenDetails', { kitchenId: k.restaurant_id })}
+                  onToggleFavorite={toggleFavorite}
+                  favoriteLoading={favoriteLoading}
+                  isGuest={isGuest}
+                  isTopRestaurant={true}
+                />
               ))}
             </ScrollView>
           </View>
         )}
 
-        {/* Top Restaurants Section - Show 2 restaurants per frame */}
-        {apiData.data.FeatureKitchenList && apiData.data.FeatureKitchenList.length > 0 && (
-          <View style={styles.contentSection}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>TOP RESTAURANTS NEAR YOU</Text>
+        {/* All Restaurants Section */}
+        <View style={styles.premiumSection}>
+          <View style={styles.premiumSectionHeader}>
+            <View>
+              <Text style={styles.premiumSectionTitle}>All Restaurants</Text>
+              <Text style={styles.premiumSectionSubtitle}>
+                {apiData.data.KitchenList.length}+ places to explore
+              </Text>
             </View>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              style={styles.topRestaurantsScroll}
-              contentContainerStyle={styles.topRestaurantsContent}
-            >
-              {/* Group kitchens in pairs of 2 */}
-              {(() => {
-                const pairs = [];
-                const kitchens = apiData.data.FeatureKitchenList.slice(0, 10);
-                for (let i = 0; i < kitchens.length; i += 2) {
-                  pairs.push(kitchens.slice(i, i + 2));
-                }
-                return pairs.map((pair, pairIndex) => (
-                  <View key={`pair-${pairIndex}`} style={styles.topRestaurantPair}>
-                    {pair.map((kitchen) => (
-                      <TopRestaurantCard
-                        key={kitchen.restaurant_id}
-                        kitchen={kitchen}
-                        onPress={(k) => navigation.navigate('HomeKitchenDetails', { kitchenId: k.restaurant_id } as never)}
-                        onToggleFavorite={toggleFavorite}
-                        favoriteLoading={favoriteLoading}
-                        isGuest={isGuest}
-                      />
-                    ))}
-                  </View>
-                ));
-              })()}
-            </ScrollView>
           </View>
-        )}
 
-        {/* All Restaurants Section - 2 cards per row */}
-        <View style={styles.contentSection}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>RESTAURANTS NEAR YOU</Text>
-            <Text style={styles.sectionSubtitle}>{apiData.data.KitchenList.length} restaurants</Text>
-          </View>
-          
-          <View style={styles.restaurantGrid}>
-            {apiData.data.KitchenList.map(kitchen => (
-              <RestaurantCard
+          <View style={styles.premiumRestaurantGrid}>
+            {apiData.data.KitchenList.map((kitchen) => (
+              <PremiumRestaurantCard
                 key={kitchen.restaurant_id}
                 kitchen={kitchen}
-                onPress={(k) => navigation.navigate('HomeKitchenDetails', { kitchenId: k.restaurant_id } as never)}
+                onPress={(k) => navigation.navigate('HomeKitchenDetails', { kitchenId: k.restaurant_id })}
                 onToggleFavorite={toggleFavorite}
                 favoriteLoading={favoriteLoading}
                 isGuest={isGuest}
+                isTopRestaurant={false}
               />
             ))}
           </View>
         </View>
+
+        {/* Bottom Padding */}
+        <View style={{ height: verticalScale(20) }} />
       </Animated.ScrollView>
 
-      {/* Active Orders Footer */}
+      {/* Active Orders */}
       {activeOrders.length > 0 && !ordersLoading && (
-        <View style={styles.activeOrdersFooter}>
-          {displayedActiveOrders.map((order, index) => (
-            <React.Fragment key={order.id}>
-              <TouchableOpacity
-                style={styles.activeOrderItem}
-                onPress={() => handleOrderPress(order)}
-                activeOpacity={0.9}
-              >
-                <View style={styles.activeOrderContent}>
-                  <Image 
-                    source={{ 
-                      uri: order.kitchenImage || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=50&h=50&fit=crop&crop=center'
-                    }} 
-                    style={styles.activeOrderImage}
-                    defaultSource={{ uri: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=50&h=50&fit=crop&crop=center' }}
-                  />
-                  <View style={styles.activeOrderDetails}>
-                    <Text style={styles.activeOrderKitchen} numberOfLines={1}>
-                      {order.kitchenName}
-                    </Text>
-                    <View style={styles.activeOrderStatus}>
-                      <Icon 
-                        name={order.status === 'on-the-way' ? 'bicycle' : 'time-outline'} 
-                        size={scale(14)} 
-                        color={COLORS.gradientStart} 
-                      />
-                      <Text style={styles.activeOrderStatusText}>
-                        {order.statusText}
-                      </Text>
-                    </View>
-                  </View>
-                  {order.status !== 'cancelled' && (
-                    <View style={styles.activeOrderTime}>
-                      <Text style={styles.activeOrderTimeText}>{order.estimatedArrival}</Text>
-                    </View>
-                  )}
-                </View>
-              </TouchableOpacity>
-              {index < displayedActiveOrders.length - 1 && (
-                <View style={styles.orderDivider} />
-              )}
-            </React.Fragment>
-          ))}
-          
-          {activeOrders.length > ACTIVE_ORDERS_LIMIT && (
-            <TouchableOpacity 
-              style={styles.activeOrdersSeeAll}
-              onPress={toggleShowAllActiveOrders}
-            >
-              <Text style={styles.activeOrdersSeeAllText}>
-                {showAllActiveOrders ? 'Show less' : `View all ${activeOrders.length} active orders`}
+        <View style={[
+          styles.premiumActiveOrdersContainer,
+          { 
+            bottom: pastKitchenDetails 
+              ? verticalScale(100) 
+              : Platform.OS === 'ios' 
+                ? verticalScale(20) 
+                : verticalScale(16) 
+          }
+        ]}>
+          <View style={styles.premiumActiveOrdersHeader}>
+            <View style={styles.premiumActiveOrdersTitleContainer}>
+              <Icon2 name="clock-outline" size={scale(18)} color={COLORS.primary} />
+              <Text style={styles.premiumActiveOrdersTitle}>
+                Active Orders ({activeOrders.length})
               </Text>
-              <Icon 
-                name={showAllActiveOrders ? "chevron-up" : "chevron-down"} 
-                size={scale(16)} 
-                color={COLORS.gradientStart} 
+            </View>
+            {activeOrders.length > 1 && (
+              <TouchableOpacity onPress={toggleShowAllActiveOrders}>
+                <Text style={styles.premiumActiveOrdersToggle}>
+                  {showAllActiveOrders ? 'Show less' : 'See all'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          
+          <View style={styles.premiumActiveOrdersList}>
+            {displayedActiveOrders.map((order) => (
+              <PremiumActiveOrderCard
+                key={order.id}
+                order={order}
+                onPress={handleOrderPress}
               />
-            </TouchableOpacity>
-          )}
+            ))}
+          </View>
         </View>
       )}
 
       {/* Cart Summary */}
       {pastKitchenDetails && activeOrders.length === 0 && (
-        <View style={[
-          styles.cartSummaryContainer,
-          { 
-            bottom: Platform.OS === 'ios' 
-              ? (insets.bottom > 0 ? 10 : verticalScale(95))
-              : verticalScale(10)
-          }
-        ]}>
-          <View style={styles.cartSummaryContent}>
-            <View style={styles.cartSummaryInfo}>
-              <Image 
-                source={{ 
-                  uri: pastKitchenDetails.image || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=48&h=48&fit=crop&crop=center'
-                }} 
-                style={styles.cartSummaryImage}
-                defaultSource={{ uri: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=48&h=48&fit=crop&crop=center' }}
-              />
-              <View style={styles.cartSummaryText}>
-                <Text style={styles.cartSummaryTitle} numberOfLines={1}>
-                  {pastKitchenDetails.name}
-                </Text>
-                <TouchableOpacity onPress={BackToKitchen}>
-                  <Text style={styles.cartSummarySubtitle}>View Menu →</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-            <TouchableOpacity 
-              style={styles.cartSummaryButton}
-              onPress={handleViewCart}
-            >
-              <Text style={styles.cartSummaryButtonText}>View Cart</Text>
-              <View style={styles.cartBadge}>
-                <Text style={styles.cartBadgeText}>{pastKitchenDetails.itemCount}</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <PremiumCartSummary
+          pastKitchenDetails={pastKitchenDetails}
+          onViewCart={handleViewCart}
+          onBackToKitchen={handleBackToKitchen}
+        />
       )}
     </View>
   );
 };
 
-// Kitchen Tab Navigator
+// ============== NAVIGATORS ==============
+
 const KitchenTabNavigator = () => {
   return (
-    <Stack.Navigator
-      screenOptions={{
-        headerShown: false,
-      }}
-    >
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="KitchenHome" component={KitchenScreenTabs} />
-      {/* Add other kitchen-related screens here if needed */}
     </Stack.Navigator>
   );
 };
 
-// HomeTabsNavigator component - This should be the main tab navigator
 const HomeTabsNavigator = React.memo(({ isGuest }: { isGuest: boolean }) => {
-
   const [isRestaurantRegister, setIsRestaurantRegister] = useState(true);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const loadStatus = async () => {
-      const value = await AsyncStorage.getItem('is_restaurant_register');
-      setIsRestaurantRegister(value === 'true');
+      try {
+        const value = await AsyncStorage.getItem(STORAGE_KEYS.IS_RESTAURANT_REGISTER);
+        setIsRestaurantRegister(value === 'true');
+      } catch (error) {
+        console.error('Error loading restaurant register status:', error);
+      }
     };
-
     loadStatus();
   }, []);
 
-  const insets = useSafeAreaInsets();
-  
-  // Calculate tab bar height based on device
-  const tabBarHeight = useMemo(() => {
-    if (isSmallDevice) return scale(60);
-    if (isMediumDevice) return scale(65);
-    return scale(70);
-  }, []);
+  const tabBarHeight = useMemo(() => 
+    Platform.OS === 'ios' ? verticalScale(90) : verticalScale(80), 
+  []);
+
+  const tabIcons = {
+    Kitchen: { focused: 'restaurant', unfocused: 'restaurant-outline' },
+    Eatmart: { focused: 'basket', unfocused: 'basket-outline' },
+    Reorder: { focused: 'repeat', unfocused: 'repeat-outline' },
+    Partner: { focused: 'people', unfocused: 'people-outline' },
+  };
+
+  // FIXED: Platform specific tab bar positioning
+  const tabBarPosition = Platform.select({
+    ios: {
+      bottom: 0,
+    },
+    android: {
+      bottom: 0,
+    },
+  });
 
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         tabBarIcon: ({ focused, color, size }) => {
           const routeName = route.name as AppTabs;
-          const iconName = focused
-            ? tabIconsFocused[routeName]
-            : tabIcons[routeName];
-
+          const iconName = focused 
+            ? tabIcons[routeName]?.focused 
+            : tabIcons[routeName]?.unfocused;
+          
           return (
-            <Animatable.View 
-              animation={focused ? "bounceIn" : undefined} 
-              duration={600} 
-              useNativeDriver
-              style={styles.tabIconContainer}
-            >
-              <Icon name={iconName} size={size} color={color} />
-            </Animatable.View>
+            <View style={styles.premiumTabIconContainer}>
+              <Icon 
+                name={iconName || 'restaurant-outline'} 
+                size={focused ? scale(24) : scale(22)} 
+                color={focused ? COLORS.primary : color} 
+              />
+              {focused && (
+                <View style={styles.premiumTabIndicator} />
+              )}
+            </View>
           );
         },
-        tabBarActiveTintColor: COLORS.gradientStart,
-        tabBarInactiveTintColor: COLORS.textLighter,
+        tabBarActiveTintColor: COLORS.primary,
+        tabBarInactiveTintColor: COLORS.text.tertiary,
         tabBarStyle: [
-          { 
+          styles.premiumTabBar,
+          {
             height: tabBarHeight,
-            paddingBottom: isAndroid ? scale(8) : scale(10),
-            paddingTop: scale(6),
+            paddingBottom: insets.bottom || verticalScale(8),
+            ...tabBarPosition,
           }
         ],
-        tabBarLabelStyle: [
-          styles.tabLabel,
-          { 
-            fontSize: fontScale(11),
-            marginBottom: isAndroid ? scale(4) : scale(2)
-          }
-        ],
+        tabBarLabelStyle: styles.premiumTabLabel,
         headerShown: false,
         tabBarShowLabel: true,
       })}
-      sceneContainerStyle={styles.sceneContainer}
     >
-      <Tab.Screen 
-        name="Kitchen" 
-        component={KitchenTabNavigator} 
-        options={{ 
-          tabBarLabel: 'Kitchens',
-          tabBarTestID: 'kitchen-tab',
-        }} 
-      />
-      <Tab.Screen 
-        name="Eatmart" 
-        component={EatmartScreen} 
-        options={{ 
-          tabBarLabel: 'Eatmart',
-          tabBarTestID: 'eatmart-tab',
-        }} 
-      />
-      {!isGuest && (
-        <Tab.Screen 
-          name="Reorder" 
-          component={ReorderScreen} 
-          options={{ 
-            tabBarLabel: 'Reorder',
-            tabBarTestID: 'reorder-tab',
-          }} 
-        />
-      )}
-      {
-        isRestaurantRegister && (
-          <Tab.Screen 
-        name="Partner" 
-        component={PartnerScreen} 
-        options={{ 
-          tabBarLabel: 'Partner',
-          tabBarTestID: 'partner-tab',
-        }} 
-      />
-        )}
+      <Tab.Screen name="Kitchen" component={KitchenTabNavigator} />
+      <Tab.Screen name="Eatmart" component={EatmartScreen} />
+      {!isGuest && <Tab.Screen name="Reorder" component={ReorderScreen} />}
+      {isRestaurantRegister && <Tab.Screen name="Partner" component={PartnerScreen} />}
     </Tab.Navigator>
   );
 });
 
-// HomeTabs component - This is what gets exported
+// ============== MAIN EXPORT ==============
+
 const HomeTabs = () => {
-  const { userToken, isGuest } = useContext(AuthContext);
+  const { isGuest } = useContext(AuthContext);
   const insets = useSafeAreaInsets();
 
   return (
@@ -2874,941 +2924,679 @@ const HomeTabs = () => {
         backgroundColor="transparent" 
         translucent={true}
       />
-      <View style={[styles.fullScreenContainer, { paddingBottom: insets.bottom }]}>
+      <View style={[styles.premiumRootContainer, { paddingBottom: 0 }]}>
         <HomeTabsNavigator isGuest={isGuest} />
       </View>
     </>
   );
 };
 
+// ============== UPDATED STYLES ==============
+
 const styles = StyleSheet.create({
-  // Base Container Styles
-  homeTabsContainer: {
+  // Root Container
+  premiumRootContainer: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  fullScreenContainer: {
+  premiumContainer: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  sceneContainer: {
-    backgroundColor: COLORS.background,
+
+  // Loading States
+  premiumLoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+  },
+  premiumLoadingGradient: {
+    backgroundColor: COLORS.primary,
+  },
+  premiumLoadingContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  premiumLoadingTitle: {
+    ...TYPOGRAPHY.h1,
+    color: '#FFFFFF',
+    marginTop: verticalScale(20),
+    fontWeight: '700',
+  },
+  premiumLoadingText: {
+    ...TYPOGRAPHY.body1,
+    color: 'rgba(255,255,255,0.9)',
+    marginTop: verticalScale(8),
+  },
+  premiumLoadingSpinner: {
+    marginTop: verticalScale(30),
   },
 
-  // Banner Components Styles - FIXED: Changed all black backgrounds to white
-  bannerContainer: {
-    width: '100%',
-    height: '100%',
+  // Error States
+  premiumErrorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: scale(24),
+    backgroundColor: '#F8FAFC',
+  },
+  premiumErrorGradient: {
+    backgroundColor: '#F8FAFC',
+  },
+  premiumErrorTitle: {
+    ...TYPOGRAPHY.h3,
+    color: COLORS.text.primary,
+    marginTop: verticalScale(20),
+  },
+  premiumErrorText: {
+    ...TYPOGRAPHY.body1,
+    color: COLORS.text.secondary,
+    marginTop: verticalScale(8),
+  },
+  premiumErrorButton: {
+    marginTop: verticalScale(30),
+    borderRadius: scale(30),
     overflow: 'hidden',
-    borderBottomLeftRadius: scale(20),
-    borderBottomRightRadius: scale(20),
-    backgroundColor: COLORS.background, // FIX: Added white background
+    backgroundColor: COLORS.primary,
+    ...Platform.select({
+      ios: {
+        shadowColor: COLORS.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
   },
-  
-  // VIDEO BANNER STYLES - ZOMATO STYLE - FIXED: Changed black to white
-  videoBannerContainer: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: "#FFFFFF80", // FIX: Changed from '#000' to white
-    overflow: 'hidden',
-    position: 'relative',
+  premiumErrorButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: scale(24),
+    paddingVertical: verticalScale(14),
+    gap: scale(8),
   },
-  videoPlayer: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: "#FFFFFF80", // FIX: Changed from '#000' to white
-  },
-  videoFallbackContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "#FFFFFF80", // FIX: Changed from '#000' to white
-  },
-  videoFallbackImage: {
-    width: '100%',
-    height: '100%',
-  },
-  videoOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+  premiumErrorButtonText: {
+    ...TYPOGRAPHY.button,
+    color: '#FFFFFF',
   },
 
-  // IMAGE BANNER STYLES - FIXED: Changed black to white
-  imageBannerContainer: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: COLORS.background, // FIX: Changed from '#000' to white
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  imageBanner: {
-    width: '100%',
-    height: '100%',
-  },
-  imageOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+  // Premium Banner Overlay
+  premiumBannerOverlay: {
+    backgroundColor: 'rgba(0,0,0,0.3)',
   },
 
-  // Header Styles with Background Image/Video
-  homeTabsMainHeader: {
+  // Premium Header - INCREASED HEIGHT with BOTTOM RADIUS
+  premiumHeader: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     zIndex: 1000,
-    height: HEADER_HEIGHT,
+    overflow: 'hidden',
+    borderBottomLeftRadius: scale(32),
+    borderBottomRightRadius: scale(32),
   },
-  headerBackgroundContainer: {
+  premiumHeaderBottomRadius: {
     position: 'absolute',
-    top: 0,
+    bottom: 0,
     left: 0,
     right: 0,
-    bottom: 0,
-    overflow: 'hidden',
-    borderBottomLeftRadius: scale(20),
-    borderBottomRightRadius: scale(20),
+    height: verticalScale(40),
+    borderBottomLeftRadius: scale(32),
+    borderBottomRightRadius: scale(32),
+    backgroundColor: 'rgba(0,0,0,0.1)',
   },
-  headerContentContainer: {
+  premiumHeaderContent: {
     flex: 1,
-    justifyContent: 'flex-start',
+    paddingHorizontal: scale(20),
   },
-  headerTopRow: {
+  premiumHeaderTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    width: '100%',
     marginBottom: verticalScale(16),
-    minHeight: verticalScale(40),
   },
-  headerIcons: {
+  premiumHeaderActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    flexWrap: 'wrap',
+    gap: scale(8),
   },
-  headerSearchContainer: {
-    alignItems: 'center',
+  premiumHeaderAction: {
+    borderRadius: scale(18),
+    overflow: 'hidden',
+  },
+  premiumHeaderActionGradient: {
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(18),
     justifyContent: 'center',
-    width: '100%',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.25)',
   },
 
-  // Sticky Header Container
-  stickyHeaderContainer: {
+  // FIXED: Premium Header Offer Cards Styles - Platform specific
+  premiumHeaderOfferCardsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginHorizontal: scale(16),
+    marginBottom: verticalScale(16),
+    gap: scale(12),
+    ...Platform.select({
+      ios: {
+        // iOS specific positioning
+        marginTop: 0,
+      },
+      android: {
+        // Android specific positioning - ensures cards are properly aligned
+        marginTop: verticalScale(4),
+      },
+    }),
+  },
+  premiumHeaderOfferCard: {
+    flex: 1,
+    height: verticalScale(80),
+    borderRadius: scale(16),
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  premiumHeaderOfferCardContent: {
+    flex: 1,
+    overflow: 'hidden',
+    borderRadius: scale(16),
+    borderWidth: Platform.select({
+      ios: 1,
+      android: 0.5,
+    }),
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  // FIXED: Android specific overlay for better transparency
+  premiumHeaderOfferAndroidOverlay: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  premiumHeaderOfferInner: {
+    flex: 1,
+    flexDirection: 'row',
+    padding: scale(12),
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  premiumHeaderOfferContent: {
+    flex: 1,
+  },
+  premiumHeaderOfferTitle: {
+    ...TYPOGRAPHY.caption,
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: fontScale(13),
+    marginBottom: verticalScale(2),
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  premiumHeaderOfferSubtitle: {
+    ...TYPOGRAPHY.caption,
+    color: '#FFFFFF',
+    fontSize: fontScale(9),
+    marginBottom: verticalScale(4),
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  premiumHeaderOfferChip: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    paddingHorizontal: scale(6),
+    paddingVertical: verticalScale(2),
+    borderRadius: scale(8),
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  premiumHeaderOfferChipText: {
+    ...TYPOGRAPHY.caption,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: fontScale(8),
+  },
+  premiumHeaderOfferImageContainer: {
+    width: scale(50),
+    height: scale(50),
+    borderRadius: scale(12),
+    overflow: 'hidden',
+    marginLeft: scale(8),
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  premiumHeaderOfferImage: {
+    width: '100%',
+    height: '100%',
+  },
+
+  // Premium Banner
+  premiumBannerContainer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#000000',
+  },
+  premiumBannerImage: {
+    width: '100%',
+    height: '100%',
+  },
+  premiumBannerVideo: {
+    width: '100%',
+    height: '100%',
+  },
+
+  // Premium Address
+  premiumAddressContainer: {
+    overflow: 'hidden',
+    maxWidth: screenWidth * 0.55,
+  },
+  premiumAddressHomeTypeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(4),
+    marginBottom: verticalScale(2),
+  },
+  premiumAddressHomeTypeLabel: {
+    ...TYPOGRAPHY.caption,
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: fontScale(13),
+  },
+  premiumAddressMainLabel: {
+    ...TYPOGRAPHY.caption,
+    color: '#FFFFFF',
+    fontWeight: '500',
+    fontSize: fontScale(11),
+    opacity: 0.9,
+  },
+
+  // Premium Search - iOS Optimized
+  premiumSearchWrapper: {
+    width: '100%',
+    paddingHorizontal: scale(4),
+    marginTop: verticalScale(8),
+  },
+  premiumSearchContainer: {
+    borderRadius: scale(20),
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.25,
+        shadowRadius: 12,
+        backgroundColor: 'transparent',
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  premiumSearchContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(12),
+  },
+  premiumSearchIconWrapper: {
+    marginRight: scale(12),
+  },
+  premiumSearchPlaceholder: {
+    ...TYPOGRAPHY.body2,
+    color: '#FFFFFF',
+    flex: 1,
+    fontWeight: '500',
+    fontSize: fontScale(14),
+  },
+
+  // Sticky Categories Header - iOS Optimized
+  stickyCategoriesContainer: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    zIndex: 999,
-    backgroundColor: COLORS.background, // FIX: Ensure white background
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    borderBottomLeftRadius: scale(20),
-    borderBottomRightRadius: scale(20),
-    overflow: 'hidden',
-  },
-
-  // Sticky Header styles - ZOMATO STYLE
-  stickyHeader: {
-    paddingHorizontal: scale(16),
-    paddingTop: verticalScale(12),
-    paddingBottom: verticalScale(8),
-  },
-  stickySearchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    zIndex: 1001,
     backgroundColor: '#FFFFFF',
-    borderRadius: scale(20),
-    paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(Platform.OS === 'ios' ? 14 : 12),
-    marginBottom: verticalScale(12),
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  stickySearchBarAndroid: {
-    borderColor: COLORS.searchAndroidBorder,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-  },
-  stickySearchBarIOS: {
-    borderColor: '#E0E0E0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-  },
-  stickySearchIcon: {
-    marginRight: scale(12),
-  },
-  stickySearchPlaceholder: {
-    fontSize: fontScale(15),
-    fontFamily: FONTS.medium,
-    color: COLORS.searchPlaceholder,
-    flex: 1,
-  },
-  stickyCategoriesContainer: {
-    height: verticalScale(85),
-  },
-  stickyCategoriesScroll: {
-    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border.light,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+    paddingTop: Platform.OS === 'ios' ? 50 : 40,
   },
   stickyCategoriesContent: {
-    paddingRight: scale(16),
-    alignItems: 'center',
+    paddingVertical: verticalScale(12),
+  },
+  stickyCategoriesScrollContent: {
+    paddingHorizontal: scale(16),
+    gap: scale(16),
   },
   stickyCategoryItem: {
     alignItems: 'center',
-    marginRight: scale(12),
-    paddingHorizontal: scale(8),
-    paddingVertical: verticalScale(6),
-    width: scale(80),
+    width: scale(64),
   },
   stickyCategoryItemActive: {
-    backgroundColor: COLORS.zomatoGray,
-    borderRadius: scale(12),
+    opacity: 1,
   },
-  stickyCategoryIconContainer: {
-    width: scale(60),
-    height: scale(60),
-    borderRadius: scale(30),
-    marginBottom: verticalScale(6),
+  stickyCategoryIconWrapper: {
+    width: scale(48),
+    height: scale(48),
+    borderRadius: scale(24),
     overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
+    marginBottom: verticalScale(4),
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  stickyCategoryIconWrapperActive: {
+    borderColor: COLORS.primary,
   },
   stickyCategoryIcon: {
     width: '100%',
     height: '100%',
   },
   stickyCategoryText: {
-    fontSize: fontScale(11),
-    fontFamily: FONTS.medium,
-    color: COLORS.textDark,
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.secondary,
+    fontSize: fontScale(10),
     textAlign: 'center',
   },
   stickyCategoryTextActive: {
-    color: COLORS.gradientStart,
-    fontFamily: FONTS.semiBold,
+    color: COLORS.primary,
+    fontWeight: '600',
   },
 
-  // Address styles
-  addressContainer: {
-    flex: 1,
-    marginRight: scale(12),
-    justifyContent: 'center',
-    minHeight: verticalScale(40),
+  // Premium Categories
+  premiumCategoriesContainer: {
+    marginBottom: verticalScale(20),
   },
-  addressRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-  },
-  simpleLocationIcon: {
-    marginRight: scale(6),
-    alignSelf: 'flex-start',
-    marginTop: Platform.OS === 'ios' ? verticalScale(2) : 0,
-  },
-  addressTextContainer: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  homeTypeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: verticalScale(2),
-    flexWrap: 'wrap',
-  },
-  homeTypeText: {
-    fontSize: fontScale(14),
-    fontFamily: FONTS.bold,
-    color: '#FFFFFF',
-    fontWeight: '900',
-    lineHeight: fontScale(16),
-  },
-  addressMainText: {
-    fontSize: fontScale(12),
-    fontFamily: FONTS.medium,
-    color: 'rgba(255,255,255,0.95)',
-    fontWeight: '700',
-    lineHeight: fontScale(14),
-    letterSpacing: 0.2,
-  },
-  chevronIcon: {
-    marginLeft: scale(4),
-    marginTop: Platform.OS === 'ios' ? verticalScale(1) : 0,
-  },
-
-  // Search Input styles - FIXED FOR ANDROID (no conflicting shadow/elevation)
-  
-  searchInputTouchable: {
-    borderRadius: scale(20),
-    height: verticalScale(56),
-    justifyContent: 'center',
-    width: width - scale(32),
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderWidth: 1,
-  },
-  
-  // Android-specific fixes
-  searchInputTouchableAndroid: {
-    borderColor: 'rgba(255, 255, 255, 0.5)',
-    elevation: 2,
-    overflow: 'hidden', // Important for Android to contain ripple
-  },
-  searchInputTouchableAndroidFix: {
-    // Additional Android fix properties
-    elevation: 0, // Remove elevation from container
-    backgroundColor: 'transparent', // Make container transparent
-  },
-  
-  // Inner touchable for Android
-  searchInputInnerTouchable: {
-    flex: 1,
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)', // Move background here
-  },
-  
-  // iOS version
-  searchInputTouchableIOS: {
-    borderColor: 'rgba(255, 255, 255, 0.5)',
-    shadowColor: 'rgba(0, 0, 0, 0.2)',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  
-  searchInputContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: '100%',
+  premiumCategoriesContent: {
     paddingHorizontal: scale(16),
+    gap: scale(12),
   },
-  
-  searchLeftIcon: {
-    marginRight: scale(12),
-  },
-  
-  searchTextContainer: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  
-  searchPlaceholderText: {
-    fontSize: fontScale(15),
-    fontFamily: FONTS.medium,
-    color: '#FFFFFF',
-    letterSpacing: 0.3,
-    lineHeight: fontScale(18),
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  
-  // FIXED: Android-specific placeholder text style
-  searchPlaceholderTextAndroid: {
-    includeFontPadding: false,
-    textAlignVertical: 'center',
-    // Additional Android text fix properties
-    paddingVertical: 0,
-    marginVertical: 0,
-    minHeight: 0, // Prevent extra height
-  },
-  
-  searchRightIcon: {
-    marginLeft: scale(12),
-  },
-
-  // Icon Button Styles
-  iconButton: {
-    marginLeft: scale(12),
-    padding: scale(4),
-    justifyContent: 'center',
+  premiumCategoryCard: {
     alignItems: 'center',
-    minWidth: scale(40),
-    minHeight: scale(40),
+    width: scale(72),
   },
-
-  // Scroll content styles
-  mainScrollContainer: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  scrollContent: {
-    paddingBottom: verticalScale(120),
-  },
-
-  // Categories Section - ZOMATO STYLE
-  categoriesSection: {
-    paddingHorizontal: scale(16),
-    marginBottom: verticalScale(24),
-  },
-  categoriesScrollView: {
-    flexDirection: 'row',
-    marginTop: verticalScale(12),
-  },
-  categoriesContent: {
-    paddingRight: scale(16),
-  },
-  categoryItem: {
-    alignItems: 'center',
-    marginRight: scale(16),
-    width: scale(80),
-  },
-  categoryItemActive: {
+  premiumCategoryCardActive: {
     transform: [{ scale: 1.05 }],
   },
-  categoryIconContainer: {
+  premiumCategoryIconContainer: {
     width: scale(64),
     height: scale(64),
     borderRadius: scale(32),
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.background,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: verticalScale(8),
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-  },
-  categoryIconContainerActive: {
-    borderColor: COLORS.gradientStart,
-  },
-  categoryIcon: {
-    width: scale(48),
-    height: scale(48),
-    borderRadius: scale(24),
-  },
-  categoryText: {
-    fontSize: fontScale(12),
-    fontFamily: FONTS.medium,
-    color: COLORS.textDark,
-    textAlign: 'center',
-    letterSpacing: 0.3,
-    lineHeight: fontScale(14),
-  },
-  categoryTextActive: {
-    color: COLORS.gradientStart,
-    fontFamily: FONTS.semiBold,
-  },
-
-  // Content Section styles
-  contentSection: {
-    paddingHorizontal: scale(16),
-    marginBottom: verticalScale(24),
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: verticalScale(16),
-  },
-  sectionTitle: {
-    fontSize: fontScale(16),
-    fontFamily: FONTS.bold,
-    color: COLORS.textDark,
-    letterSpacing: 0.5,
-    lineHeight: fontScale(18),
-  },
-  sectionSubtitle: {
-    fontSize: fontScale(12),
-    fontFamily: FONTS.medium,
-    color: COLORS.textLighter,
-    letterSpacing: 0.3,
-    lineHeight: fontScale(14),
-  },
-
-  // Top Restaurants Section
-  topRestaurantsScroll: {
-    flexDirection: 'row',
-  },
-  topRestaurantsContent: {
-    paddingRight: scale(16),
-  },
-  topRestaurantPair: {
-    flexDirection: 'row',
-    marginRight: scale(12),
-  },
-  topRestaurantCard: {
-    width: (width - scale(16) * 2 - scale(12) * 3) / 2,
-    marginRight: scale(12),
-    backgroundColor: COLORS.card,
-    borderRadius: scale(16),
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 6,
-      },
-    }),
-    marginBottom: verticalScale(12),
-  },
-  topRestaurantImageContainer: {
-    height: verticalScale(120),
-    position: 'relative',
-  },
-  topRestaurantImage: {
-    width: '100%',
-    height: '100%',
-  },
-  topRestaurantRatingBadge: {
-    position: 'absolute',
-    bottom: scale(8),
-    left: scale(8),
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: scale(8),
-    paddingVertical: verticalScale(4),
-    borderRadius: scale(20),
-  },
-  topRestaurantRatingText: {
-    fontSize: fontScale(12),
-    fontFamily: FONTS.bold,
-    color: '#FFFFFF',
-    marginLeft: scale(2),
-    lineHeight: fontScale(14),
-  },
-  topRestaurantFavoriteButton: {
-    position: 'absolute',
-    top: scale(8),
-    right: scale(8),
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    width: scale(36),
-    height: scale(36),
-    borderRadius: scale(18),
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  topRestaurantInfo: {
-    padding: scale(12),
-  },
-  topRestaurantName: {
-    fontSize: fontScale(15),
-    fontFamily: FONTS.semiBold,
-    color: COLORS.textDark,
     marginBottom: verticalScale(6),
-    letterSpacing: 0.3,
-    lineHeight: fontScale(17),
-  },
-  topRestaurantMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: verticalScale(8),
-  },
-  topRestaurantCuisine: {
-    fontSize: fontScale(12),
-    fontFamily: FONTS.medium,
-    color: COLORS.textLight,
-    flex: 1,
-    marginRight: scale(8),
-    lineHeight: fontScale(14),
-  },
-  topRestaurantDelivery: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  topRestaurantDeliveryText: {
-    fontSize: fontScale(12),
-    fontFamily: FONTS.medium,
-    color: COLORS.textLight,
-    marginLeft: scale(4),
-    lineHeight: fontScale(14),
-  },
-
-  // Restaurant Grid
-  restaurantGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  restaurantCard: {
-    width: (width - scale(16) * 2 - scale(8)) / 2,
-    marginBottom: verticalScale(16),
-    backgroundColor: COLORS.card,
-    borderRadius: scale(16),
     overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: COLORS.border.light,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  restaurantImageContainer: {
-    height: verticalScale(140),
-    position: 'relative',
-  },
-  restaurantImage: {
-    width: '100%',
-    height: '100%',
-  },
-  restaurantRatingBadge: {
-    position: 'absolute',
-    bottom: scale(6),
-    left: scale(6),
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: scale(6),
-    paddingVertical: verticalScale(3),
-    borderRadius: scale(20),
-  },
-  restaurantRatingText: {
-    fontSize: fontScale(11),
-    fontFamily: FONTS.bold,
-    color: '#FFFFFF',
-    marginLeft: scale(2),
-    lineHeight: fontScale(13),
-  },
-  restaurantFavoriteButton: {
-    position: 'absolute',
-    top: scale(6),
-    right: scale(6),
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    width: scale(32),
-    height: scale(32),
-    borderRadius: scale(16),
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  restaurantInfo: {
-    padding: scale(12),
-  },
-  restaurantName: {
-    fontSize: fontScale(15),
-    fontFamily: FONTS.semiBold,
-    color: COLORS.textDark,
-    marginBottom: verticalScale(6),
-    letterSpacing: 0.3,
-    lineHeight: fontScale(17),
-  },
-  restaurantMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: verticalScale(8),
-  },
-  restaurantCuisine: {
-    fontSize: fontScale(11),
-    fontFamily: FONTS.medium,
-    color: COLORS.textLight,
-    flex: 1,
-    marginRight: scale(4),
-    lineHeight: fontScale(13),
-  },
-  restaurantDelivery: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  restaurantDeliveryText: {
-    fontSize: fontScale(11),
-    fontFamily: FONTS.medium,
-    color: COLORS.textLight,
-    marginLeft: scale(2),
-    lineHeight: fontScale(13),
-  },
-  restaurantPrice: {
-    fontSize: fontScale(12),
-    fontFamily: FONTS.medium,
-    color: COLORS.textDark,
-    letterSpacing: 0.3,
-    lineHeight: fontScale(14),
-  },
-
-  // Active Orders Footer
-  activeOrdersFooter: {
-    position: 'absolute',
-    bottom: Platform.OS === 'android' ? verticalScale(10) : verticalScale(10),
-    left: scale(16),
-    right: scale(16),
-    backgroundColor: COLORS.card,
-    borderRadius: scale(16),
-    padding: scale(12),
-    zIndex: 1000,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
-  },
-  activeOrderItem: {
-    marginBottom: verticalScale(8),
-  },
-  activeOrderContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  activeOrderImage: {
-    width: scale(48),
-    height: scale(48),
-    borderRadius: scale(12),
-    marginRight: scale(12),
-  },
-  activeOrderDetails: {
-    flex: 1,
-  },
-  activeOrderKitchen: {
-    fontSize: fontScale(14),
-    fontFamily: FONTS.semiBold,
-    color: COLORS.textDark,
-    marginBottom: verticalScale(4),
-    letterSpacing: 0.3,
-    lineHeight: fontScale(16),
-  },
-  activeOrderStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  activeOrderStatusText: {
-    fontSize: fontScale(12),
-    fontFamily: FONTS.medium,
-    color: COLORS.textLight,
-    marginLeft: scale(4),
-    lineHeight: fontScale(14),
-  },
-  activeOrderTime: {
-    backgroundColor: 'rgba(230, 92, 0, 0.1)',
-    paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(6),
-    borderRadius: scale(12),
-  },
-  activeOrderTimeText: {
-    fontSize: fontScale(12),
-    fontFamily: FONTS.semiBold,
-    color: COLORS.gradientStart,
-    lineHeight: fontScale(14),
-  },
-  orderDivider: {
-    height: 1,
-    backgroundColor: COLORS.zomatoLightGray,
-    marginVertical: verticalScale(8),
-  },
-  activeOrdersSeeAll: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: verticalScale(8),
-  },
-  activeOrdersSeeAllText: {
-    fontSize: fontScale(14),
-    fontFamily: FONTS.medium,
-    color: COLORS.gradientStart,
-    marginRight: scale(4),
-    letterSpacing: 0.3,
-    lineHeight: fontScale(16),
-  },
-
-  // Cart Summary
-  cartSummaryContainer: {
-    position: 'absolute',
-    left: scale(16),
-    right: scale(16),
-    backgroundColor: '#FFFFFF',
-    borderRadius: scale(16),
-    padding: scale(10),
-    zIndex: 1000,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
-    borderWidth: 1,
-    borderColor: COLORS.zomatoLightGray,
-  },
-  cartSummaryContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  cartSummaryInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: scale(16),
-  },
-  cartSummaryImage: {
-    width: scale(48),
-    height: scale(48),
-    borderRadius: scale(12),
-    marginRight: scale(12),
-    borderWidth: 1,
-    borderColor: COLORS.zomatoLightGray,
-  },
-  cartSummaryText: {
-    flex: 1,
-  },
-  cartSummaryTitle: {
-    fontSize: fontScale(14),
-    fontFamily: FONTS.semiBold,
-    color: COLORS.textDark,
-    marginBottom: verticalScale(4),
-    letterSpacing: 0.3,
-    lineHeight: fontScale(16),
-  },
-  cartSummarySubtitle: {
-    fontSize: fontScale(12),
-    fontFamily: FONTS.medium,
-    color: COLORS.gradientStart,
-    letterSpacing: 0.3,
-    lineHeight: fontScale(14),
-  },
-  cartSummaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.gradientStart,
-    paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(10),
-    borderRadius: scale(20),
-    ...Platform.select({
-      ios: {
-        shadowColor: COLORS.gradientStart,
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  cartSummaryButtonText: {
-    fontSize: fontScale(14),
-    fontFamily: FONTS.semiBold,
-    color: '#FFFFFF',
-    marginRight: scale(8),
-    letterSpacing: 0.3,
-    lineHeight: fontScale(16),
-  },
-  cartBadge: {
-    backgroundColor: '#FFFFFF',
-    width: scale(24),
-    height: scale(24),
-    borderRadius: scale(12),
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
       },
       android: {
         elevation: 2,
       },
     }),
   },
-  cartBadgeText: {
-    fontSize: fontScale(12),
-    fontFamily: FONTS.bold,
-    color: COLORS.gradientStart,
-    lineHeight: fontScale(14),
+  premiumCategoryIconContainerActive: {
+    borderColor: COLORS.primary,
   },
-
-  // Tab Bar styles - IMPROVED FOR BOTTOM ALIGNMENT
-  tabBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: COLORS.zomatoLightGray,
-    paddingTop: verticalScale(10),
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 8,
+  premiumCategoryIcon: {
+    width: '100%',
+    height: '100%',
   },
-  tabLabel: {
+  premiumCategoryText: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.secondary,
+    textAlign: 'center',
+    fontWeight: '500',
     fontSize: fontScale(11),
-    fontFamily: FONTS.medium,
-    marginTop: verticalScale(4),
-    letterSpacing: 0.3,
-    lineHeight: fontScale(13),
   },
-  tabIconContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
+  premiumCategoryTextActive: {
+    color: COLORS.primary,
+    fontWeight: '600',
   },
 
-  // Loading and Empty states
-  homeTabsLoadingContainer: {
-    justifyContent: 'center',
+  // Premium Sections
+  premiumScrollView: {
+    flex: 1,
+  },
+  premiumScrollContent: {
+    paddingBottom: verticalScale(100),
+  },
+  premiumSection: {
+    marginBottom: verticalScale(28),
+    paddingHorizontal: scale(16),
+  },
+  premiumSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: verticalScale(14),
   },
-  homeTabsLoadingContent: {
-    alignItems: 'center',
-  },
-  homeTabsLoadingText: {
-    marginTop: verticalScale(16),
-    fontSize: fontScale(16),
-    fontFamily: FONTS.medium,
-    color: COLORS.textDark,
-    letterSpacing: 0.3,
-    lineHeight: fontScale(18),
-  },
-  homeTabsEmptyContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: scale(20),
-  },
-  homeTabsEmptyText: {
+  premiumSectionTitle: {
+    ...TYPOGRAPHY.h4,
+    color: COLORS.text.primary,
+    fontWeight: '700',
     fontSize: fontScale(18),
-    fontFamily: FONTS.semiBold,
-    color: COLORS.textDark,
-    marginTop: verticalScale(16),
-    letterSpacing: 0.3,
-    lineHeight: fontScale(20),
   },
-  homeTabsRetryButton: {
-    marginTop: verticalScale(20),
-    paddingHorizontal: scale(24),
-    paddingVertical: verticalScale(12),
-    backgroundColor: COLORS.gradientStart,
-    borderRadius: scale(12),
+  premiumSectionSubtitle: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.secondary,
+    marginTop: verticalScale(2),
+    fontSize: fontScale(12),
+  },
+
+  // Premium Top Restaurants
+  premiumTopRestaurantsContent: {
+    paddingRight: scale(16),
+    gap: scale(25),
+  },
+
+  // Premium Restaurant Cards
+  premiumRestaurantCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: scale(14),
+    overflow: 'hidden',
     ...Platform.select({
       ios: {
-        shadowColor: COLORS.gradientStart,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  premiumTopRestaurantCard: {
+    width: (screenWidth) / 3.2,
+  },
+  premiumRestaurantImageContainer: {
+    position: 'relative',
+    height: verticalScale(110),
+  },
+  premiumRestaurantImage: {
+    width: '100%',
+    height: '100%',
+  },
+  premiumRestaurantImagePlaceholder: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: COLORS.border.light,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  premiumRestaurantImageGradient: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+  },
+  premiumRestaurantNewBadge: {
+    position: 'absolute',
+    top: scale(8),
+    left: scale(8),
+    backgroundColor: COLORS.success,
+    paddingHorizontal: scale(6),
+    paddingVertical: verticalScale(2),
+    borderRadius: scale(8),
+  },
+  premiumRestaurantNewBadgeText: {
+    ...TYPOGRAPHY.caption,
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: fontScale(8),
+  },
+  premiumRestaurantFavorite: {
+    position: 'absolute',
+    top: scale(8),
+    right: scale(8),
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    width: scale(28),
+    height: scale(28),
+    borderRadius: scale(14),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  premiumTopRestaurantFavorite: {
+    top: scale(6),
+    right: scale(6),
+    width: scale(24),
+    height: scale(24),
+    borderRadius: scale(12),
+  },
+  premiumRestaurantInfo: {
+    padding: scale(12),
+  },
+  premiumTopRestaurantInfo: {
+    padding: scale(8),
+  },
+  premiumRestaurantName: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.primary,
+    fontWeight: '600',
+    marginBottom: verticalScale(2),
+    fontSize: fontScale(14),
+  },
+  premiumTopRestaurantName: {
+    fontSize: fontScale(12),
+    marginBottom: verticalScale(1),
+  },
+  premiumRestaurantMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: verticalScale(4),
+  },
+  premiumRestaurantCuisine: {
+    flex: 1,
+  },
+  premiumRestaurantCuisineText: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.secondary,
+    fontSize: fontScale(11),
+  },
+  premiumTopRestaurantCuisineText: {
+    fontSize: fontScale(9),
+  },
+  premiumRestaurantDelivery: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(2),
+  },
+  premiumRestaurantDeliveryText: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.secondary,
+    fontSize: fontScale(11),
+  },
+  premiumTopRestaurantDeliveryText: {
+    fontSize: fontScale(9),
+  },
+  premiumRestaurantGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: scale(14),
+  },
+
+  // Premium Active Orders - iOS Optimized
+  premiumActiveOrdersContainer: {
+    position: 'absolute',
+    left: scale(16),
+    right: scale(16),
+    zIndex: 100,
+    ...Platform.select({
+      ios: {
+        // iOS specific positioning
+      },
+      android: {
+        // Android specific positioning to ensure proper alignment from bottom
+      },
+    }),
+  },
+  premiumActiveOrdersHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: verticalScale(10),
+  },
+  premiumActiveOrdersTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(6),
+  },
+  premiumActiveOrdersTitle: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.primary,
+    fontWeight: '600',
+    fontSize: fontScale(14),
+  },
+  premiumActiveOrdersToggle: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
+    fontWeight: '600',
+    fontSize: fontScale(12),
+  },
+  premiumActiveOrdersList: {
+    gap: verticalScale(10),
+  },
+  premiumActiveOrderCard: {
+    borderRadius: scale(14),
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.12,
         shadowRadius: 8,
       },
       android: {
@@ -3816,38 +3604,208 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  homeTabsRetryButtonText: {
-    color: '#fff',
-    fontSize: fontScale(16),
-    fontFamily: FONTS.semiBold,
-    letterSpacing: 0.3,
-    lineHeight: fontScale(18),
+  premiumActiveOrderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: scale(12),
   },
-  imagePlaceholder: {
-    backgroundColor: COLORS.zomatoGray,
+  premiumActiveOrderImage: {
+    width: scale(52),
+    height: scale(52),
+    borderRadius: scale(12),
+    marginRight: scale(12),
+  },
+  premiumActiveOrderDetails: {
+    flex: 1,
+  },
+  premiumActiveOrderHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: verticalScale(4),
+  },
+  premiumActiveOrderKitchen: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.primary,
+    fontWeight: '600',
+    flex: 1,
+    fontSize: fontScale(13),
+  },
+  premiumActiveOrderStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(2),
+    borderRadius: scale(12),
+    gap: scale(4),
+  },
+  premiumActiveOrderStatusDot: {
+    width: scale(6),
+    height: scale(6),
+    borderRadius: scale(3),
+  },
+  premiumActiveOrderStatusText: {
+    ...TYPOGRAPHY.caption,
+    fontWeight: '500',
+    fontSize: fontScale(11),
+  },
+  premiumActiveOrderNumber: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.secondary,
+    marginBottom: verticalScale(4),
+    fontSize: fontScale(11),
+  },
+  premiumActiveOrderTimeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(4),
+  },
+  premiumActiveOrderTime: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.tertiary,
+    fontSize: fontScale(11),
+  },
+  premiumActiveOrderArrow: {
+    marginLeft: scale(8),
+  },
+
+  // Premium Cart Summary - iOS Optimized
+  premiumCartSummary: {
+    position: 'absolute',
+    left: scale(16),
+    right: scale(16),
+    bottom: Platform.OS === 'ios' ? verticalScale(95) : verticalScale(86),
+    borderRadius: scale(18),
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    zIndex: 100,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  premiumCartSummaryContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: scale(14),
+  },
+  premiumCartSummaryInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  premiumCartSummaryImage: {
+    width: scale(48),
+    height: scale(48),
+    borderRadius: scale(12),
+    marginRight: scale(12),
+  },
+  premiumCartSummaryText: {
+    flex: 1,
+  },
+  premiumCartSummaryTitle: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.primary,
+    fontWeight: '600',
+    marginBottom: verticalScale(2),
+    fontSize: fontScale(13),
+  },
+  premiumCartSummarySubtitle: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
+    fontWeight: '500',
+    fontSize: fontScale(11),
+  },
+  premiumCartSummaryButton: {
+    borderRadius: scale(28),
+    overflow: 'hidden',
+    backgroundColor: COLORS.primary,
+  },
+  premiumCartSummaryButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: scale(14),
+    paddingVertical: verticalScale(10),
+    gap: scale(6),
+  },
+  premiumCartSummaryButtonText: {
+    ...TYPOGRAPHY.body2,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: fontScale(13),
+  },
+  premiumCartBadge: {
+    backgroundColor: '#FFFFFF',
+    width: scale(22),
+    height: scale(22),
+    borderRadius: scale(11),
     justifyContent: 'center',
     alignItems: 'center',
   },
+  premiumCartBadgeText: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
+    fontWeight: '700',
+    fontSize: fontScale(11),
+  },
 
-  // Custom Refresh Control Styles
-  customRefreshIndicator: {
+  // FIXED: Premium Tab Bar - No border, only top radius, properly positioned
+  premiumTabBar: {
     position: 'absolute',
-    top: HEADER_HEIGHT + verticalScale(10),
+    bottom: 0,
     left: 0,
     right: 0,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 0, // Remove top border
+    borderWidth: 0, // Remove all borders
+    elevation: 0,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 8,
+        // Android specific shadow
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+    }),
+    borderTopLeftRadius: scale(24), // Only top left radius
+    borderTopRightRadius: scale(24), // Only top right radius
+    borderBottomLeftRadius: 0, // No bottom radius
+    borderBottomRightRadius: 0, // No bottom radius
+    overflow: 'hidden',
+  },
+  premiumTabLabel: {
+    ...TYPOGRAPHY.caption,
+    fontWeight: '500',
+    marginBottom: verticalScale(4),
+    fontSize: fontScale(11),
+  },
+  premiumTabIconContainer: {
     alignItems: 'center',
-    zIndex: 1001,
+    justifyContent: 'center',
   },
-  customRefreshText: {
-    fontSize: fontScale(12),
-    fontFamily: FONTS.medium,
-    color: COLORS.gradientStart,
-    marginTop: verticalScale(4),
-    letterSpacing: 0.3,
-    lineHeight: fontScale(14),
-  },
-  iosRefreshControl: {
-    backgroundColor: '#F07119',
+  premiumTabIndicator: {
+    position: 'absolute',
+    bottom: -verticalScale(6),
+    width: scale(4),
+    height: scale(4),
+    borderRadius: scale(2),
+    backgroundColor: COLORS.primary,
   },
 });
 

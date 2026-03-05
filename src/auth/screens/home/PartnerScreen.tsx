@@ -2965,7 +2965,7 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 1000,
     backgroundColor: '#fff',
-    paddingTop: Platform.OS === 'ios' ? scaleSize(40) : scaleSize(10),
+    paddingTop: Platform.OS === 'ios' ? scaleSize(50) : scaleSize(10),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: scaleSize(2) },
     shadowOpacity: 0.1,

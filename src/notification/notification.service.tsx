@@ -1626,3 +1626,26 @@ export const handlePartnerScreenEnter = (): void => {
 export const getCurrentNotificationId = (): string | null => {
   return currentNotificationId;
 };
+
+
+// export const getFCMTokenTest = async () => {
+//   try {
+//     // Request permission
+
+//     console.log("====== getFCMTokenTest")
+//     await messaging().requestPermission();
+    
+//     // Get the FCM token
+//     const token = await messaging().getToken();
+    
+//     console.log('FCM Token:', token);
+//     return token;
+//   } catch (error) {
+//     console.error('Error getting FCM token:', error);
+//     throw error;
+//   }
+// };
+
+// Usage:
+// const token = await getFCMToken();
+// Send this token to your backend server

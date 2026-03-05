@@ -17,7 +17,8 @@ import {
   setupAppStateNotificationHandlers,
   handlePendingNavigation,
   checkNotificationSettings,
-  // showTestNotification,
+  // getFCMTokenTest,
+  // showTestNotification, 
 } from './src/notification';
 
 const App: React.FC = () => {
@@ -136,6 +137,7 @@ const MainApp: React.FC<MainAppProps> = ({ isDarkMode }) => {
       unsubscribeRefs.current.push(unsubscribeActions);
     }
     // showTestNotification()
+    // getFCMTokenTest()
     // Setup foreground handler
     const unsubscribeForeground = setupForegroundNotificationHandler();
     if (unsubscribeForeground) {

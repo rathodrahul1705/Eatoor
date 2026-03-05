@@ -330,9 +330,6 @@ const EditProfileScreen = ({ route }) => {
           <Icon name="person" size={60} color="#FF5E00" />
         </View>
       )}
-      <TouchableOpacity style={styles.editPictureButton}>
-        <Icon name="camera" size={20} color="#fff" />
-      </TouchableOpacity>
     </View>
   );
 

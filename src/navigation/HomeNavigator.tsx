@@ -20,6 +20,7 @@ import AddressScreen from '../auth/screens/home/AddressScreen';
 import ReorderScreen from '../auth/screens/home/ReorderScreen';
 import HomeKitchenNavigate from '../auth/screens/home/HomeKitchenNavigate';
 import EatoorMoneyScreen from '../auth/screens/home/EatoorMoneyScreen';
+import EatmartViewCart from '../eatmart/EatmartViewCart';
 import EatoorMoneyAdd from '../auth/screens/home/EatoorMoneyAdd';
 import PartnerScreen from '../auth/screens/home/PartnerScreen';
 import LoginScreen from '../auth/screens/LoginScreen';
@@ -143,6 +144,7 @@ const HomeNavigator = () => {
           <Stack.Screen name="RateOrderThankYou" component={RateOrderThankYou} />
           <Stack.Screen name="TrackOrder" component={TrackOrder} />
           <Stack.Screen name="EatoorMoneyScreen" component={EatoorMoneyScreen} />
+          <Stack.Screen name="EatmartViewCart" component={EatmartViewCart} />
           <Stack.Screen name="EatoorMoneyAdd" component={EatoorMoneyAdd} />
           <Stack.Screen name="PartnerScreen" component={PartnerScreen} />
           <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} options={{ title: 'Notification Settings' }}

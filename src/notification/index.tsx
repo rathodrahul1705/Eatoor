@@ -13,11 +13,12 @@ export {
   getStoredFCMToken,
   saveFCMToken,
   setupTokenRefreshListener,
+  // getFCMTokenTest,
   
   // Notification display
   displayNotification,
   displayNotificationFromRemoteMessage,
-  // showTestNotification,
+  showTestNotification,
   
   // Preferences
   getNotificationPreferences,

@@ -179,7 +179,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         'Longitude',
         'kitchenId',
         'isGuest',
-        'is_restaurant_register'
+        'is_restaurant_register',
+        'headerOffers'
       ];
 
       await AsyncStorage.multiRemove(keysToRemove);
