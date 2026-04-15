@@ -7,36 +7,26 @@ import {
   PermissionsAndroid,
   Platform,
   ActivityIndicator,
-  Alert,
   Linking,
   StatusBar,
   Dimensions,
   AppState,
   AppStateStatus,
-  SafeAreaView,
   TextInput,
   Animated,
   FlatList,
   Image,
   RefreshControl,
-  KeyboardAvoidingView,
   ScrollView,
   Easing,
-  ImageBackground,
-  PanResponder,
   Modal
 } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import Icon2 from 'react-native-vector-icons/MaterialCommunityIcons';
-import * as Animatable from 'react-native-animatable';
-import Geolocation from '@react-native-community/geolocation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import LinearGradient from 'react-native-linear-gradient';
-import Video from 'react-native-video';
-import { BlurView } from '@react-native-community/blur';
+import Geolocation from '@react-native-community/geolocation';
 import PartnerScreen from './PartnerScreen';
 import EatmartScreen from '../../../eatmart/EatmartScreen';
 import ReorderScreen from '../../screens/home/ReorderScreen';
@@ -46,8 +36,8 @@ import { AuthContext } from '../../../context/AuthContext';
 import { getKitchenList, updateFavouriteKitchen } from '../../../api/home';
 import { getCart, getActiveOrders, updateCartUserDetails } from '../../../api/cart';
 import { searchSuggestions } from '../../../api/search';
+import { getOfferBanners } from '../../../api/offer';
 import moment from 'moment';
-import SearchModal from './searchmodal';
 import { getSessionId } from '../../../utlis/utils';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -58,12 +48,10 @@ const Stack = createNativeStackNavigator<HomeStackParamList>();
 
 // ============== CONSTANTS & CONFIGURATION ==============
 
-// Screen dimensions
 const { width, height } = Dimensions.get('window');
 const screenWidth = width;
 const screenHeight = height;
 
-// Responsive scaling functions
 const scale = (size: number) => {
   const baseWidth = 375;
   const scaleFactor = screenWidth / baseWidth;
@@ -83,10 +71,8 @@ const fontScale = (size: number) => {
   return Math.round(scaledSize);
 };
 
-// Color Palette - UPDATED: Kitchen/Eatmart/Reorder/Partner color changed to #E55C18
 const COLORS = {
   primary: '#E55C18',
-  primaryGradient: ['#E55C18', '#F15A2E', '#FF6B4A'],
   secondary: '#00B8A9',
   accent: '#6C5CE7',
   success: '#00B894',
@@ -102,26 +88,17 @@ const COLORS = {
     light: '#FFFFFF',
     dark: '#0F172A',
   },
-  gradient: {
-    start: '#E55C18',
-    end: '#FF6B4A',
-    overlay: ['rgba(0,0,0,0.6)', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.1)'],
-    card: ['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.98)'],
-  },
   border: {
     light: '#F1F5F9',
     default: '#E2E8F0',
   },
-  zomato: {
-    pink: '#FF7E7E',
-    red: '#E55C18',
-    orange: '#F15A2E',
-    gray: '#F8FAFC',
-    dark: '#1E293B',
-  }
+  search: {
+    background: '#FFFFFF',
+    card: '#F8FAFC',
+  },
+  white: '#FFFFFF'
 };
 
-// Typography
 const TYPOGRAPHY = {
   h1: { fontSize: fontScale(28), lineHeight: fontScale(34), fontWeight: '700' as const },
   h2: { fontSize: fontScale(24), lineHeight: fontScale(30), fontWeight: '700' as const },
@@ -133,11 +110,26 @@ const TYPOGRAPHY = {
   button: { fontSize: fontScale(15), lineHeight: fontScale(20), fontWeight: '600' as const },
 };
 
-// Dynamic header height - INCREASED with bottom radius
-const HEADER_HEIGHT = screenHeight * (Platform.OS === 'ios' ? 0.52 : 0.48);
-const STICKY_HEADER_HEIGHT = verticalScale(120);
+// Dynamic header heights based on device
+const getHeaderHeights = () => {
+  const baseHeaderHeight = Platform.select({
+    ios: 400,
+    android: 380,
+  }) || 380;
+  
+  const baseCollapsedHeight = Platform.select({
+    ios: 100,
+    android: 110,
+  }) || 100;
+  
+  return {
+    expanded: verticalScale(baseHeaderHeight),
+    collapsed: verticalScale(baseCollapsedHeight),
+  };
+};
 
-// Storage Keys
+const HEADER_HEIGHTS = getHeaderHeights();
+
 const STORAGE_KEYS = {
   ADDRESS_ID: 'AddressId',
   STREET_ADDRESS: 'StreetAddress',
@@ -150,15 +142,9 @@ const STORAGE_KEYS = {
   USER: 'user',
   SESSION_ID: 'sessionId',
   IS_RESTAURANT_REGISTER: 'is_restaurant_register',
-  HEADER_OFFERS: 'headerOffers'
+  OFFERS: 'offers'
 };
 
-// Default Assets
-const DEFAULT_BANNER_IMAGE = "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1200&h=600&fit=crop&crop=center&q=80";
-const DEFAULT_CATEGORY_ICON = "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=200&h=200&fit=crop&crop=center&q=80";
-const DEFAULT_RESTAURANT_IMAGE = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=300&fit=crop&crop=center&q=80";
-
-// Search Placeholders
 const SEARCH_PLACEHOLDERS = [
   "Pizza, burger, pasta...",
   "Chinese, Thai, Asian...",
@@ -167,72 +153,52 @@ const SEARCH_PLACEHOLDERS = [
   "Healthy, Salad, Bowl..."
 ];
 
-// ============== HEADER OFFERS CONFIGURATION ==============
-const HEADER_OFFERS = []
-// const HEADER_OFFERS = [
-//   {
-//     id: '1',
-//     title: 'FLAT 40% OFF',
-//     subtitle: 'Get Biryani @99',
-//     discount: '40%',
-//     kitchenId: 'STA59068507',
-//     image: 'https://eatoorprod.s3.amazonaws.com/menu_images/5df3397c503b4ad09da617107984f682.jpg',
-//     offerCode: '',
-//     validUntil: '2024-12-31',
-//     isActive: true,
-//     backgroundColor: 'rgba(229, 92, 24, 0.9)' // Made slightly transparent
-//   },
-//   {
-//     id: '2',
-//     title: 'FLAT 20% OFF',
-//     subtitle: 'Get Waffle @49',
-//     discount: '20%',
-//     kitchenId: 'WAF67901458',
-//     image: 'https://eatoorprod.s3.amazonaws.com/menu_images/fbeb16c5a4534abeb02b40c736cc1fd6.jpg',
-//     offerCode: '',
-//     validUntil: '2024-12-31',
-//     isActive: true,
-//     backgroundColor: 'rgba(78, 205, 196, 0.9)' // Made slightly transparent
-//   },
-//   {
-//     id: '3',
-//     title: 'FLAT 30% OFF',
-//     subtitle: 'Pizza Mania',
-//     discount: '30%',
-//     kitchenId: 'PIZ12345678',
-//     image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&h=400&fit=crop&crop=center&q=80',
-//     offerCode: 'PIZZA30',
-//     validUntil: '2024-12-31',
-//     isActive: true,
-//     backgroundColor: 'rgba(168, 230, 207, 0.9)' // Made slightly transparent
-//   },
-//   {
-//     id: '4',
-//     title: 'BUY 1 GET 1',
-//     subtitle: 'On all burgers',
-//     discount: 'BOGO',
-//     kitchenId: 'BUR56789012',
-//     image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&h=400&fit=crop&crop=center&q=80',
-//     offerCode: 'BOGOBURGER',
-//     validUntil: '2024-12-31',
-//     isActive: true,
-//     backgroundColor: 'rgba(255, 217, 61, 0.9)' // Made slightly transparent
-//   },
-//   {
-//     id: '5',
-//     title: 'FLAT 50% OFF',
-//     subtitle: 'Healthy bowls',
-//     discount: '50%',
-//     kitchenId: 'BOWL34567890',
-//     image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&h=400&fit=crop&crop=center&q=80',
-//     offerCode: 'HEALTHY50',
-//     validUntil: '2024-12-31',
-//     isActive: true,
-//     backgroundColor: 'rgba(108, 92, 231, 0.9)' // Made slightly transparent
-//   }
-// ];
-
 // ============== TYPES ==============
+
+interface BannerTheme {
+  bg_color: string;
+  text_color: string;
+  icon_color: string;
+}
+
+interface ApiParams {
+  category?: string;
+  food_type?: string;
+  has_discount?: string;
+  min_price?: string;
+  max_price?: string;
+  sort_by?: string;
+  bogo?: string;
+  is_available?: string;
+  [key: string]: any;
+}
+
+interface BannerOffer {
+  type: string;
+  banner_type: string;
+  category?: string;
+  discount: string;
+  code: string;
+  api_params: ApiParams;
+}
+
+interface BannerValidity {
+  from: string;
+  till: string;
+}
+
+interface Banner {
+  id: number;
+  title: string;
+  subtitle: string;
+  image_url: string;
+  theme: BannerTheme;
+  offer: BannerOffer;
+  validity: BannerValidity;
+  terms: string[];
+  order: number;
+  is_active: boolean;
+}
 
 interface LocationData {
   address: string;
@@ -248,35 +214,21 @@ interface LocationData {
 interface AddressHeaderLeftProps {
   isGuest: boolean;
   onAddressUpdate?: (address: string, homeType: string) => void;
-}
-
-interface BannerItem {
-  id: string;
-  name: string;
-  icon: string;
-  document_type: 1 | 2;
-  thumbnail?: string;
-}
-
-interface BannerComponentProps {
-  banner: BannerItem | null;
-  isVisible: boolean;
-}
-
-interface ImageBannerProps {
-  imageUrl: string;
-  thumbnailUrl?: string;
-}
-
-interface VideoBannerProps {
-  videoUrl: string;
-  isVisible: boolean;
-  thumbnailUrl?: string;
+  bannerColors?: {
+    backgroundColor: string;
+    textColor: string;
+  };
+  isCollapsed?: boolean;
 }
 
 interface SearchInputProps {
   onPress: () => void;
   placeholder: string;
+  bannerColors?: {
+    backgroundColor: string;
+    textColor: string;
+  };
+  isCollapsed?: boolean;
 }
 
 interface Category {
@@ -308,7 +260,6 @@ interface ApiResponse {
       FeatureKitchenList: Kitchen[];
       KitchenList: Kitchen[];
       CategoryList: Category[];
-      final_banner_image: BannerItem;
     };
   };
 }
@@ -386,19 +337,6 @@ interface SearchSuggestionResponse {
 
 type AppTabs = 'Kitchen' | 'Eatmart' | 'Reorder' | 'Partner';
 
-interface OfferCard {
-  id: string;
-  title: string;
-  subtitle: string;
-  discount: string;
-  kitchenId: string;
-  image: string;
-  offerCode?: string;
-  validUntil?: string;
-  isActive?: boolean;
-  backgroundColor?: string;
-}
-
 // ============== CUSTOM HOOKS ==============
 
 const useDebounce = (value: string, delay: number) => {
@@ -417,372 +355,539 @@ const useDebounce = (value: string, delay: number) => {
   return debouncedValue;
 };
 
-// ============== PREMIUM COMPONENTS ==============
+// ============== ENHANCED LOADER ==============
 
-// FIXED: Animated Loading Icon Component - Works on both iOS and Android
-const AnimatedLoadingIcon = ({ name, size, color }: { name: string; size: number; color: string }) => {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const opacityAnim = useRef(new Animated.Value(0.7)).current;
+const EnhancedDeliveryLoader = () => {
+  const [foodIconScale] = useState(new Animated.Value(0));
+  const [bikePosition] = useState(new Animated.Value(-150));
+  const [loadingDots] = useState(new Animated.Value(0));
+  const [pulseAnim] = useState(new Animated.Value(1));
+  const [rotateAnim] = useState(new Animated.Value(0));
+  const [waveAnim] = useState(new Animated.Value(0));
+  const [bikeBounceAnim] = useState(new Animated.Value(0));
+  const [progressWidth] = useState(new Animated.Value(0));
 
   useEffect(() => {
-    const animation = Animated.parallel([
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(scaleAnim, {
-            toValue: 1.2,
-            duration: 800,
-            useNativeDriver: true,
-            easing: Easing.inOut(Easing.ease),
-          }),
-          Animated.timing(scaleAnim, {
-            toValue: 1,
-            duration: 800,
-            useNativeDriver: true,
-            easing: Easing.inOut(Easing.ease),
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(opacityAnim, {
-            toValue: 1,
-            duration: 800,
-            useNativeDriver: true,
-            easing: Easing.inOut(Easing.ease),
-          }),
-          Animated.timing(opacityAnim, {
-            toValue: 0.7,
-            duration: 800,
-            useNativeDriver: true,
-            easing: Easing.inOut(Easing.ease),
-          }),
-        ])
-      ),
-    ]);
+    Animated.spring(foodIconScale, {
+      toValue: 1,
+      friction: 3,
+      tension: 40,
+      useNativeDriver: true,
+    }).start();
 
-    animation.start();
+    Animated.timing(progressWidth, {
+      toValue: 1,
+      duration: 2000,
+      easing: Easing.linear,
+      useNativeDriver: false,
+    }).start();
 
-    return () => {
-      animation.stop();
-    };
-  }, [scaleAnim, opacityAnim]);
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.2,
+          duration: 800,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 800,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(loadingDots, {
+          toValue: 1,
+          duration: 600,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+        Animated.timing(loadingDots, {
+          toValue: 0,
+          duration: 600,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    Animated.loop(
+      Animated.timing(rotateAnim, {
+        toValue: 1,
+        duration: 2000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    ).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(waveAnim, {
+          toValue: 1,
+          duration: 1500,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(waveAnim, {
+          toValue: 0,
+          duration: 1500,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(bikeBounceAnim, {
+          toValue: 1,
+          duration: 500,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(bikeBounceAnim, {
+          toValue: 0,
+          duration: 500,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    Animated.loop(
+      Animated.timing(bikePosition, {
+        toValue: screenWidth + 100,
+        duration: 2500,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    ).start();
+  }, []);
+
+  const rotateInterpolate = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  const waveTranslateY = waveAnim.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0, -15, 0],
+  });
+
+  const bikeTranslateY = bikeBounceAnim.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0, -8, 0],
+  });
+
+  const progressWidthInterpolate = progressWidth.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+  });
 
   return (
-    <Animated.View style={{
-      transform: [{ scale: scaleAnim }],
-      opacity: opacityAnim,
-    }}>
-      <Icon2 name={name} size={size} color={color} />
-    </Animated.View>
+    <View style={styles.main_app_loader_container}>
+      <View style={styles.main_app_loader_background}>
+        {[...Array(12)].map((_, i) => (
+          <Animated.View
+            key={i}
+            style={[
+              styles.main_app_loader_background_circle,
+              {
+                width: scale(30 + i * 8),
+                height: scale(30 + i * 8),
+                top: (i % 3) * screenHeight * 0.3,
+                left: (i % 2) * screenWidth * 0.7,
+                opacity: 0.1 - i * 0.005,
+                transform: [
+                  {
+                    translateY: waveTranslateY.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, (i % 2 === 0 ? 20 : -20)],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          />
+        ))}
+      </View>
+
+      <View style={styles.main_app_loader_content}>
+        <View style={styles.main_app_loader_food_icons}>
+          {['🍕', '🍔', '🍜', '🥗', '🍣', '🍦'].map((emoji, index) => (
+            <Animated.View
+              key={index}
+              style={[
+                styles.main_app_loader_food_icon,
+                {
+                  transform: [
+                    { rotate: rotateInterpolate },
+                    {
+                      translateY: waveTranslateY.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, index % 2 === 0 ? 20 : -20],
+                      }),
+                    },
+                  ],
+                  opacity: foodIconScale,
+                  left: (index % 3) * scale(60) - scale(60),
+                  top: Math.floor(index / 3) * scale(80) - scale(20),
+                },
+              ]}
+            >
+              <Text style={styles.main_app_loader_food_emoji}>{emoji}</Text>
+            </Animated.View>
+          ))}
+        </View>
+
+        <Animated.View
+          style={[
+            styles.main_app_loader_bike_container,
+            {
+              transform: [
+                { translateX: bikePosition },
+                { translateY: bikeTranslateY },
+              ],
+            },
+          ]}
+        >
+          <Image
+            source={{ uri: 'https://eatoorprod.s3.eu-north-1.amazonaws.com/uploads/optimize_image.png' }}
+            style={styles.main_app_loader_bike_image}
+            resizeMode="contain"
+          />
+        </Animated.View>
+
+        <Text style={styles.main_app_loader_brand_name}>Eatoor</Text>
+        <Text style={styles.main_app_loader_tagline}>Delicious food delivered to your door</Text>
+
+        <View style={styles.main_app_loader_progress_container}>
+          <Animated.View
+            style={[
+              styles.main_app_loader_progress_bar,
+              { width: progressWidthInterpolate, backgroundColor: COLORS.primary },
+            ]}
+          />
+        </View>
+
+        <View style={styles.main_app_loader_text_container}>
+          <Text style={styles.main_app_loader_text}>Finding the best restaurants</Text>
+          <View style={styles.main_app_loader_dots}>
+            <Animated.View
+              style={[
+                styles.main_app_loader_dot,
+                {
+                  opacity: loadingDots.interpolate({
+                    inputRange: [0, 0.3, 0.6, 1],
+                    outputRange: [0.3, 1, 0.3, 0.3],
+                  }),
+                },
+              ]}
+            />
+            <Animated.View
+              style={[
+                styles.main_app_loader_dot,
+                {
+                  opacity: loadingDots.interpolate({
+                    inputRange: [0, 0.3, 0.6, 1],
+                    outputRange: [0.3, 0.3, 1, 0.3],
+                  }),
+                },
+              ]}
+            />
+            <Animated.View
+              style={[
+                styles.main_app_loader_dot,
+                {
+                  opacity: loadingDots.interpolate({
+                    inputRange: [0, 0.3, 0.6, 1],
+                    outputRange: [0.3, 0.3, 0.3, 1],
+                  }),
+                },
+              ]}
+            />
+          </View>
+        </View>
+
+        <View style={styles.main_app_loader_particles}>
+          {[...Array(8)].map((_, i) => (
+            <Animated.View
+              key={i}
+              style={[
+                styles.main_app_loader_particle,
+                {
+                  left: `${Math.random() * 100}%`,
+                  top: `${Math.random() * 100}%`,
+                  transform: [
+                    {
+                      translateY: waveTranslateY.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, Math.random() * 50],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            />
+          ))}
+        </View>
+      </View>
+    </View>
   );
 };
 
-// Premium Video Banner Component
-const PremiumVideoBanner: React.FC<VideoBannerProps> = React.memo(({ videoUrl, isVisible, thumbnailUrl }) => {
-  const videoRef = useRef<Video>(null);
-  const [hasError, setHasError] = useState(false);
-  const [isReady, setIsReady] = useState(false);
-  const scaleAnim = useRef(new Animated.Value(1.1)).current;
+// ============== ENHANCED BANNER COMPONENT ==============
+
+const EnhancedBanner = React.memo(({ 
+  banners, 
+  onBannerPress,
+  onBannerChange
+}: { 
+  banners: Banner[];
+  onBannerPress?: (banner: Banner) => void;
+  onBannerChange?: (banner: Banner) => void;
+}) => {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const flatListRef = useRef<FlatList>(null);
+  const autoPlayRef = useRef<NodeJS.Timeout>();
+  const scaleAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    if (isVisible) {
-      Animated.timing(scaleAnim, {
-        toValue: 1,
-        duration: 8000,
-        useNativeDriver: true,
-        easing: Easing.out(Easing.cubic),
-      }).start();
-    }
-  }, [isVisible, scaleAnim]);
-
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (videoRef.current) {
-        if (nextAppState === 'active' && isVisible) {
-          videoRef.current.resume();
-        } else if (nextAppState === 'background') {
-          videoRef.current.pause();
-        }
+    if (banners.length <= 1) return;
+    
+    autoPlayRef.current = setInterval(() => {
+      const nextIndex = activeIndex < banners.length - 1 ? activeIndex + 1 : 0;
+      setActiveIndex(nextIndex);
+      flatListRef.current?.scrollToIndex({
+        index: nextIndex,
+        animated: true,
+        viewPosition: 0.5
+      });
+      if (onBannerChange && banners[nextIndex]) {
+        onBannerChange(banners[nextIndex]);
       }
-    });
+    }, 4000);
 
     return () => {
-      subscription.remove();
-    };
-  }, [isVisible]);
-
-  const handleVideoLoad = useCallback(() => {
-    setHasError(false);
-    setIsReady(true);
-    if (videoRef.current && isVisible) {
-      setTimeout(() => videoRef.current?.resume?.(), 100);
-    }
-  }, [isVisible]);
-
-  const handleVideoError = useCallback(() => {
-    setHasError(true);
-    setIsReady(false);
-  }, []);
-
-  if (hasError || !videoUrl) {
-    return (
-      <Animated.View style={[styles.premiumBannerContainer, { transform: [{ scale: scaleAnim }] }]}>
-        <Image
-          source={{ uri: thumbnailUrl || DEFAULT_BANNER_IMAGE }}
-          style={styles.premiumBannerImage}
-          resizeMode="cover"
-        />
-        <View style={[StyleSheet.absoluteFillObject, styles.premiumBannerOverlay]} />
-      </Animated.View>
-    );
-  }
-
-  return (
-    <View style={styles.premiumBannerContainer}>
-      <Animated.View style={{ transform: [{ scale: scaleAnim }], flex: 1 }}>
-        <Video
-          ref={videoRef}
-          source={{ uri: videoUrl }}
-          style={styles.premiumBannerVideo}
-          resizeMode="cover"
-          paused={!isVisible}
-          repeat={true}
-          muted={true}
-          volume={0}
-          playInBackground={false}
-          onError={handleVideoError}
-          onLoad={handleVideoLoad}
-          controls={false}
-          hideShutterView={true}
-          poster={thumbnailUrl || DEFAULT_BANNER_IMAGE}
-          posterResizeMode="cover"
-          rate={1.0}
-          bufferConfig={{
-            minBufferMs: 1000,
-            maxBufferMs: 5000,
-            bufferForPlaybackMs: 250,
-            bufferForPlaybackAfterRebufferMs: 500,
-          }}
-        />
-      </Animated.View>
-      <View style={[StyleSheet.absoluteFillObject, styles.premiumBannerOverlay]} />
-      {!isReady && (
-        <View style={StyleSheet.absoluteFillObject}>
-          <Image
-            source={{ uri: thumbnailUrl || DEFAULT_BANNER_IMAGE }}
-            style={styles.premiumBannerImage}
-            resizeMode="cover"
-          />
-          <View style={[StyleSheet.absoluteFillObject, styles.premiumBannerOverlay]} />
-        </View>
-      )}
-    </View>
-  );
-});
-
-// Premium Image Banner Component
-const PremiumImageBanner: React.FC<ImageBannerProps> = React.memo(({ imageUrl, thumbnailUrl }) => {
-  const scaleAnim = useRef(new Animated.Value(1.1)).current;
-
-  useEffect(() => {
-    Animated.timing(scaleAnim, {
-      toValue: 1,
-      duration: 6000,
-      useNativeDriver: true,
-      easing: Easing.out(Easing.cubic),
-    }).start();
-  }, [scaleAnim]);
-
-  return (
-    <View style={styles.premiumBannerContainer}>
-      <Animated.Image
-        source={{ uri: imageUrl || thumbnailUrl || DEFAULT_BANNER_IMAGE }}
-        style={[styles.premiumBannerImage, { transform: [{ scale: scaleAnim }] }]}
-        resizeMode="cover"
-      />
-      <View style={[StyleSheet.absoluteFillObject, styles.premiumBannerOverlay]} />
-    </View>
-  );
-});
-
-// Premium Banner Component
-const PremiumBannerComponent: React.FC<BannerComponentProps> = React.memo(({ banner, isVisible }) => {
-  if (!banner) {
-    return <PremiumImageBanner imageUrl={DEFAULT_BANNER_IMAGE} />;
-  }
-  
-  if (banner.document_type === 2) {
-    return (
-      <PremiumVideoBanner
-        videoUrl={banner.icon}
-        isVisible={isVisible}
-        thumbnailUrl={banner.thumbnail}
-      />
-    );
-  }
-  
-  return <PremiumImageBanner imageUrl={banner.icon} thumbnailUrl={banner.thumbnail} />;
-});
-
-// FIXED: Premium Header Offer Cards Component - Platform specific styling for proper transparency and alignment
-const PremiumHeaderOfferCards = React.memo(() => {
-  const navigation = useNavigation();
-  const [offers, setOffers] = useState<OfferCard[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // Load offers from AsyncStorage or use default
-  useEffect(() => {
-    loadOffers();
-  }, []);
-
-  const loadOffers = async () => {
-    try {
-      const storedOffers = await AsyncStorage.getItem(STORAGE_KEYS.HEADER_OFFERS);
-      if (storedOffers) {
-        setOffers(JSON.parse(storedOffers));
-      } else {
-        // Use default offers and save to storage - only active and first 2
-        const activeOffers = HEADER_OFFERS.filter(offer => offer.isActive).slice(0, 2);
-        setOffers(activeOffers);
-        await AsyncStorage.setItem(STORAGE_KEYS.HEADER_OFFERS, JSON.stringify(activeOffers));
+      if (autoPlayRef.current) {
+        clearInterval(autoPlayRef.current);
       }
-    } catch (error) {
-      console.error('Error loading header offers:', error);
-      setOffers(HEADER_OFFERS.filter(offer => offer.isActive).slice(0, 2));
-    } finally {
-      setLoading(false);
+    };
+  }, [activeIndex, banners.length, banners, onBannerChange]);
+
+  const handleScroll = useCallback((event: any) => {
+    const scrollPosition = event.nativeEvent.contentOffset.x;
+    const index = Math.round(scrollPosition / screenWidth);
+    if (index !== activeIndex && banners[index]) {
+      setActiveIndex(index);
+      if (onBannerChange && banners[index]) {
+        onBannerChange(banners[index]);
+      }
     }
+  }, [activeIndex, banners, onBannerChange]);
+
+  const handleBannerPressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.98,
+      useNativeDriver: true,
+    }).start();
   };
 
-  const navigateToOffer = useCallback((kitchenId: string, offer: OfferCard) => {
-    navigation.navigate('HomeKitchenDetails', { 
-      kitchenId,
-      offerDetails: {
-        title: offer.title,
-        discount: offer.discount,
-        offerCode: offer.offerCode
-      }
-    });
-  }, [navigation]);
+  const handleBannerPressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  };
 
-  // Animation values for each offer
-  const slideAnims = useRef(offers.map(() => new Animated.Value(50))).current;
-  const scaleAnims = useRef(offers.map(() => new Animated.Value(0.9))).current;
-
-  useEffect(() => {
-    // Update animations when offers change
-    if (slideAnims.length !== offers.length) {
-      // Reinitialize animations if offers length changes
-      while (slideAnims.length < offers.length) {
-        slideAnims.push(new Animated.Value(50));
-        scaleAnims.push(new Animated.Value(0.9));
-      }
-    }
-
-    const animations = offers.flatMap((_, index) => [
-      Animated.spring(slideAnims[index], {
-        toValue: 0,
-        useNativeDriver: true,
-        damping: 15,
-        delay: 200 + (index * 100),
-      }),
-      Animated.spring(scaleAnims[index], {
-        toValue: 1,
-        useNativeDriver: true,
-        damping: 15,
-        delay: 200 + (index * 100),
-      }),
-    ]);
-
-    Animated.parallel(animations).start();
-  }, [offers]);
-
-  if (loading || offers.length === 0) {
-    return null;
-  }
-
-  return (
-    <View style={styles.premiumHeaderOfferCardsContainer}>
-      {offers.map((offer, index) => (
-        <Animated.View 
-          key={offer.id}
-          style={[
-            styles.premiumHeaderOfferCard,
-            {
-              transform: [
-                { translateX: slideAnims[index] || new Animated.Value(50) },
-                { scale: scaleAnims[index] || new Animated.Value(0.9) }
-              ]
-            }
-          ]}
+  const renderBanner = ({ item, index }: { item: Banner; index: number }) => {
+    const bgColor = item.theme?.bg_color || COLORS.primary;
+    const textColor = item.theme?.text_color || '#FFFFFF';
+    
+    return (
+      <Animated.View
+        style={[
+          styles.main_app_banner_wrapper,
+          {
+            transform: [{ scale: activeIndex === index ? 1 : 0.98 }],
+          },
+        ]}
+      >
+        <TouchableOpacity
+          activeOpacity={0.95}
+          onPress={() => onBannerPress?.(item)}
+          onPressIn={handleBannerPressIn}
+          onPressOut={handleBannerPressOut}
+          style={styles.main_app_banner_card}
         >
-          <TouchableOpacity 
-            activeOpacity={0.95} 
-            onPress={() => navigateToOffer(offer.kitchenId, offer)}
-            style={{ flex: 1 }}
-          >
-            {/* FIXED: Platform specific implementation for proper transparency */}
-            <View style={[
-              styles.premiumHeaderOfferCardContent,
-              { backgroundColor: offer.backgroundColor || 'rgba(229, 92, 24, 0.85)' }
-            ]}>
-              {/* iOS: Use BlurView for glass effect */}
-              {Platform.OS === 'ios' && (
-                <BlurView
-                  style={StyleSheet.absoluteFillObject}
-                  blurType="light"
-                  blurAmount={10}
-                  reducedTransparencyFallbackColor={offer.backgroundColor || 'rgba(229, 92, 24, 0.85)'}
-                />
-              )}
-              
-              {/* Android: Use additional semi-transparent overlay for better transparency effect */}
-              {Platform.OS === 'android' && (
-                <View style={[
-                  StyleSheet.absoluteFillObject,
-                  styles.premiumHeaderOfferAndroidOverlay
-                ]} />
-              )}
-              
-              <View style={styles.premiumHeaderOfferInner}>
-                <View style={styles.premiumHeaderOfferContent}>
-                  <Text style={styles.premiumHeaderOfferTitle} numberOfLines={1}>
-                    {offer.title}
+          <View style={[styles.main_app_banner_container_solid, { backgroundColor: bgColor }]}>
+            <View style={styles.main_app_banner_decor}>
+              <Icon name="star" size={scale(60)} color="rgba(255,255,255,0.15)" style={styles.main_app_banner_decor1} />
+              <Icon name="ellipse" size={scale(80)} color="rgba(255,255,255,0.1)" style={styles.main_app_banner_decor2} />
+              <Icon name="flower" size={scale(50)} color="rgba(255,255,255,0.08)" style={styles.main_app_banner_decor3} />
+            </View>
+
+            <View style={styles.main_app_banner_content}>
+              <View style={styles.main_app_banner_left_content}>
+                <View style={[styles.main_app_banner_badge, { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
+                  <Text style={[styles.main_app_banner_badge_text, { color: textColor }]}>
+                    {item.offer?.banner_type === 'cuisine' ? 'Cuisine Special' : 
+                     item.offer?.banner_type === 'dessert' ? 'Dessert Delight' : 
+                     item.offer?.banner_type === 'special' ? 'Special Offer' : 'Limited Offer'}
                   </Text>
-                  <Text style={styles.premiumHeaderOfferSubtitle} numberOfLines={1}>
-                    {offer.subtitle}
-                  </Text>
-                  
-                  {offer.offerCode && (
-                    <View style={styles.premiumHeaderOfferChip}>
-                      <Text style={styles.premiumHeaderOfferChipText} numberOfLines={1}>
-                        Code: {offer.offerCode}
-                      </Text>
-                    </View>
-                  )}
                 </View>
-                
-                <View style={styles.premiumHeaderOfferImageContainer}>
-                  <Image 
-                    source={{ uri: offer.image }} 
-                    style={styles.premiumHeaderOfferImage}
-                    resizeMode="cover"
-                  />
+                <Text style={[styles.main_app_banner_title, { color: textColor }]}>
+                  {item.title}
+                </Text>
+                <Text style={[styles.main_app_banner_subtitle, { color: textColor }]} numberOfLines={2}>
+                  {item.subtitle}
+                </Text>
+                <View style={[styles.main_app_banner_chip, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                  <Icon name="pricetag-outline" size={scale(14)} color={textColor} />
+                  <Text style={[styles.main_app_banner_chip_text, { color: textColor }]}>
+                    Get {item.offer?.discount || 'Special Deal'}
+                  </Text>
+                  <Icon name="arrow-forward" size={scale(14)} color={textColor} />
+                </View>
+              </View>
+              
+              <View style={styles.main_app_banner_right_content}>
+                <Image 
+                  source={{ uri: item.image_url }} 
+                  style={styles.main_app_banner_image}
+                  resizeMode="cover"
+                />
+                <View style={[styles.main_app_banner_image_overlay, { backgroundColor: 'rgba(0,0,0,0.2)' }]} />
+                <View style={[styles.main_app_banner_discount_badge, { backgroundColor: '#FFFFFF' }]}>
+                  <Text style={[styles.main_app_banner_discount_text, { color: COLORS.primary }]}>
+                    {item.offer?.discount || 'OFF'}
+                  </Text>
                 </View>
               </View>
             </View>
-          </TouchableOpacity>
-        </Animated.View>
-      ))}
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+
+  if (banners.length === 0) return null;
+
+  return (
+    <View style={styles.main_app_banner_container}>
+      <FlatList
+        ref={flatListRef}
+        data={banners}
+        renderItem={renderBanner}
+        keyExtractor={(item) => item.id.toString()}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        decelerationRate="fast"
+        bounces={false}
+      />
     </View>
   );
 });
 
-// Premium Address Header Component
-const PremiumAddressHeader = React.memo(({ isGuest, onAddressUpdate }: AddressHeaderLeftProps) => {
+// ============== OFFERS CATEGORY CARD ==============
+
+const OffersCategoryCard = ({ onPress }: { onPress: () => void }) => {
+  const [scaleAnim] = useState(new Animated.Value(1));
+  const [glowAnim] = useState(new Animated.Value(0));
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(scaleAnim, {
+          toValue: 1.05,
+          duration: 1000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 1000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(glowAnim, {
+          toValue: 0,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
+
+  const glowIntensity = glowAnim.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0.3, 1, 0.3],
+  });
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.8}
+      style={styles.main_app_offers_category_card_wrapper}
+    >
+      <Animated.View
+        style={[
+          styles.main_app_offers_category_card,
+          {
+            transform: [{ scale: scaleAnim }],
+            backgroundColor: COLORS.primary,
+          },
+        ]}
+      >
+        <View style={styles.main_app_offers_category_particles}>
+          <Icon name="star" size={scale(20)} color="rgba(255,255,255,0.3)" style={styles.main_app_offers_particle1} />
+          <Icon name="star" size={scale(15)} color="rgba(255,255,255,0.2)" style={styles.main_app_offers_particle2} />
+          <Icon name="ellipse" size={scale(30)} color="rgba(255,255,255,0.1)" style={styles.main_app_offers_particle3} />
+        </View>
+
+        <View style={styles.main_app_offers_category_icon_container}>
+          <Icon name="pricetag-outline" size={scale(28)} color="#FFFFFF" />
+        </View>
+
+        <Animated.View
+          style={[
+            styles.main_app_offers_category_badge,
+            { opacity: glowIntensity, backgroundColor: '#FFFFFF' },
+          ]}
+        >
+          <Text style={styles.main_app_offers_category_badge_text}>🔥</Text>
+        </Animated.View>
+      </Animated.View>
+      
+      <Text style={styles.main_app_offers_category_text}>Offers</Text>
+    </TouchableOpacity>
+  );
+};
+
+// ============== COMPONENTS ==============
+
+const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCollapsed }: AddressHeaderLeftProps) => {
   const navigation = useNavigation<any>();
   const [location, setLocation] = useState<LocationData>({
-    address: 'Delivering to...',
+    address: 'Select location',
     loading: true,
     error: null,
     coords: null,
@@ -793,25 +898,10 @@ const PremiumAddressHeader = React.memo(({ isGuest, onAddressUpdate }: AddressHe
   });
 
   const [appState, setAppState] = useState(AppState.currentState);
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const [locationRetryCount, setLocationRetryCount] = useState(0);
+  const locationWatchId = useRef<number | null>(null);
 
-  const handlePressIn = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 0.98,
-      useNativeDriver: true,
-      damping: 15,
-    }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      useNativeDriver: true,
-      damping: 15,
-    }).start();
-  };
-
-  const truncateAddress = (address: string, maxWords: number = 4) => {
+  const truncateAddress = (address: string, maxWords: number = 3) => {
     if (!address) return '';
     const words = address.split(' ');
     if (words.length <= maxWords) return address;
@@ -890,9 +980,7 @@ const PremiumAddressHeader = React.memo(({ isGuest, onAddressUpdate }: AddressHe
       });
 
       const addressData = response?.data;
-      if (!addressData) {
-        return false;
-      }
+      if (!addressData) return false;
 
       const { id, full_address, home_type } = addressData;
       const isExisting = Boolean(id);
@@ -928,43 +1016,20 @@ const PremiumAddressHeader = React.memo(({ isGuest, onAddressUpdate }: AddressHe
     }
   }, [isGuest, saveAddressDetails, onAddressUpdate]);
 
-  const checkLocationEnabled = useCallback(async (): Promise<boolean> => {
-    return new Promise((resolve) => {
-      Geolocation.getCurrentPosition(
-        () => resolve(true),
-        (error) => {
-          if (error.code === 1 || error.code === 2) {
-            resolve(false);
-          } else {
-            resolve(true);
-          }
-        },
-        { 
-          enableHighAccuracy: false, 
-          timeout: 3000, 
-          maximumAge: 10000 
-        }
-      );
-    });
-  }, []);
-
   const requestLocationPermission = useCallback(async (): Promise<boolean> => {
     if (Platform.OS === 'ios') {
       return new Promise((resolve) => {
         Geolocation.getCurrentPosition(
           () => resolve(true),
           (error) => {
+            console.log('iOS location error:', error);
             if (error.code === 1) {
               resolve(false);
             } else {
               resolve(true);
             }
           },
-          { 
-            enableHighAccuracy: false, 
-            timeout: 5000, 
-            maximumAge: 60000 
-          }
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
         );
       });
     } else {
@@ -974,20 +1039,34 @@ const PremiumAddressHeader = React.memo(({ isGuest, onAddressUpdate }: AddressHe
         );
         
         if (hasPermission) {
+          console.log('Location permission already granted');
           return true;
         }
 
         const granted = await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
           {
-            title: 'Location Permission',
-            message: 'This app needs access to your location to show nearby restaurants',
+            title: 'Location Permission Required',
+            message: 'Eatoor needs access to your location to show nearby restaurants and provide accurate delivery estimates.',
             buttonPositive: 'Allow',
             buttonNegative: 'Deny',
+            buttonNeutral: 'Ask Me Later',
           }
         );
 
-        return granted === PermissionsAndroid.RESULTS.GRANTED;
+        console.log('Permission request result:', granted);
+        
+        if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+          console.log('Location permission granted');
+          return true;
+        } else if (granted === PermissionsAndroid.RESULTS.DENIED) {
+          console.log('Location permission denied');
+          return false;
+        } else if (granted === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
+          console.log('Location permission permanently denied');
+          return false;
+        }
+        return false;
       } catch (error) {
         console.error('Error requesting permission:', error);
         return false;
@@ -995,12 +1074,36 @@ const PremiumAddressHeader = React.memo(({ isGuest, onAddressUpdate }: AddressHe
     }
   }, []);
 
-  const getCurrentLocation = useCallback(async (): Promise<void> => {
+  const checkLocationServices = useCallback(async (): Promise<boolean> => {
+    if (Platform.OS === 'android') {
+      try {
+        const position = await new Promise<Geolocation.GeoPosition>((resolve, reject) => {
+          Geolocation.getCurrentPosition(
+            resolve,
+            reject,
+            {
+              enableHighAccuracy: false,
+              timeout: 3000,
+              maximumAge: 0,
+            }
+          );
+        });
+        return !!position;
+      } catch (error) {
+        console.log('Location services check failed:', error);
+        return false;
+      }
+    }
+    return true;
+  }, []);
+
+  const getCurrentLocation = useCallback(async (retryCount = 0): Promise<void> => {
     setLocation(prev => ({ ...prev, loading: true, error: null }));
 
     try {
       const savedDetails = await getSavedAddressDetails();
       if (savedDetails.address && savedDetails.coords) {
+        console.log('Using saved address:', savedDetails.address);
         setLocation(prev => ({
           ...prev,
           address: savedDetails.address,
@@ -1016,8 +1119,9 @@ const PremiumAddressHeader = React.memo(({ isGuest, onAddressUpdate }: AddressHe
         return;
       }
 
-      const locationEnabled = await checkLocationEnabled();
-      if (!locationEnabled) {
+      const areServicesEnabled = await checkLocationServices();
+      if (!areServicesEnabled) {
+        console.log('Location services are disabled');
         setLocation(prev => ({
           ...prev,
           address: 'Location services disabled',
@@ -1031,6 +1135,7 @@ const PremiumAddressHeader = React.memo(({ isGuest, onAddressUpdate }: AddressHe
 
       const hasPermission = await requestLocationPermission();
       if (!hasPermission) {
+        console.log('Location permission not granted');
         setLocation(prev => ({
           ...prev,
           address: 'Location permission required',
@@ -1042,30 +1147,76 @@ const PremiumAddressHeader = React.memo(({ isGuest, onAddressUpdate }: AddressHe
         return;
       }
 
+      console.log('Fetching current location...');
+      
       const position = await new Promise<Geolocation.GeoPosition>((resolve, reject) => {
         Geolocation.getCurrentPosition(
           resolve,
           reject,
           {
-            enableHighAccuracy: Platform.OS === 'ios',
-            timeout: Platform.OS === 'ios' ? 15000 : 30000,
-            maximumAge: 10000,
-            distanceFilter: 50,
+            enableHighAccuracy: true,
+            timeout: 20000,
+            maximumAge: 0,
+            distanceFilter: 0,
           }
         );
       });
 
       const { latitude, longitude } = position.coords;
+      console.log('Location fetched:', latitude, longitude);
+      
+      setLocationRetryCount(0);
       await checkLocationInDatabase(latitude, longitude);
       
     } catch (error: any) {
-      let errorMessage = 'Error getting location';
+      console.error('Error getting location:', error);
+      
+      let errorMessage = 'Unable to get location';
       let promptForEnable = false;
       let promptForPermission = false;
       
       if (error.code === 2 || error.code === 3) {
-        errorMessage = error.message || 'Location unavailable';
+        errorMessage = error.code === 2 
+          ? 'Location unavailable. Please enable GPS and move to an open area.'
+          : 'Location request timed out. Please ensure GPS is enabled and try again.';
         promptForEnable = true;
+        
+        if (retryCount < 3) {
+          console.log(`Retrying location fetch (attempt ${retryCount + 1}/3)...`);
+          setTimeout(() => {
+            getCurrentLocation(retryCount + 1);
+          }, 3000);
+          return;
+        }
+        
+        if (retryCount === 3 && !locationWatchId.current) {
+          console.log('Attempting watchPosition fallback...');
+          locationWatchId.current = Geolocation.watchPosition(
+            (pos) => {
+              const { latitude, longitude } = pos.coords;
+              console.log('Watch position success:', latitude, longitude);
+              checkLocationInDatabase(latitude, longitude);
+              if (locationWatchId.current) {
+                Geolocation.clearWatch(locationWatchId.current);
+                locationWatchId.current = null;
+              }
+            },
+            (watchError) => {
+              console.error('Watch position error:', watchError);
+              if (locationWatchId.current) {
+                Geolocation.clearWatch(locationWatchId.current);
+                locationWatchId.current = null;
+              }
+            },
+            {
+              enableHighAccuracy: false,
+              timeout: 30000,
+              maximumAge: 10000,
+              distanceFilter: 10,
+            }
+          );
+          return;
+        }
       } else if (error.code === 1) {
         errorMessage = 'Location permission denied';
         promptForPermission = true;
@@ -1077,9 +1228,6 @@ const PremiumAddressHeader = React.memo(({ isGuest, onAddressUpdate }: AddressHe
           STORAGE_KEYS.LATITUDE,
           STORAGE_KEYS.LONGITUDE,
         ]);
-      } else if (error.message?.includes('disabled')) {
-        errorMessage = 'Location services disabled';
-        promptForEnable = true;
       }
       
       setLocation(prev => ({
@@ -1092,11 +1240,20 @@ const PremiumAddressHeader = React.memo(({ isGuest, onAddressUpdate }: AddressHe
         loading: false,
       }));
     }
-  }, [checkLocationEnabled, requestLocationPermission, checkLocationInDatabase, getSavedAddressDetails, onAddressUpdate]);
+  }, [requestLocationPermission, checkLocationInDatabase, getSavedAddressDetails, onAddressUpdate, checkLocationServices]);
+
+  useEffect(() => {
+    return () => {
+      if (locationWatchId.current) {
+        Geolocation.clearWatch(locationWatchId.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
       if (appState.match(/inactive|background/) && nextAppState === 'active') {
+        setLocationRetryCount(0);
         getCurrentLocation();
       }
       setAppState(nextAppState);
@@ -1111,69 +1268,27 @@ const PremiumAddressHeader = React.memo(({ isGuest, onAddressUpdate }: AddressHe
   );
 
   const showLocationSettingsAlert = useCallback(() => {
-    Alert.alert(
-      'Location Services Required',
-      'To find restaurants near you, please enable location services',
-      [
-        {
-          text: 'Not Now',
-          style: 'cancel',
-          onPress: () => setLocation(prev => ({ ...prev, showEnableLocationPrompt: false }))
-        },
-        {
-          text: 'Open Settings',
-          onPress: async () => {
-            setLocation(prev => ({ ...prev, showEnableLocationPrompt: false }));
-            await Linking.openSettings();
-          },
-        },
-      ]
-    );
+    if (Platform.OS === 'android') {
+      Linking.sendIntent('android.settings.LOCATION_SOURCE_SETTINGS');
+    } else {
+      Linking.openURL('app-settings:');
+    }
   }, []);
 
   const showPermissionAlert = useCallback(() => {
-    Alert.alert(
-      'Location Permission Required',
-      'This app needs access to your location to show nearby restaurants',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-          onPress: () => setLocation(prev => ({ ...prev, showPermissionPrompt: false }))
-        },
-        {
-          text: 'Allow',
-          onPress: async () => {
-            setLocation(prev => ({ ...prev, showPermissionPrompt: false }));
-            const granted = await requestLocationPermission();
-            if (granted) {
-              getCurrentLocation();
-            } else {
-              Alert.alert(
-                'Permission Denied',
-                'To enable location, please grant permission in app settings',
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'Open Settings', onPress: () => Linking.openSettings() },
-                ]
-              );
-            }
-          },
-        },
-      ]
-    );
+    requestLocationPermission().then(granted => {
+      if (granted) {
+        getCurrentLocation();
+      }
+    });
   }, [getCurrentLocation, requestLocationPermission]);
 
   useEffect(() => {
-    if (location.showEnableLocationPrompt) {
-      showLocationSettingsAlert();
-    }
+    if (location.showEnableLocationPrompt) showLocationSettingsAlert();
   }, [location.showEnableLocationPrompt, showLocationSettingsAlert]);
 
   useEffect(() => {
-    if (location.showPermissionPrompt) {
-      showPermissionAlert();
-    }
+    if (location.showPermissionPrompt) showPermissionAlert();
   }, [location.showPermissionPrompt, showPermissionAlert]);
 
   const handleAddressPress = useCallback(() => {
@@ -1216,281 +1331,381 @@ const PremiumAddressHeader = React.memo(({ isGuest, onAddressUpdate }: AddressHe
 
   const displayAddress = location.loading 
     ? 'Fetching location...' 
-    : location.error || truncateAddress(location.address, 4);
+    : location.error || truncateAddress(location.address, 3);
 
-  return (
-    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+  const textColor = bannerColors?.textColor || COLORS.text.primary;
+  const secondaryTextColor = bannerColors?.textColor ? `${bannerColors.textColor}CC` : COLORS.text.secondary;
+
+  if (isCollapsed) {
+    return (
       <TouchableOpacity
         onPress={handleAddressPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        activeOpacity={0.9}
-        style={styles.premiumAddressContainer}
+        activeOpacity={0.7}
+        style={styles.main_app_collapsed_address_container}
       >
-        <View>
-          <View>
-            <View style={styles.premiumAddressHomeTypeRow}>
-              <Text style={styles.premiumAddressHomeTypeLabel} numberOfLines={1}>
-                {location.loading ? 'Fetching...' : location.homeType}
-              </Text>
-              <Icon name="chevron-down" size={scale(12)} color="#FFFFFF" />
-            </View>
-            <Text style={styles.premiumAddressMainLabel} numberOfLines={1}>
-              {displayAddress}
-            </Text>
-          </View>
-        </View>
+        <Icon name="location-outline" size={scale(18)} color={textColor} />
+        <Text style={[styles.main_app_collapsed_address_text, { color: textColor }]} numberOfLines={1}>
+          {displayAddress}
+        </Text>
+        <Icon name="chevron-down" size={scale(14)} color={secondaryTextColor} />
       </TouchableOpacity>
-    </Animated.View>
-  );
-});
-
-// Premium Search Bar Component - iOS Optimized
-const PremiumSearchBar: React.FC<SearchInputProps> = React.memo(({ onPress, placeholder }) => {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const translateYAnim = useRef(new Animated.Value(0)).current;
-
-  const handlePressIn = () => {
-    Animated.parallel([
-      Animated.spring(scaleAnim, {
-        toValue: 0.98,
-        useNativeDriver: true,
-        damping: 15,
-      }),
-      Animated.spring(translateYAnim, {
-        toValue: -2,
-        useNativeDriver: true,
-        damping: 15,
-      }),
-    ]).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.parallel([
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-        damping: 15,
-      }),
-      Animated.spring(translateYAnim, {
-        toValue: 0,
-        useNativeDriver: true,
-        damping: 15,
-      }),
-    ]).start();
-  };
-
-  // iOS specific styles
-  const iosStyles = Platform.select({
-    ios: {
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.2,
-      shadowRadius: 12,
-    },
-    android: {}
-  });
+    );
+  }
 
   return (
-    <Animated.View style={{
-      transform: [{ scale: scaleAnim }, { translateY: translateYAnim }],
-      width: '100%',
-    }}>
-      <TouchableOpacity
-        onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        activeOpacity={0.95}
-        style={[styles.premiumSearchContainer, iosStyles]}
-      >
-        {Platform.OS === 'ios' ? (
-          <BlurView
-            style={StyleSheet.absoluteFillObject}
-            blurType="light"
-            blurAmount={20}
-            reducedTransparencyFallbackColor="rgba(255,255,255,0.3)"
-          />
-        ) : (
-          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(255,255,255,0.25)' }]} />
-        )}
-        <View style={styles.premiumSearchContent}>
-          <View style={styles.premiumSearchIconWrapper}>
-            <Icon name="search" size={scale(18)} color="#FFFFFF" />
-          </View>
-          <Text style={styles.premiumSearchPlaceholder} numberOfLines={1}>
-            {placeholder}
+    <TouchableOpacity
+      onPress={handleAddressPress}
+      activeOpacity={0.7}
+      style={styles.main_app_address_container}
+    >
+      <View style={styles.main_app_address_content}>
+        <Text style={[styles.main_app_address_home_type, { color: textColor }]} numberOfLines={1}>
+          {location.loading ? '...' : location.homeType}
+        </Text>
+        <View style={styles.main_app_address_row}>
+          <Icon name="location-outline" size={scale(16)} color={secondaryTextColor} />
+          <Text style={[styles.main_app_address_text, { color: secondaryTextColor }]} numberOfLines={1}>
+            {displayAddress}
           </Text>
+          <Icon name="chevron-down" size={scale(16)} color={secondaryTextColor} />
         </View>
-      </TouchableOpacity>
-    </Animated.View>
+      </View>
+    </TouchableOpacity>
   );
 });
 
-// Premium Category Card Component
-const PremiumCategoryCard = ({ 
-  category, 
-  isActive, 
-  onPress,
-  index 
-}: { 
-  category: Category; 
-  isActive: boolean; 
-  onPress: () => void;
-  index: number;
-}) => {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const translateYAnim = useRef(new Animated.Value(20)).current;
+const SearchBar: React.FC<SearchInputProps> = React.memo(({ onPress, placeholder, bannerColors, isCollapsed }) => {
+  const searchBgColor = bannerColors?.backgroundColor 
+    ? `${bannerColors.backgroundColor}E6`
+    : 'rgba(255, 255, 255, 0.95)';
+    
+  const borderColor = bannerColors?.textColor 
+    ? `${bannerColors.textColor}40` 
+    : COLORS.border.default;
+  
+  const textColor = bannerColors?.textColor || COLORS.text.primary;
+  const iconColor = bannerColors?.textColor || COLORS.text.secondary;
 
-  useEffect(() => {
-    Animated.timing(translateYAnim, {
-      toValue: 0,
-      duration: 300,
-      delay: index * 50,
-      useNativeDriver: true,
-      easing: Easing.out(Easing.cubic),
-    }).start();
-  }, [index, translateYAnim]);
-
-  const handlePressIn = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 0.92,
-      useNativeDriver: true,
-      damping: 15,
-    }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      useNativeDriver: true,
-      damping: 15,
-    }).start();
-  };
-
-  return (
-    <Animated.View style={{
-      transform: [{ scale: scaleAnim }, { translateY: translateYAnim }],
-      opacity: translateYAnim.interpolate({
-        inputRange: [0, 20],
-        outputRange: [1, 0],
-        extrapolate: 'clamp',
-      }),
-    }}>
+  if (isCollapsed) {
+    return (
       <TouchableOpacity
         onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
         activeOpacity={0.9}
         style={[
-          styles.premiumCategoryCard,
-          isActive && styles.premiumCategoryCardActive
+          styles.main_app_collapsed_search_container,
+          { 
+            backgroundColor: searchBgColor, 
+            borderColor: borderColor,
+          }
         ]}
       >
-        <View style={[
-          styles.premiumCategoryIconContainer,
-          isActive && styles.premiumCategoryIconContainerActive
-        ]}>
-          <Image 
-            source={{ uri: category.icon || DEFAULT_CATEGORY_ICON }} 
-            style={styles.premiumCategoryIcon}
-            resizeMode="cover"
-            defaultSource={{ uri: DEFAULT_CATEGORY_ICON }}
-          />
-        </View>
-        <Text style={[
-          styles.premiumCategoryText,
-          isActive && styles.premiumCategoryTextActive
-        ]} numberOfLines={1}>
-          {category.name}
+        <Icon name="search-outline" size={scale(18)} color={iconColor} />
+        <Text style={[styles.main_app_collapsed_search_placeholder, { color: textColor }]} numberOfLines={1}>
+          {placeholder}
         </Text>
       </TouchableOpacity>
-    </Animated.View>
-  );
-}
-
-// Sticky Categories Header Component
-const StickyCategoriesHeader = React.memo(({ 
-  categories, 
-  activeCategory, 
-  onCategoryPress,
-  visible 
-}: { 
-  categories: Category[];
-  activeCategory: number | null;
-  onCategoryPress: (id: number, name: string) => void;
-  visible: boolean;
-}) => {
-  const translateY = useRef(new Animated.Value(-100)).current;
-
-  useEffect(() => {
-    Animated.timing(translateY, {
-      toValue: visible ? 0 : -100,
-      duration: 300,
-      useNativeDriver: true,
-      easing: Easing.out(Easing.cubic),
-    }).start();
-  }, [visible, translateY]);
-
-  if (!visible) return null;
+    );
+  }
 
   return (
-    <Animated.View style={[
-      styles.stickyCategoriesContainer,
-      {
-        transform: [{ translateY }],
-      }
-    ]}>
-      {Platform.OS === 'ios' ? (
-        <BlurView
-          style={StyleSheet.absoluteFillObject}
-          blurType="light"
-          blurAmount={20}
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.9}
+      style={[
+        styles.main_app_search_container,
+        { 
+          backgroundColor: searchBgColor, 
+          borderColor: borderColor,
+          ...Platform.select({
+            ios: {
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.05,
+              shadowRadius: 4,
+            },
+            android: {
+              elevation: 2,
+            },
+          }),
+        }
+      ]}
+    >
+      <View style={styles.main_app_search_content}>
+        <Icon name="search-outline" size={scale(20)} color={iconColor} />
+        <Text style={[styles.main_app_search_placeholder, { color: textColor }]} numberOfLines={1}>
+          {placeholder}
+        </Text>
+        <View style={[styles.main_app_search_filter, { backgroundColor: `${bannerColors?.backgroundColor || COLORS.border.light}30` }]}>
+          <Icon name="options-outline" size={scale(18)} color={iconColor} />
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+const HeaderAction = React.memo(({ onPress, icon, color, isCollapsed }: { onPress: () => void; icon: string; color?: string; isCollapsed?: boolean }) => (
+  <TouchableOpacity 
+    style={[styles.main_app_header_action, isCollapsed && styles.main_app_collapsed_header_action]}
+    onPress={onPress}
+  >
+    <Icon name={icon} size={isCollapsed ? scale(20) : scale(24)} color={color || COLORS.text.primary} />
+  </TouchableOpacity>
+));
+
+const CollapsedHeader = React.memo(({ 
+  isGuest, 
+  onAddressUpdate, 
+  onSearchPress,
+  onFavoritePress,
+  onWalletPress,
+  onProfilePress,
+  placeholder,
+  bannerColors,
+  opacity
+}: { 
+  isGuest: boolean;
+  onAddressUpdate?: (address: string, homeType: string) => void;
+  onSearchPress: () => void;
+  onFavoritePress: () => void;
+  onWalletPress: () => void;
+  onProfilePress: () => void;
+  placeholder: string;
+  bannerColors?: {
+    backgroundColor: string;
+    textColor: string;
+  };
+  opacity: Animated.AnimatedInterpolation;
+}) => {
+  const insets = useSafeAreaInsets();
+  
+  const headerBgColor = bannerColors?.backgroundColor || '#FFFFFF';
+  const textColor = bannerColors?.textColor || COLORS.text.primary;
+
+  return (
+    <Animated.View 
+      style={[
+        styles.main_app_collapsed_header, 
+        { 
+          backgroundColor: headerBgColor, 
+          paddingTop: insets.top,
+          opacity: opacity,
+          transform: [{ translateY: 0 }]
+        }
+      ]}
+    >
+      <View style={styles.main_app_collapsed_header_content}>
+        <AddressHeader 
+          isGuest={isGuest} 
+          onAddressUpdate={onAddressUpdate} 
+          bannerColors={bannerColors}
+          isCollapsed={true}
         />
-      ) : (
-        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#FFFFFF' }]} />
-      )}
-      <View style={styles.stickyCategoriesContent}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.stickyCategoriesScrollContent}
-        >
-          {categories.map((category, index) => (
-            <TouchableOpacity
-              key={category.id}
-              style={[
-                styles.stickyCategoryItem,
-                activeCategory === index && styles.stickyCategoryItemActive
-              ]}
-              onPress={() => onCategoryPress(category.id, category.name)}
-              activeOpacity={0.7}
-            >
-              <View style={[
-                styles.stickyCategoryIconWrapper,
-                activeCategory === index && styles.stickyCategoryIconWrapperActive
-              ]}>
-                <Image 
-                  source={{ uri: category.icon || DEFAULT_CATEGORY_ICON }} 
-                  style={styles.stickyCategoryIcon}
-                  resizeMode="cover"
-                />
-              </View>
-              <Text style={[
-                styles.stickyCategoryText,
-                activeCategory === index && styles.stickyCategoryTextActive
-              ]} numberOfLines={1}>
-                {category.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        <SearchBar 
+          onPress={onSearchPress} 
+          placeholder={placeholder} 
+          bannerColors={bannerColors}
+          isCollapsed={true}
+        />
+        <View style={styles.main_app_collapsed_header_actions}>
+          <HeaderAction 
+            onPress={onFavoritePress}
+            icon="heart-outline"
+            color={textColor}
+            isCollapsed={true}
+          />
+          <HeaderAction 
+            onPress={onWalletPress}
+            icon="wallet-outline"
+            color={textColor}
+            isCollapsed={true}
+          />
+          <HeaderAction 
+            onPress={onProfilePress}
+            icon="person-outline"
+            color={textColor}
+            isCollapsed={true}
+          />
+        </View>
       </View>
     </Animated.View>
   );
 });
 
-// Premium Restaurant Card Component
-const PremiumRestaurantCard = ({ 
+const IntegratedHeader = React.memo(({ 
+  isGuest, 
+  onAddressUpdate, 
+  onSearchPress,
+  onFavoritePress,
+  onWalletPress,
+  onProfilePress,
+  placeholder,
+  banners,
+  onBannerPress,
+  onBannerChange,
+  bannerColors,
+  scrollY,
+  collapsedOpacity
+}: { 
+  isGuest: boolean;
+  onAddressUpdate?: (address: string, homeType: string) => void;
+  onSearchPress: () => void;
+  onFavoritePress: () => void;
+  onWalletPress: () => void;
+  onProfilePress: () => void;
+  placeholder: string;
+  banners: Banner[];
+  onBannerPress?: (banner: Banner) => void;
+  onBannerChange?: (banner: Banner) => void;
+  bannerColors?: {
+    backgroundColor: string;
+    textColor: string;
+  };
+  scrollY: Animated.Value;
+  collapsedOpacity: Animated.AnimatedInterpolation;
+}) => {
+  const insets = useSafeAreaInsets();
+  
+  const headerBgColor = bannerColors?.backgroundColor || '#FFFFFF';
+  const textColor = bannerColors?.textColor || COLORS.text.primary;
+
+  const headerTranslateY = scrollY.interpolate({
+    inputRange: [0, HEADER_HEIGHTS.expanded - HEADER_HEIGHTS.collapsed],
+    outputRange: [0, -(HEADER_HEIGHTS.expanded - HEADER_HEIGHTS.collapsed)],
+    extrapolate: 'clamp',
+  });
+
+  const headerOpacity = scrollY.interpolate({
+    inputRange: [0, HEADER_HEIGHTS.expanded - HEADER_HEIGHTS.collapsed - 50, HEADER_HEIGHTS.expanded - HEADER_HEIGHTS.collapsed],
+    outputRange: [1, 0.8, 0],
+    extrapolate: 'clamp',
+  });
+
+  const bannerScale = scrollY.interpolate({
+    inputRange: [0, HEADER_HEIGHTS.expanded - HEADER_HEIGHTS.collapsed],
+    outputRange: [1, 0.85],
+    extrapolate: 'clamp',
+  });
+
+  const bannerOpacity = scrollY.interpolate({
+    inputRange: [0, HEADER_HEIGHTS.expanded - HEADER_HEIGHTS.collapsed - 60, HEADER_HEIGHTS.expanded - HEADER_HEIGHTS.collapsed],
+    outputRange: [1, 0.5, 0],
+    extrapolate: 'clamp',
+  });
+
+  const searchBarScale = scrollY.interpolate({
+    inputRange: [0, HEADER_HEIGHTS.expanded - HEADER_HEIGHTS.collapsed],
+    outputRange: [1, 0.92],
+    extrapolate: 'clamp',
+  });
+
+  const addressHeaderOpacity = scrollY.interpolate({
+    inputRange: [0, HEADER_HEIGHTS.expanded - HEADER_HEIGHTS.collapsed - 80],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
+  return (
+    <>
+      <Animated.View
+        style={[
+          styles.main_app_integrated_header,
+          {
+            transform: [{ translateY: headerTranslateY }],
+            opacity: headerOpacity,
+            backgroundColor: headerBgColor,
+            minHeight: HEADER_HEIGHTS.expanded,
+          },
+        ]}
+      >
+        <View style={[styles.main_app_integrated_header_content, { paddingTop: insets.top }]}>
+          <Animated.View style={[styles.main_app_header_top, { opacity: addressHeaderOpacity }]}>
+            <AddressHeader isGuest={isGuest} onAddressUpdate={onAddressUpdate} bannerColors={bannerColors} />
+            <View style={styles.main_app_header_actions}>
+              <HeaderAction 
+                onPress={onFavoritePress}
+                icon="heart-outline"
+                color={textColor}
+              />
+              <HeaderAction 
+                onPress={onWalletPress}
+                icon="wallet-outline"
+                color={textColor}
+              />
+              <HeaderAction 
+                onPress={onProfilePress}
+                icon="person-outline"
+                color={textColor}
+              />
+            </View>
+          </Animated.View>
+
+          <Animated.View style={[styles.main_app_search_wrapper, { transform: [{ scale: searchBarScale }] }]}>
+            <SearchBar onPress={onSearchPress} placeholder={placeholder} bannerColors={bannerColors} />
+          </Animated.View>
+
+          {banners.length > 0 && (
+            <Animated.View 
+              style={[
+                styles.main_app_header_banner_container,
+                {
+                  transform: [{ scale: bannerScale }],
+                  opacity: bannerOpacity,
+                }
+              ]}
+            >
+              <EnhancedBanner 
+                banners={banners}
+                onBannerPress={onBannerPress}
+                onBannerChange={onBannerChange}
+              />
+            </Animated.View>
+          )}
+        </View>
+      </Animated.View>
+
+      <CollapsedHeader
+        isGuest={isGuest}
+        onAddressUpdate={onAddressUpdate}
+        onSearchPress={onSearchPress}
+        onFavoritePress={onFavoritePress}
+        onWalletPress={onWalletPress}
+        onProfilePress={onProfilePress}
+        placeholder={placeholder}
+        bannerColors={bannerColors}
+        opacity={collapsedOpacity}
+      />
+    </>
+  );
+});
+
+const CategoryCard = ({ 
+  category, 
+  onPress 
+}: { 
+  category: Category; 
+  onPress: () => void;
+}) => {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      style={styles.main_app_category_card}
+    >
+      <View style={styles.main_app_category_icon_container}>
+        <Image 
+          source={{ uri: category.icon }} 
+          style={styles.main_app_category_icon}
+          resizeMode="cover"
+        />
+      </View>
+      <Text style={styles.main_app_category_text} numberOfLines={1}>
+        {category.name}
+      </Text>
+    </TouchableOpacity>
+  );
+};
+
+const RestaurantCard = ({ 
   kitchen, 
   onPress, 
   onToggleFavorite, 
@@ -1505,183 +1720,94 @@ const PremiumRestaurantCard = ({
   isGuest: boolean;
   isTopRestaurant?: boolean;
 }) => {
-  const [imageLoaded, setImageLoaded] = useState(false);
-  const [hasImageError, setHasImageError] = useState(false);
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const imageScaleAnim = useRef(new Animated.Value(1)).current;
-  const favoriteAnim = useRef(new Animated.Value(kitchen.is_favourite ? 1 : 0)).current;
-  
+  const navigation = useNavigation<any>();
   const rating = kitchen.rating || (Math.random() * 1 + 4.2).toFixed(1);
   const deliveryTime = kitchen.delivery_time?.replace('min', '').trim() || '25-35';
-  const discount = kitchen.discount || Math.floor(Math.random() * 30) + 20;
-
-  useEffect(() => {
-    Animated.spring(favoriteAnim, {
-      toValue: kitchen.is_favourite ? 1 : 0,
-      useNativeDriver: true,
-      damping: 15,
-    }).start();
-  }, [kitchen.is_favourite, favoriteAnim]);
-
-  const handlePressIn = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 0.98,
-      useNativeDriver: true,
-      damping: 15,
-    }).start();
-    Animated.spring(imageScaleAnim, {
-      toValue: 1.05,
-      useNativeDriver: true,
-      damping: 15,
-    }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      useNativeDriver: true,
-      damping: 15,
-    }).start();
-    Animated.spring(imageScaleAnim, {
-      toValue: 1,
-      useNativeDriver: true,
-      damping: 15,
-    }).start();
-  };
 
   const handleFavoritePress = (e: any) => {
     e.stopPropagation();
     if (isGuest) {
-      Alert.alert('Login Required', 'Please login to add favorites');
+      navigation.navigate('LoginScreen');
       return;
     }
     onToggleFavorite(kitchen.restaurant_id);
   };
 
-  const handleImageError = () => {
-    setHasImageError(true);
-    setImageLoaded(false);
-  };
-
-  const handleImageLoad = () => {
-    setImageLoaded(true);
-    setHasImageError(false);
-  };
-
-  const imageSource = hasImageError 
-    ? { uri: DEFAULT_RESTAURANT_IMAGE }
-    : { uri: kitchen.restaurant_image || DEFAULT_RESTAURANT_IMAGE };
-
   const cardWidth = isTopRestaurant 
-    ? (screenWidth - scale(48)) / 3.2
+    ? (screenWidth - scale(48)) / 2.5
     : (screenWidth - scale(48)) / 2;
 
   return (
-    <Animated.View style={{
-      transform: [{ scale: scaleAnim }],
-      width: cardWidth,
-    }}>
-      <TouchableOpacity
-        onPress={() => onPress(kitchen)}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        activeOpacity={0.95}
-        style={[
-          styles.premiumRestaurantCard,
-          isTopRestaurant && styles.premiumTopRestaurantCard
-        ]}
-      >
-        <View style={styles.premiumRestaurantImageContainer}>
-          <Animated.Image
-            source={imageSource}
-            style={[
-              styles.premiumRestaurantImage,
-              { transform: [{ scale: imageScaleAnim }] }
-            ]}
-            resizeMode="cover"
-            onLoad={handleImageLoad}
-            onError={handleImageError}
-            defaultSource={{ uri: DEFAULT_RESTAURANT_IMAGE }}
+    <TouchableOpacity
+      onPress={() => onPress(kitchen)}
+      activeOpacity={0.9}
+      style={[
+        styles.main_app_restaurant_card,
+        { width: cardWidth }
+      ]}
+    >
+      <View style={styles.main_app_restaurant_image_container}>
+        <Image 
+          source={{ uri: kitchen.restaurant_image }} 
+          style={styles.main_app_restaurant_image}
+          resizeMode="cover"
+        />
+        <TouchableOpacity 
+          style={[
+            styles.main_app_restaurant_favorite,
+            isTopRestaurant && styles.main_app_top_restaurant_favorite
+          ]}
+          onPress={handleFavoritePress}
+          disabled={favoriteLoading === kitchen.restaurant_id}
+        >
+          <Icon 
+            name={kitchen.is_favourite ? "heart" : "heart-outline"} 
+            size={isTopRestaurant ? scale(16) : scale(18)} 
+            color={kitchen.is_favourite ? COLORS.primary : "#FFFFFF"} 
           />
-          
-          {!imageLoaded && !hasImageError && (
-            <View style={styles.premiumRestaurantImagePlaceholder}>
-              <ActivityIndicator size="small" color={COLORS.primary} />
-            </View>
-          )}
-
-          <View style={styles.premiumRestaurantImageGradient} />
-
-          <TouchableOpacity 
-            style={[
-              styles.premiumRestaurantFavorite,
-              isTopRestaurant && styles.premiumTopRestaurantFavorite
-            ]}
-            onPress={handleFavoritePress}
-            disabled={favoriteLoading === kitchen.restaurant_id}
-          >
-            <Animated.View style={{
-              transform: [{
-                scale: favoriteAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [1, 1.2],
-                  extrapolate: 'clamp',
-                })
-              }]
-            }}>
-              <Icon 
-                name={kitchen.is_favourite ? "heart" : "heart-outline"} 
-                size={isTopRestaurant ? scale(16) : scale(20)} 
-                color={kitchen.is_favourite ? COLORS.primary : "#FFFFFF"} 
-              />
-            </Animated.View>
-          </TouchableOpacity>
-
-          {kitchen.is_new && (
-            <View style={styles.premiumRestaurantNewBadge}>
-              <Text style={styles.premiumRestaurantNewBadgeText}>NEW</Text>
-            </View>
-          )}
-        </View>
-
-        <View style={[
-          styles.premiumRestaurantInfo,
-          isTopRestaurant && styles.premiumTopRestaurantInfo
-        ]}>
-          <Text style={[
-            styles.premiumRestaurantName,
-            isTopRestaurant && styles.premiumTopRestaurantName
-          ]} numberOfLines={1}>
-            {kitchen.restaurant_name}
-          </Text>
-          
-          <View style={styles.premiumRestaurantMeta}>
-            <View style={styles.premiumRestaurantCuisine}>
-              <Text style={[
-                styles.premiumRestaurantCuisineText,
-                isTopRestaurant && styles.premiumTopRestaurantCuisineText
-              ]} numberOfLines={1}>
-                {kitchen.item_cuisines?.split(', ').slice(0, 1).join(' ') || 'Various'}
-              </Text>
-            </View>
-            <View style={styles.premiumRestaurantDelivery}>
-              <Icon2 name="clock-outline" size={isTopRestaurant ? scale(10) : scale(12)} color={COLORS.text.secondary} />
-              <Text style={[
-                styles.premiumRestaurantDeliveryText,
-                isTopRestaurant && styles.premiumTopRestaurantDeliveryText
-              ]}>{deliveryTime} min</Text>
-            </View>
+        </TouchableOpacity>
+        {kitchen.is_new && (
+          <View style={styles.main_app_restaurant_new_badge}>
+            <Text style={styles.main_app_restaurant_new_badge_text}>NEW</Text>
           </View>
+        )}
+      </View>
+      <View style={styles.main_app_restaurant_info}>
+        <Text style={[
+          styles.main_app_restaurant_name,
+          isTopRestaurant && styles.main_app_top_restaurant_name
+        ]} numberOfLines={1}>
+          {kitchen.restaurant_name}
+        </Text>
+        <Text style={[
+          styles.main_app_restaurant_cuisine,
+          isTopRestaurant && styles.main_app_top_restaurant_cuisine
+        ]} numberOfLines={1}>
+          {kitchen.item_cuisines?.split(', ').slice(0, 2).join(', ') || 'Various cuisines'}
+        </Text>
+        <View style={styles.main_app_restaurant_meta}>
+          <View style={styles.main_app_restaurant_rating}>
+            <Icon name="star" size={isTopRestaurant ? scale(10) : scale(12)} color="#FFB800" />
+            <Text style={[
+              styles.main_app_restaurant_rating_text,
+              isTopRestaurant && styles.main_app_top_restaurant_rating_text
+            ]}>{rating}</Text>
+          </View>
+          <View style={styles.main_app_restaurant_dot} />
+          <Text style={[
+            styles.main_app_restaurant_delivery,
+            isTopRestaurant && styles.main_app_top_restaurant_delivery
+          ]}>{deliveryTime} min</Text>
         </View>
-      </TouchableOpacity>
-    </Animated.View>
+      </View>
+    </TouchableOpacity>
   );
 };
 
-// Premium Active Order Card Component
-const PremiumActiveOrderCard = ({ 
+// Active Order Card Component (Simplified - No expand functionality)
+const ActiveOrderCard = ({ 
   order, 
-  onPress 
+  onPress
 }: { 
   order: ActiveOrder; 
   onPress: (order: ActiveOrder) => void;
@@ -1695,138 +1821,395 @@ const PremiumActiveOrderCard = ({
     'cancelled': '#FF7675',
   };
 
+  const statusIcons = {
+    'pending': 'time-outline',
+    'confirmed': 'checkmark-circle-outline',
+    'preparing': 'restaurant-outline',
+    'on-the-way': 'bicycle-outline',
+    'delivered': 'home-outline',
+    'cancelled': 'close-circle-outline',
+  };
+
+  const getStatusText = (status: string) => {
+    switch(status) {
+      case 'pending': return 'Pending';
+      case 'confirmed': return 'Confirmed';
+      case 'preparing': return 'Preparing';
+      case 'on-the-way': return 'On The Way';
+      case 'delivered': return 'Delivered';
+      case 'cancelled': return 'Cancelled';
+      default: return 'In Progress';
+    }
+  };
+
   return (
     <TouchableOpacity
       onPress={() => onPress(order)}
-      activeOpacity={0.95}
-      style={styles.premiumActiveOrderCard}
+      activeOpacity={0.9}
+      style={styles.active_order_card}
     >
-      <View style={styles.premiumActiveOrderContent}>
-        <Image 
-          source={{ 
-            uri: order.kitchenImage || DEFAULT_CATEGORY_ICON 
-          }} 
-          style={styles.premiumActiveOrderImage}
-          defaultSource={{ uri: DEFAULT_CATEGORY_ICON }}
-        />
+      <View style={styles.active_order_content}>
+        <View style={styles.active_order_image_container}>
+          <Image 
+            source={{ uri: order.kitchenImage }} 
+            style={styles.active_order_image}
+          />
+          <View style={[styles.active_order_status_icon, { backgroundColor: statusColors[order.status] }]}>
+            <Icon name={statusIcons[order.status]} size={scale(12)} color="#FFFFFF" />
+          </View>
+        </View>
         
-        <View style={styles.premiumActiveOrderDetails}>
-          <View style={styles.premiumActiveOrderHeader}>
-            <Text style={styles.premiumActiveOrderKitchen} numberOfLines={1}>
+        <View style={styles.active_order_details}>
+          <View style={styles.active_order_header}>
+            <Text style={styles.active_order_kitchen} numberOfLines={1}>
               {order.kitchenName}
             </Text>
             <View style={[
-              styles.premiumActiveOrderStatusBadge,
-              { backgroundColor: `${statusColors[order.status]}20` }
+              styles.active_order_status_badge,
+              { backgroundColor: `${statusColors[order.status]}15` }
             ]}>
               <View style={[
-                styles.premiumActiveOrderStatusDot,
+                styles.active_order_status_dot,
                 { backgroundColor: statusColors[order.status] }
               ]} />
               <Text style={[
-                styles.premiumActiveOrderStatusText,
+                styles.active_order_status_text,
                 { color: statusColors[order.status] }
               ]}>
-                {order.statusText}
+                {getStatusText(order.status)}
               </Text>
             </View>
           </View>
-
-          <Text style={styles.premiumActiveOrderNumber}>
+          
+          <Text style={styles.active_order_number}>
             Order #{order.orderNumber}
           </Text>
-
+          
           {order.status !== 'cancelled' && order.status !== 'delivered' && (
-            <View style={styles.premiumActiveOrderTimeContainer}>
-              <Icon2 name="timer-sand" size={scale(14)} color={COLORS.primary} />
-              <Text style={styles.premiumActiveOrderTime}>
+            <View style={styles.active_order_time_container}>
+              <Icon name="time-outline" size={scale(10)} color={COLORS.text.tertiary} />
+              <Text style={styles.active_order_time}>
                 {order.estimatedArrival} • {order.placedOn}
               </Text>
             </View>
           )}
         </View>
-
-        <View style={styles.premiumActiveOrderArrow}>
-          <Icon name="chevron-forward" size={scale(20)} color={COLORS.text.secondary} />
-        </View>
+        
+        <Icon name="chevron-forward" size={scale(18)} color={COLORS.text.tertiary} />
       </View>
     </TouchableOpacity>
   );
 };
 
-// UPDATED: Premium Cart Summary Component - No LinearGradient, iOS optimized
-const PremiumCartSummary = ({ 
-  pastKitchenDetails, 
-  onViewCart, 
-  onBackToKitchen 
+// All Orders Bottom Sheet Modal
+const AllOrdersModal = ({ 
+  visible, 
+  onClose, 
+  orders,
+  onOrderPress
 }: { 
-  pastKitchenDetails: PastKitchenDetails; 
-  onViewCart: () => void; 
-  onBackToKitchen: () => void;
+  visible: boolean;
+  onClose: () => void;
+  orders: ActiveOrder[];
+  onOrderPress: (order: ActiveOrder) => void;
 }) => {
-  const slideAnim = useRef(new Animated.Value(100)).current;
-  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+  const slideAnim = useRef(new Animated.Value(screenHeight)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.spring(slideAnim, {
-        toValue: 0,
-        useNativeDriver: true,
-        damping: 20,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-        damping: 20,
-      }),
-    ]).start();
-  }, [slideAnim, scaleAnim]);
+    if (visible) {
+      Animated.parallel([
+        Animated.timing(backdropOpacity, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          tension: 65,
+          friction: 11,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(backdropOpacity, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: screenHeight,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [visible]);
+
+  const getStatusIcon = (status: string) => {
+    switch(status) {
+      case 'pending': return 'time-outline';
+      case 'confirmed': return 'checkmark-circle-outline';
+      case 'preparing': return 'restaurant-outline';
+      case 'on-the-way': return 'bicycle-outline';
+      case 'delivered': return 'home-outline';
+      case 'cancelled': return 'close-circle-outline';
+      default: return 'restaurant-outline';
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch(status) {
+      case 'pending': return '#FDCB6E';
+      case 'confirmed': return '#00B894';
+      case 'preparing': return '#6C5CE7';
+      case 'on-the-way': return '#0984E3';
+      case 'delivered': return '#00B894';
+      case 'cancelled': return '#FF7675';
+      default: return COLORS.text.secondary;
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch(status) {
+      case 'pending': return 'Pending';
+      case 'confirmed': return 'Confirmed';
+      case 'preparing': return 'Preparing';
+      case 'on-the-way': return 'On The Way';
+      case 'delivered': return 'Delivered';
+      case 'cancelled': return 'Cancelled';
+      default: return 'In Progress';
+    }
+  };
 
   return (
-    <Animated.View style={[
-      styles.premiumCartSummary,
-      {
-        transform: [
-          { translateY: slideAnim },
-          { scale: scaleAnim }
-        ]
-      }
-    ]}>
-      <View style={styles.premiumCartSummaryContent}>
-        <View style={styles.premiumCartSummaryInfo}>
-          <Image 
-            source={{ 
-              uri: pastKitchenDetails.image || DEFAULT_RESTAURANT_IMAGE 
-            }} 
-            style={styles.premiumCartSummaryImage}
-            defaultSource={{ uri: DEFAULT_RESTAURANT_IMAGE }}
-          />
-          <View style={styles.premiumCartSummaryText}>
-            <Text style={styles.premiumCartSummaryTitle} numberOfLines={1}>
-              {pastKitchenDetails.name}
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="none"
+      onRequestClose={onClose}
+    >
+      <Animated.View 
+        style={[
+          styles.all_orders_backdrop,
+          { opacity: backdropOpacity }
+        ]}
+      >
+        <TouchableOpacity 
+          style={styles.all_orders_backdrop_touchable}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+      </Animated.View>
+      
+      <Animated.View 
+        style={[
+          styles.all_orders_modal_container,
+          { transform: [{ translateY: slideAnim }] }
+        ]}
+      >
+        <View style={styles.all_orders_modal_header}>
+          <View style={styles.all_orders_modal_handle} />
+          <View style={styles.all_orders_modal_header_content}>
+            <Text style={styles.all_orders_modal_title}>All Orders</Text>
+            <Text style={styles.all_orders_modal_subtitle}>
+              {orders.length} active {orders.length === 1 ? 'order' : 'orders'}
             </Text>
-            <TouchableOpacity onPress={onBackToKitchen}>
-              <Text style={styles.premiumCartSummarySubtitle}>Add more items</Text>
+            <TouchableOpacity onPress={onClose} style={styles.all_orders_modal_close}>
+              <Icon name="close" size={scale(24)} color={COLORS.text.secondary} />
             </TouchableOpacity>
           </View>
         </View>
-        
-        <TouchableOpacity 
-          style={styles.premiumCartSummaryButton}
-          onPress={onViewCart}
-          activeOpacity={0.9}
-        >
-          <View style={styles.premiumCartSummaryButtonContent}>
-            <Text style={styles.premiumCartSummaryButtonText}>View Cart</Text>
-            <View style={styles.premiumCartBadge}>
-              <Text style={styles.premiumCartBadgeText}>
-                {pastKitchenDetails.itemCount}
+
+        <FlatList
+          data={orders}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.all_orders_modal_list}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.all_orders_modal_item}
+              onPress={() => {
+                onOrderPress(item);
+                onClose();
+              }}
+            >
+              <View style={styles.all_orders_modal_item_image_container}>
+                <Image 
+                  source={{ uri: item.kitchenImage }} 
+                  style={styles.all_orders_modal_item_image}
+                />
+                <View style={[
+                  styles.all_orders_modal_item_status_icon,
+                  { backgroundColor: getStatusColor(item.status) }
+                ]}>
+                  <Icon name={getStatusIcon(item.status)} size={scale(12)} color="#FFFFFF" />
+                </View>
+              </View>
+              
+              <View style={styles.all_orders_modal_item_details}>
+                <Text style={styles.all_orders_modal_item_name} numberOfLines={1}>
+                  {item.kitchenName}
+                </Text>
+                <Text style={styles.all_orders_modal_item_number}>
+                  Order #{item.orderNumber}
+                </Text>
+                <View style={styles.all_orders_modal_item_meta}>
+                  <View style={[
+                    styles.all_orders_modal_item_status_badge,
+                    { backgroundColor: `${getStatusColor(item.status)}15` }
+                  ]}>
+                    <View style={[
+                      styles.all_orders_modal_item_status_dot,
+                      { backgroundColor: getStatusColor(item.status) }
+                    ]} />
+                    <Text style={[
+                      styles.all_orders_modal_item_status_text,
+                      { color: getStatusColor(item.status) }
+                    ]}>
+                      {getStatusText(item.status)}
+                    </Text>
+                  </View>
+                  {item.status !== 'cancelled' && item.status !== 'delivered' && (
+                    <Text style={styles.all_orders_modal_item_time}>
+                      {item.estimatedArrival}
+                    </Text>
+                  )}
+                </View>
+              </View>
+              
+              <Icon name="chevron-forward" size={scale(20)} color={COLORS.text.tertiary} />
+            </TouchableOpacity>
+          )}
+          ListEmptyComponent={() => (
+            <View style={styles.all_orders_modal_empty}>
+              <Icon name="restaurant-outline" size={scale(60)} color={COLORS.text.tertiary} />
+              <Text style={styles.all_orders_modal_empty_title}>No Active Orders</Text>
+              <Text style={styles.all_orders_modal_empty_text}>
+                Your active orders will appear here
               </Text>
             </View>
+          )}
+        />
+      </Animated.View>
+    </Modal>
+  );
+};
+
+const ActiveOrdersSection = ({ 
+  orders, 
+  onOrderPress,
+  loading
+}: { 
+  orders: ActiveOrder[];
+  onOrderPress: (order: ActiveOrder) => void;
+  loading: boolean;
+}) => {
+  const [modalVisible, setModalVisible] = useState(false);
+  const firstThreeOrders = orders.slice(0, 1);
+  const remainingCount = orders.length - 3;
+
+  if (loading) {
+    return (
+      <View style={styles.active_orders_section}>
+        <View style={styles.active_orders_loading}>
+          <ActivityIndicator size="small" color={COLORS.primary} />
+          <Text style={styles.active_orders_loading_text}>Loading orders...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (orders.length === 0) return null;
+
+  return (
+    <>
+      <View style={styles.active_orders_section}>
+        <View style={styles.active_orders_container}>
+          {/* All Orders Button - Top of Active Orders */}
+          {/* <TouchableOpacity
+            style={styles.all_orders_button}
+            onPress={() => setModalVisible(true)}
+            activeOpacity={0.9}
+          >
+            <View style={styles.all_orders_button_left}>
+              <View style={styles.all_orders_button_icon_container}>
+                <Icon name="list-outline" size={scale(20)} color={COLORS.primary} />
+              </View>
+              <View>
+                <Text style={styles.all_orders_button_title}>All Orders</Text>
+              </View>
+            </View>
+          </TouchableOpacity> */}
+
+          {/* Show first 3 orders */}
+          {firstThreeOrders.map((order) => (
+            <ActiveOrderCard
+              key={order.id}
+              order={order}
+              onPress={onOrderPress}
+            />
+          ))}
+
+          {/* Show remaining count indicator if more than 3 orders */}
+          {/* {remainingCount > 0 && (
+            <TouchableOpacity
+              style={styles.remaining_orders_indicator}
+              onPress={() => setModalVisible(true)}
+            >
+              <Text style={styles.remaining_orders_text}>
+                +{remainingCount} more {remainingCount === 1 ? 'order' : 'orders'}
+              </Text>
+              <Icon name="arrow-forward" size={scale(14)} color={COLORS.primary} />
+            </TouchableOpacity>
+          )} */}
+        </View>
+      </View>
+
+      {/* <AllOrdersModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        orders={orders}
+        onOrderPress={onOrderPress}
+      /> */}
+    </>
+  );
+};
+
+const CartSummary = ({ 
+  pastKitchenDetails, 
+  onViewCart 
+}: { 
+  pastKitchenDetails: PastKitchenDetails; 
+  onViewCart: () => void;
+}) => {
+  return (
+    <View style={styles.main_app_cart_summary}>
+      <View style={styles.main_app_cart_summary_content}>
+        <View style={styles.main_app_cart_summary_info}>
+          <Image 
+            source={{ uri: pastKitchenDetails.image }} 
+            style={styles.main_app_cart_summary_image}
+          />
+          <View>
+            <Text style={styles.main_app_cart_summary_title} numberOfLines={1}>
+              {pastKitchenDetails.name}
+            </Text>
+            <Text style={styles.main_app_cart_summary_subtitle}>
+              {pastKitchenDetails.itemCount} items in cart
+            </Text>
           </View>
+        </View>
+        <TouchableOpacity 
+          style={styles.main_app_cart_summary_button}
+          onPress={onViewCart}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.main_app_cart_summary_button_text}>View Cart</Text>
         </TouchableOpacity>
       </View>
-    </Animated.View>
+    </View>
   );
 };
 
@@ -1837,10 +2220,11 @@ const KitchenScreenTabs: React.FC = () => {
   const { isGuest, userToken } = useContext(AuthContext);
   const insets = useSafeAreaInsets();
   
-  // ============== STATE HOOKS ==============
+  // ========== ALL HOOKS MUST BE DECLARED BEFORE ANY CONDITIONAL RETURNS ==========
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [apiData, setApiData] = useState<ApiResponse | null>(null);
+  const [banners, setBanners] = useState<Banner[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [favoriteLoading, setFavoriteLoading] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<number | null>(null);
@@ -1848,7 +2232,6 @@ const KitchenScreenTabs: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
-  const [showAllActiveOrders, setShowAllActiveOrders] = useState(false);
   const [currentPlaceholderIndex, setCurrentPlaceholderIndex] = useState(0);
   const [isSearchModalVisible, setIsSearchModalVisible] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
@@ -1858,90 +2241,139 @@ const KitchenScreenTabs: React.FC = () => {
   const [searchSuggestionsData, setSearchSuggestionsData] = useState<SearchSuggestionResponse | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [homeType, setHomeType] = useState<string>('Home');
-  const [address, setAddress] = useState<string>('Fetching location...');
-  const [showRefreshSuccess, setShowRefreshSuccess] = useState(false);
-  const [isHeaderVisible, setIsHeaderVisible] = useState(true);
-  const [headerLoader, setHeaderLoader] = useState(true);
-  const [showStickyCategories, setShowStickyCategories] = useState(false);
-  const [headerOffers, setHeaderOffers] = useState<OfferCard[]>([]);
+  const [address, setAddress] = useState<string>('Select location');
+  const [currentBannerColors, setCurrentBannerColors] = useState<{
+    backgroundColor: string;
+    textColor: string;
+  }>({
+    backgroundColor: '#E55C18',
+    textColor: '#FFFFFF',
+  });
 
-  // ============== REF HOOKS ==============
   const scrollY = useRef(new Animated.Value(0)).current;
   const scrollViewRef = useRef<ScrollView>(null);
-  const searchInputRef = useRef<TextInput>(null);
   const placeholderInterval = useRef<NodeJS.Timeout>();
 
-  // ============== ANIMATION INTERPOLATIONS ==============
-  const headerTranslateY = scrollY.interpolate({
-    inputRange: [0, HEADER_HEIGHT * 0.6],
-    outputRange: [0, -HEADER_HEIGHT * 0.5],
+  const collapsedOpacity = scrollY.interpolate({
+    inputRange: [0, HEADER_HEIGHTS.expanded - HEADER_HEIGHTS.collapsed - 50, HEADER_HEIGHTS.expanded - HEADER_HEIGHTS.collapsed],
+    outputRange: [0, 0.5, 1],
     extrapolate: 'clamp',
   });
 
-  const headerOpacity = scrollY.interpolate({
-    inputRange: [0, HEADER_HEIGHT * 0.4],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
+  // Moved useMemo to BEFORE conditional returns
+  const hasActiveOrders = activeOrders.length > 0;
+  const hasCart = pastKitchenDetails !== null;
+  
+  const bottomInset = useMemo(() => {
+    if (hasActiveOrders) {
+      return verticalScale(140);
+    }
+    if (hasCart) {
+      return verticalScale(90);
+    }
+    return verticalScale(20);
+  }, [hasActiveOrders, hasCart]);
 
-  const categoriesTranslateY = scrollY.interpolate({
-    inputRange: [0, HEADER_HEIGHT * 0.3],
-    outputRange: [0, -40],
-    extrapolate: 'clamp',
-  });
-
-  const categoriesOpacity = scrollY.interpolate({
-    inputRange: [0, HEADER_HEIGHT * 0.3],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
-
-  const headerScale = scrollY.interpolate({
-    inputRange: [0, HEADER_HEIGHT * 0.3],
-    outputRange: [1, 0.92],
-    extrapolate: 'clamp',
-  });
-
-  // ============== HEADER VISIBILITY ==============
-  useEffect(() => {
-    const listenerId = scrollY.addListener(({ value }) => {
-      setIsHeaderVisible(value < HEADER_HEIGHT * 0.5);
-      setShowStickyCategories(value > HEADER_HEIGHT * 0.4);
-    });
-    return () => scrollY.removeListener(listenerId);
-  }, [scrollY]);
-
-  // ============== PLACEHOLDER ANIMATION ==============
-  useEffect(() => {
-    placeholderInterval.current = setInterval(() => {
-      setCurrentPlaceholderIndex(prev => (prev + 1) % SEARCH_PLACEHOLDERS.length);
-    }, 3000);
-    return () => {
-      if (placeholderInterval.current) {
-        clearInterval(placeholderInterval.current);
-      }
-    };
-  }, []);
-
-  // ============== LOAD HEADER OFFERS ==============
-  const loadHeaderOffers = useCallback(async () => {
+  // All useCallback definitions
+  const fetchBanners = useCallback(async () => {
     try {
-      const storedOffers = await AsyncStorage.getItem(STORAGE_KEYS.HEADER_OFFERS);
-      if (storedOffers) {
-        setHeaderOffers(JSON.parse(storedOffers));
+      const response = await getOfferBanners();
+      
+      if (response?.data?.success && response.data.data) {
+        const activeBanners = response.data.data
+          .filter((banner: Banner) => banner.is_active)
+          .sort((a: Banner, b: Banner) => a.order - b.order);
+        
+        setBanners(activeBanners);
+        
+        if (activeBanners.length > 0) {
+          setCurrentBannerColors({
+            backgroundColor: activeBanners[0].theme?.bg_color || COLORS.primary,
+            textColor: activeBanners[0].theme?.text_color || '#FFFFFF',
+          });
+        }
+        
+        await AsyncStorage.setItem(STORAGE_KEYS.OFFERS, JSON.stringify(activeBanners));
       } else {
-        // Filter active offers and take first 2
-        const activeOffers = HEADER_OFFERS.filter(offer => offer.isActive).slice(0, 2);
-        setHeaderOffers(activeOffers);
-        await AsyncStorage.setItem(STORAGE_KEYS.HEADER_OFFERS, JSON.stringify(activeOffers));
+        const cachedBanners = await AsyncStorage.getItem(STORAGE_KEYS.OFFERS);
+        if (cachedBanners) {
+          const parsedBanners = JSON.parse(cachedBanners);
+          setBanners(parsedBanners);
+          if (parsedBanners.length > 0) {
+            setCurrentBannerColors({
+              backgroundColor: parsedBanners[0].theme?.bg_color || COLORS.primary,
+              textColor: parsedBanners[0].theme?.text_color || '#FFFFFF',
+            });
+          }
+        }
       }
     } catch (error) {
-      console.error('Error loading header offers:', error);
-      setHeaderOffers(HEADER_OFFERS.filter(offer => offer.isActive).slice(0, 2));
+      console.error('Error fetching banners:', error);
+      try {
+        const cachedBanners = await AsyncStorage.getItem(STORAGE_KEYS.OFFERS);
+        if (cachedBanners) {
+          const parsedBanners = JSON.parse(cachedBanners);
+          setBanners(parsedBanners);
+          if (parsedBanners.length > 0) {
+            setCurrentBannerColors({
+              backgroundColor: parsedBanners[0].theme?.bg_color || COLORS.primary,
+              textColor: parsedBanners[0].theme?.text_color || '#FFFFFF',
+            });
+          }
+        }
+      } catch (cacheError) {
+        console.error('Error loading cached banners:', cacheError);
+      }
     }
   }, []);
 
-  // ============== API FUNCTIONS ==============
+  const handleBannerChange = useCallback((banner: Banner) => {
+    setCurrentBannerColors({
+      backgroundColor: banner.theme?.bg_color || COLORS.primary,
+      textColor: banner.theme?.text_color || '#FFFFFF',
+    });
+  }, []);
+
+  const handleBannerPress = useCallback((banner: Banner) => {
+    navigation.navigate('OfferDetailsPage', {
+      offerType: banner.offer?.type || 'food_offer',
+      offer: {
+        id: banner.id,
+        title: banner.title,
+        subtitle: banner.subtitle,
+        discount: banner.offer?.discount || 'Special Offer',
+        offerCode: banner.offer?.code || '',
+        validTill: banner.validity?.till || '',
+        terms: banner.terms || [],
+        image: banner.image_url,
+        backgroundColor: banner.theme?.bg_color || COLORS.primary,
+        api_params: banner.offer?.api_params || {},
+        banner_type: banner.offer?.banner_type || 'cuisine',
+        category: banner.offer?.category || ''
+      }
+    });
+  }, [navigation]);
+
+  const handleOffersCategoryPress = useCallback(() => {
+    navigation.navigate('OfferDetailsPage', {
+      offerType: 'ALL_OFFER',
+      offer: {
+        id: 0,
+        title: 'All Offers',
+        subtitle: 'Discover amazing deals and discounts',
+        discount: 'Special Deals',
+        offerCode: '',
+        validTill: '',
+        terms: [],
+        image: '',
+        backgroundColor: COLORS.primary,
+        api_params: {},
+        banner_type: 'offers',
+        category: ''
+      }
+    });
+  }, [navigation]);
+
   const fetchUserData = useCallback(async () => {
     try {
       if (userToken) {
@@ -1974,10 +2406,7 @@ const KitchenScreenTabs: React.FC = () => {
               is_favourite: k.is_favourite || false,
               rating: (Math.random() * 1 + 4.2).toFixed(1),
               delivery_time: `${Math.floor(Math.random() * 15) + 25}-${Math.floor(Math.random() * 20) + 40} min`,
-              discount: Math.random() > 0.7 ? Math.floor(Math.random() * 30) + 20 : 0,
               is_new: Math.random() > 0.8,
-              is_trending: Math.random() > 0.9,
-              distance: `${(Math.random() * 5 + 0.5).toFixed(1)} km`,
             })),
             KitchenList: (response.data.data.KitchenList || []).map((k: any) => ({
               ...k,
@@ -1985,30 +2414,13 @@ const KitchenScreenTabs: React.FC = () => {
               is_favourite: k.is_favourite || false,
               rating: (Math.random() * 1 + 4).toFixed(1),
               delivery_time: `${Math.floor(Math.random() * 15) + 25}-${Math.floor(Math.random() * 20) + 40} min`,
-              discount: Math.random() > 0.7 ? Math.floor(Math.random() * 30) + 20 : 0,
               is_new: Math.random() > 0.8,
-              is_trending: Math.random() > 0.9,
-              distance: `${(Math.random() * 5 + 0.5).toFixed(1)} km`,
             })),
-            CategoryList: (response.data.data.CategoryList || []).map((c: any) => ({
-              ...c,
-              icon: c.icon || DEFAULT_CATEGORY_ICON
-            })),
-            final_banner_image: response.data.data.final_banner_image ? {
-              ...response.data.data.final_banner_image,
-              icon: response.data.data.final_banner_image.icon || DEFAULT_BANNER_IMAGE,
-              thumbnail: response.data.data.final_banner_image.thumbnail || DEFAULT_BANNER_IMAGE,
-              document_type: response.data.data.final_banner_image.document_type || 1
-            } : {
-              icon: DEFAULT_BANNER_IMAGE,
-              thumbnail: DEFAULT_BANNER_IMAGE,
-              document_type: 1 as const
-            }
+            CategoryList: (response.data.data.CategoryList || []),
           }
         };
         
         setApiData(processedData);
-        setTimeout(() => setHeaderLoader(false), 1000);
       }
     } catch (error) {
       console.error('Error fetching kitchens:', error);
@@ -2237,8 +2649,6 @@ const KitchenScreenTabs: React.FC = () => {
               foodType: item.food_type,
               restaurant: item.restaurant,
               originalData: item,
-              rating: Math.random() * 2 + 3,
-              deliveryTime: `${Math.floor(Math.random() * 20) + 15}-${Math.floor(Math.random() * 20) + 35} min`
             });
           });
         });
@@ -2256,23 +2666,8 @@ const KitchenScreenTabs: React.FC = () => {
             type: 'restaurant',
             category: cuisineNames,
             originalData: restaurant,
-            rating: restaurant.rating || (Math.random() * 2 + 3).toFixed(1),
-            deliveryTime: restaurant.delivery_time || `${Math.floor(Math.random() * 20) + 15}-${Math.floor(Math.random() * 20) + 35} min`,
-            distance: restaurant.distance || `${(Math.random() * 5).toFixed(1)} km`
           });
         });
-
-        if (response.data.trending_items) {
-          response.data.trending_items.forEach((item: any) => {
-            transformedResults.unshift({
-              id: `trending-${item.id}`,
-              name: item.name,
-              image: item.image,
-              type: 'trending',
-              originalData: item
-            });
-          });
-        }
 
         setSearchResults(transformedResults);
       }
@@ -2285,12 +2680,12 @@ const KitchenScreenTabs: React.FC = () => {
   }, []);
 
   const toggleFavorite = useCallback(async (kitchenId: string) => {
-    if (favoriteLoading) return;
-
     if (isGuest) {
-      Alert.alert('Login Required', 'Please login to add favorites');
+      navigation.navigate('LoginScreen');
       return;
     }
+
+    if (favoriteLoading) return;
 
     try {
       setFavoriteLoading(kitchenId);
@@ -2315,16 +2710,58 @@ const KitchenScreenTabs: React.FC = () => {
         };
       });
 
-      await updateFavouriteKitchen({ restaurant_id: kitchenId });
+      const response = await updateFavouriteKitchen({ restaurant_id: kitchenId });
+      
+      if (!response?.data?.success) {
+        setApiData(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            data: {
+              ...prev.data,
+              KitchenList: prev.data.KitchenList.map(kitchen => 
+                kitchen.restaurant_id === kitchenId 
+                  ? { ...kitchen, is_favourite: !kitchen.is_favourite } 
+                  : kitchen
+              ),
+              FeatureKitchenList: prev.data.FeatureKitchenList.map(kitchen => 
+                kitchen.restaurant_id === kitchenId 
+                  ? { ...kitchen, is_favourite: !kitchen.is_favourite } 
+                  : kitchen
+              )
+            }
+          };
+        });
+      }
     } catch (error) {
       console.error('Error toggling favorite:', error);
-      Alert.alert('Error', 'Failed to update favorite status');
+      setApiData(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          data: {
+            ...prev.data,
+            KitchenList: prev.data.KitchenList.map(kitchen => 
+              kitchen.restaurant_id === kitchenId 
+                ? { ...kitchen, is_favourite: !kitchen.is_favourite } 
+                : kitchen
+            ),
+            FeatureKitchenList: prev.data.FeatureKitchenList.map(kitchen => 
+              kitchen.restaurant_id === kitchenId 
+                ? { ...kitchen, is_favourite: !kitchen.is_favourite } 
+                : kitchen
+            )
+          }
+        };
+      });
     } finally {
       setFavoriteLoading(null);
     }
-  }, [favoriteLoading, isGuest]);
 
-  // ============== HANDLERS ==============
+    fetchKitchens()
+    
+  }, [favoriteLoading, isGuest, navigation, fetchKitchens]);
+
   const handleAddressUpdate = useCallback((newAddress: string, newHomeType: string) => {
     setAddress(newAddress);
     setHomeType(newHomeType);
@@ -2334,29 +2771,23 @@ const KitchenScreenTabs: React.FC = () => {
     if (refreshing) return;
     
     setRefreshing(true);
-    setShowRefreshSuccess(false);
     
     try {
-      const minDelay = new Promise(resolve => setTimeout(resolve, 1000));
       const userData = await fetchUserData();
       
       await Promise.all([
+        fetchBanners(),
         fetchKitchens(),
-        loadHeaderOffers(),
         userData ? fetchActiveOrders(userData.id) : Promise.resolve(null),
         userData ? fetchPastKitchenDetails(userData.id) : fetchPastKitchenDetails(null),
         fetchRecentSearches(),
       ]);
-
-      await minDelay;
-      setShowRefreshSuccess(true);
-      setTimeout(() => setShowRefreshSuccess(false), 2000);
     } catch (error) {
       console.error('Refresh error:', error);
     } finally {
       setRefreshing(false);
     }
-  }, [refreshing, fetchKitchens, loadHeaderOffers, fetchActiveOrders, fetchPastKitchenDetails, fetchUserData, fetchRecentSearches]);
+  }, [refreshing, fetchBanners, fetchKitchens, fetchActiveOrders, fetchPastKitchenDetails, fetchUserData, fetchRecentSearches]);
 
   const handleCategoryPress = useCallback((categoryId: number, categoryName: string) => {
     const categoryIndex = apiData?.data.CategoryList.findIndex(cat => cat.id === categoryId) ?? -1;
@@ -2372,12 +2803,6 @@ const KitchenScreenTabs: React.FC = () => {
   const handleViewCart = useCallback(() => {
     if (pastKitchenDetails?.id) {
       navigation.navigate('CartScreen', { pastkitcheId: pastKitchenDetails.id });
-    }
-  }, [navigation, pastKitchenDetails]);
-
-  const handleBackToKitchen = useCallback(() => {
-    if (pastKitchenDetails?.id) {
-      navigation.navigate('HomeKitchenDetails', { kitchenId: pastKitchenDetails.id });
     }
   }, [navigation, pastKitchenDetails]);
 
@@ -2446,18 +2871,52 @@ const KitchenScreenTabs: React.FC = () => {
     setRecentSearches(prev => prev.filter(item => item !== query));
   }, []);
 
-  const toggleShowAllActiveOrders = useCallback(() => {
-    setShowAllActiveOrders(prev => !prev);
+  const handleFavoritePress = useCallback(() => {
+    if (isGuest) {
+      navigation.navigate('LoginScreen');
+    } else {
+      navigation.navigate('FavoritesScreen');
+    }
+  }, [isGuest, navigation]);
+
+  const handleWalletPress = useCallback(() => {
+    if (isGuest) {
+      navigation.navigate('LoginScreen');
+    } else {
+      navigation.navigate('EatoorMoneyScreen');
+    }
+  }, [isGuest, navigation]);
+
+  const handleProfilePress = useCallback(() => {
+    if (isGuest) {
+      navigation.navigate('LoginScreen');
+    } else {
+      navigation.navigate('ProfileScreen');
+    }
+  }, [isGuest, navigation]);
+
+  // All useEffect hooks
+  useEffect(() => {
+    placeholderInterval.current = setInterval(() => {
+      setCurrentPlaceholderIndex(prev => (prev + 1) % SEARCH_PLACEHOLDERS.length);
+    }, 3000);
+    return () => {
+      if (placeholderInterval.current) {
+        clearInterval(placeholderInterval.current);
+      }
+    };
   }, []);
 
-  // ============== EFFECTS ==============
   useEffect(() => {
     const init = async () => {
       const session = await initializeSession();
       const userData = await fetchUserData();
-      await fetchKitchens();
-      await fetchRecentSearches();
-      await loadHeaderOffers();
+      
+      await Promise.all([
+        fetchBanners(),
+        fetchKitchens(),
+        fetchRecentSearches(),
+      ]);
 
       if (userData) {
         await Promise.all([
@@ -2468,7 +2927,7 @@ const KitchenScreenTabs: React.FC = () => {
         await fetchPastKitchenDetails(null);
       }
 
-      setLoading(false);
+      setTimeout(() => setLoading(false), 2000);
     };
 
     init();
@@ -2480,11 +2939,8 @@ const KitchenScreenTabs: React.FC = () => {
     }
   }, [user?.id, sessionId, pastKitchenDetails?.id, updateCartItemUser]);
 
-  // ============== COMPUTED VALUES ==============
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
-  const displayedActiveOrders = showAllActiveOrders ? activeOrders : activeOrders.slice(0, 1);
 
-  // ============== SEARCH EFFECT ==============
   useEffect(() => {
     if (debouncedSearchQuery && isSearchModalVisible) {
       fetchSearchSuggestions(debouncedSearchQuery);
@@ -2493,170 +2949,188 @@ const KitchenScreenTabs: React.FC = () => {
     }
   }, [debouncedSearchQuery, isSearchModalVisible, fetchSearchSuggestions]);
 
-  // ============== LOADING STATES ==============
+  // ========== CONDITIONAL RETURNS GO HERE (AFTER ALL HOOKS) ==========
   if (loading) {
-    return (
-      <View style={styles.premiumLoadingContainer}>
-        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-        <View style={[StyleSheet.absoluteFillObject, styles.premiumLoadingGradient]} />
-        <View style={styles.premiumLoadingContent}>
-          {/* FIXED: Replaced Animatable.View with custom Animated component */}
-          {/* <AnimatedLoadingIcon name="food-variant" size={scale(80)} color="#FFF" /> */}
-          <Text style={styles.premiumLoadingTitle}>Eatoor</Text>
-          <Text style={styles.premiumLoadingText}>Discover amazing food...</Text>
-          <ActivityIndicator size="large" color="#FFF" style={styles.premiumLoadingSpinner} />
-        </View>
-      </View>
-    );
+    return <EnhancedDeliveryLoader />;
   }
 
   if (!apiData) {
     return (
-      <View style={styles.premiumErrorContainer}>
-        <View style={[StyleSheet.absoluteFillObject, styles.premiumErrorGradient]} />
-        <Icon2 name="food-off" size={scale(80)} color={COLORS.text.tertiary} />
-        <Text style={styles.premiumErrorTitle}>Oops! Something went wrong</Text>
-        <Text style={styles.premiumErrorText}>Unable to load restaurants</Text>
+      <View style={styles.main_app_error_container}>
+        <Icon name="restaurant-outline" size={scale(60)} color={COLORS.text.tertiary} />
+        <Text style={styles.main_app_error_title}>Oops! Something went wrong</Text>
+        <Text style={styles.main_app_error_text}>Unable to load restaurants</Text>
         <TouchableOpacity
           onPress={() => {
             setLoading(true);
             initializeSession().then(() => {
               fetchUserData();
               fetchKitchens();
-              setLoading(false);
+              fetchBanners();
+              setTimeout(() => setLoading(false), 2000);
             });
           }}
-          style={styles.premiumErrorButton}
-          activeOpacity={0.9}
+          style={styles.main_app_error_button}
         >
-          <View style={styles.premiumErrorButtonContent}>
-            <Text style={styles.premiumErrorButtonText}>Try Again</Text>
-            <Icon name="refresh" size={scale(20)} color="#FFF" />
-          </View>
+          <Text style={styles.main_app_error_button_text}>Try Again</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  // ============== MAIN RENDER ==============
+  // ========== RENDER RETURN ==========
   return (
-    <View style={styles.premiumContainer}>
-      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-
-      {/* Search Modal */}
-      <SearchModal
-        isVisible={isSearchModalVisible}
-        onClose={handleSearchClose}
-        searchQuery={searchQuery}
-        onSearchChange={handleSearchChange}
-        searchInputRef={searchInputRef}
-        onSearchSubmit={handleSearchSubmit}
-        recentSearches={recentSearches}
-        searchHistory={searchHistory}
-        searchResults={searchResults}
-        searchLoading={searchLoading}
-        onRecentSearchPress={handleRecentSearchPress}
-        onPopularSearchPress={handleRecentSearchPress}
-        onSearchResultPress={handleSearchResultPress}
-        onClearRecentSearches={clearRecentSearches}
-        onRemoveRecentSearch={handleRemoveRecentSearch}
-        tabBarHeight={scale(70)}
+    <View style={styles.main_app_root_container}>
+      <StatusBar 
+        barStyle={currentBannerColors.textColor === '#FFFFFF' ? 'light-content' : 'dark-content'} 
+        backgroundColor={currentBannerColors.backgroundColor} 
       />
 
-      {/* Sticky Categories Header - Appears when scrolling */}
-      {apiData.data.CategoryList.length > 0 && (
-        <StickyCategoriesHeader
-          categories={apiData.data.CategoryList}
-          activeCategory={activeCategory}
-          onCategoryPress={handleCategoryPress}
-          visible={showStickyCategories}
-        />
-      )}
-
-      {/* Premium Header with Parallax - INCREASED HEIGHT and BOTTOM RADIUS */}
-      <Animated.View style={[
-        styles.premiumHeader,
-        {
-          height: HEADER_HEIGHT,
-          transform: [
-            { translateY: headerTranslateY },
-            { scale: headerScale }
-          ],
-          opacity: headerOpacity,
-        }
-      ]}>
-        <PremiumBannerComponent
-          banner={apiData?.data?.final_banner_image || null}
-          isVisible={isHeaderVisible}
-        />
-
-        {/* Header Bottom Radius Overlay */}
-        <View style={styles.premiumHeaderBottomRadius} />
-
-        {/* Header Content */}
-        <View style={[
-          styles.premiumHeaderContent, 
-          { 
-            paddingTop: insets.top + verticalScale(16),
-            paddingBottom: verticalScale(20)
-          }
-        ]}>
-          {/* Location and Profile Section */}
-          <View style={styles.premiumHeaderTop}>
-            <PremiumAddressHeader isGuest={isGuest} onAddressUpdate={handleAddressUpdate} />
-            
-            <View style={styles.premiumHeaderActions}>
-              <TouchableOpacity 
-                style={styles.premiumHeaderAction}
-                onPress={() => isGuest ? navigation.navigate('LoginScreen') : navigation.navigate('FavoritesScreen')}
-              >
-                <View style={styles.premiumHeaderActionGradient}>
-                  <Icon name="heart-outline" size={scale(20)} color="#FFFFFF" />
-                </View>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.premiumHeaderAction}
-                onPress={() => isGuest ? navigation.navigate('LoginScreen') : navigation.navigate('EatoorMoneyScreen')}
-              >
-                <View style={styles.premiumHeaderActionGradient}>
-                  <Icon name="wallet-outline" size={scale(20)} color="#FFFFFF" />
-                </View>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.premiumHeaderAction}
-                onPress={() => isGuest ? navigation.navigate('LoginScreen') : navigation.navigate('ProfileScreen')}
-              >
-                <View style={styles.premiumHeaderActionGradient}>
-                  <Icon name="person-outline" size={scale(20)} color="#FFFFFF" />
-                </View>
-              </TouchableOpacity>
+      <Modal
+        visible={isSearchModalVisible}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={handleSearchClose}
+        transparent={false}
+      >
+        <View style={styles.main_app_search_modal_container}>
+          <View style={[styles.main_app_search_modal_header, { paddingTop: insets.top + 12 }]}>
+            <TouchableOpacity onPress={handleSearchClose} style={styles.main_app_search_modal_back_button}>
+              <Icon name="arrow-back" size={scale(24)} color={COLORS.text.primary} />
+            </TouchableOpacity>
+            <View style={styles.main_app_search_modal_input_container}>
+              <Icon name="search-outline" size={scale(20)} color={COLORS.text.tertiary} style={styles.main_app_search_modal_input_icon} />
+              <TextInput
+                style={styles.main_app_search_modal_input}
+                placeholder="Search for dishes or restaurants..."
+                placeholderTextColor={COLORS.text.tertiary}
+                value={searchQuery}
+                onChangeText={handleSearchChange}
+                onSubmitEditing={handleSearchSubmit}
+                autoFocus={true}
+                returnKeyType="search"
+                clearButtonMode="while-editing"
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.main_app_search_modal_clear_button}>
+                  <Icon name="close-circle" size={scale(20)} color={COLORS.text.tertiary} />
+                </TouchableOpacity>
+              )}
             </View>
           </View>
 
-          {/* Search Bar */}
-          <View style={styles.premiumSearchWrapper}>
-            <PremiumSearchBar
-              onPress={handleSearchPress}
-              placeholder={SEARCH_PLACEHOLDERS[currentPlaceholderIndex]}
-            />
+          <View style={styles.main_app_search_modal_content}>
+            {searchLoading ? (
+              <View style={styles.main_app_search_modal_loading}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+                <Text style={styles.main_app_search_modal_loading_text}>Searching...</Text>
+              </View>
+            ) : searchQuery.length > 0 ? (
+              searchResults.length > 0 ? (
+                <FlatList
+                  data={searchResults}
+                  keyExtractor={(item) => item.id}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.main_app_search_results_list}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.main_app_search_result_item}
+                      onPress={() => handleSearchResultPress(item)}
+                    >
+                      <Image source={{ uri: item.image }} style={styles.main_app_search_result_image} />
+                      <View style={styles.main_app_search_result_info}>
+                        <Text style={styles.main_app_search_result_name}>{item.name}</Text>
+                        <Text style={styles.main_app_search_result_type}>
+                          {item.type === 'restaurant' ? 'Restaurant' : 'Dish'}
+                          {item.category && ` • ${item.category}`}
+                        </Text>
+                        {item.price && (
+                          <Text style={styles.main_app_search_result_price}>₹{item.price}</Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                />
+              ) : (
+                <View style={styles.main_app_search_modal_empty}>
+                  <Icon name="restaurant-outline" size={scale(50)} color={COLORS.text.tertiary} />
+                  <Text style={styles.main_app_search_modal_empty_title}>No results found</Text>
+                  <Text style={styles.main_app_search_modal_empty_text}>Try searching for something else</Text>
+                </View>
+              )
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {recentSearches.length > 0 && (
+                  <View style={styles.main_app_search_section}>
+                    <View style={styles.main_app_search_section_header}>
+                      <Text style={styles.main_app_search_section_title}>Recent Searches</Text>
+                      <TouchableOpacity onPress={clearRecentSearches}>
+                        <Text style={styles.main_app_search_section_action}>Clear All</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.main_app_search_recent_list}>
+                      {recentSearches.map((item, index) => (
+                        <TouchableOpacity
+                          key={index}
+                          style={styles.main_app_search_recent_item}
+                          onPress={() => handleRecentSearchPress(item)}
+                        >
+                          <Icon name="time-outline" size={scale(18)} color={COLORS.text.tertiary} />
+                          <Text style={styles.main_app_search_recent_text}>{item}</Text>
+                          <TouchableOpacity onPress={() => handleRemoveRecentSearch(item)}>
+                            <Icon name="close" size={scale(18)} color={COLORS.text.tertiary} />
+                          </TouchableOpacity>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                <View style={[styles.main_app_search_section, styles.main_app_search_section_last]}>
+                  <Text style={styles.main_app_search_section_title}>Popular Categories</Text>
+                  <View style={styles.main_app_search_category_grid}>
+                    {apiData?.data.CategoryList?.slice(0, 8).map((category) => (
+                      <TouchableOpacity
+                        key={category.id}
+                        style={styles.main_app_search_category_item}
+                        onPress={() => handleRecentSearchPress(category.name)}
+                      >
+                        <Image source={{ uri: category.icon }} style={styles.main_app_search_category_image} />
+                        <Text style={styles.main_app_search_category_name} numberOfLines={1}>{category.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              </ScrollView>
+            )}
           </View>
         </View>
+      </Modal>
 
-        {/* Dynamic Header Offer Cards from JSON - Transparent Background */}
-        {headerOffers.length > 0 && <PremiumHeaderOfferCards />}
-      </Animated.View>
+      <IntegratedHeader
+        isGuest={isGuest}
+        onAddressUpdate={handleAddressUpdate}
+        onSearchPress={handleSearchPress}
+        onFavoritePress={handleFavoritePress}
+        onWalletPress={handleWalletPress}
+        onProfilePress={handleProfilePress}
+        placeholder={SEARCH_PLACEHOLDERS[currentPlaceholderIndex]}
+        banners={banners}
+        onBannerPress={handleBannerPress}
+        onBannerChange={handleBannerChange}
+        bannerColors={currentBannerColors}
+        scrollY={scrollY}
+        collapsedOpacity={collapsedOpacity}
+      />
 
-      {/* Main Content */}
       <Animated.ScrollView
         ref={scrollViewRef}
-        style={styles.premiumScrollView}
+        style={styles.main_app_scroll_view}
         contentContainerStyle={[
-          styles.premiumScrollContent,
+          styles.main_app_scroll_content,
           { 
-            paddingTop: HEADER_HEIGHT + verticalScale(8),
-            paddingBottom: verticalScale(120)
+            paddingTop: HEADER_HEIGHTS.expanded + verticalScale(8),
+            paddingBottom: bottomInset
           }
         ]}
         showsVerticalScrollIndicator={false}
@@ -2671,59 +3145,48 @@ const KitchenScreenTabs: React.FC = () => {
             onRefresh={handleRefresh}
             tintColor={COLORS.primary}
             colors={[COLORS.primary]}
-            progressViewOffset={HEADER_HEIGHT}
           />
         }
       >
-        {/* Categories Section */}
         {apiData.data.CategoryList.length > 0 && (
-          <Animated.View style={[
-            styles.premiumCategoriesContainer,
-            {
-              opacity: categoriesOpacity,
-              transform: [{ translateY: categoriesTranslateY }]
-            }
-          ]}>
+          <View style={[styles.main_app_categories_section, { marginTop: verticalScale(12), marginBottom: verticalScale(24) }]}>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.premiumCategoriesContent}
+              contentContainerStyle={styles.main_app_categories_content}
             >
-              {apiData.data.CategoryList.map((category, index) => (
-                <PremiumCategoryCard
+              <OffersCategoryCard onPress={handleOffersCategoryPress} />
+              
+              {apiData.data.CategoryList.map((category) => (
+                <CategoryCard
                   key={category.id}
                   category={category}
-                  isActive={activeCategory === index}
                   onPress={() => handleCategoryPress(category.id, category.name)}
-                  index={index}
                 />
               ))}
             </ScrollView>
-          </Animated.View>
+          </View>
         )}
 
-        {/* Top Restaurants Section */}
         {apiData.data.FeatureKitchenList?.length > 0 && (
-          <View style={styles.premiumSection}>
-            <View style={styles.premiumSectionHeader}>
-              <View>
-                <Text style={styles.premiumSectionTitle}>Top Rated</Text>
-                <Text style={styles.premiumSectionSubtitle}>
-                  Most loved restaurants near you
-                </Text>
-              </View>
+          <View style={styles.main_app_section}>
+            <View style={styles.main_app_section_header}>
+              <Text style={styles.main_app_section_title}>Top Rated</Text>
+              <Text style={styles.main_app_section_subtitle}>
+                Most loved restaurants near you
+              </Text>
             </View>
             
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.premiumTopRestaurantsContent}
+              contentContainerStyle={styles.main_app_top_restaurants_content}
               decelerationRate="fast"
               snapToInterval={screenWidth * 0.3 + scale(10)}
               snapToAlignment="start"
             >
-              {apiData.data.FeatureKitchenList.slice(0, 10).map((kitchen, index) => (
-                <PremiumRestaurantCard
+              {apiData.data.FeatureKitchenList.slice(0, 10).map((kitchen) => (
+                <RestaurantCard
                   key={kitchen.restaurant_id}
                   kitchen={kitchen}
                   onPress={(k) => navigation.navigate('HomeKitchenDetails', { kitchenId: k.restaurant_id })}
@@ -2737,20 +3200,17 @@ const KitchenScreenTabs: React.FC = () => {
           </View>
         )}
 
-        {/* All Restaurants Section */}
-        <View style={styles.premiumSection}>
-          <View style={styles.premiumSectionHeader}>
-            <View>
-              <Text style={styles.premiumSectionTitle}>All Restaurants</Text>
-              <Text style={styles.premiumSectionSubtitle}>
-                {apiData.data.KitchenList.length}+ places to explore
-              </Text>
-            </View>
+        <View style={styles.main_app_section}>
+          <View style={styles.main_app_section_header}>
+            <Text style={styles.main_app_section_title}>All Restaurants</Text>
+            <Text style={styles.main_app_section_subtitle}>
+              {apiData.data.KitchenList.length}+ places to explore
+            </Text>
           </View>
 
-          <View style={styles.premiumRestaurantGrid}>
+          <View style={styles.main_app_restaurant_grid}>
             {apiData.data.KitchenList.map((kitchen) => (
-              <PremiumRestaurantCard
+              <RestaurantCard
                 key={kitchen.restaurant_id}
                 kitchen={kitchen}
                 onPress={(k) => navigation.navigate('HomeKitchenDetails', { kitchenId: k.restaurant_id })}
@@ -2762,64 +3222,26 @@ const KitchenScreenTabs: React.FC = () => {
             ))}
           </View>
         </View>
-
-        {/* Bottom Padding */}
-        <View style={{ height: verticalScale(20) }} />
       </Animated.ScrollView>
 
-      {/* Active Orders */}
-      {activeOrders.length > 0 && !ordersLoading && (
-        <View style={[
-          styles.premiumActiveOrdersContainer,
-          { 
-            bottom: pastKitchenDetails 
-              ? verticalScale(100) 
-              : Platform.OS === 'ios' 
-                ? verticalScale(20) 
-                : verticalScale(16) 
-          }
-        ]}>
-          <View style={styles.premiumActiveOrdersHeader}>
-            <View style={styles.premiumActiveOrdersTitleContainer}>
-              <Icon2 name="clock-outline" size={scale(18)} color={COLORS.primary} />
-              <Text style={styles.premiumActiveOrdersTitle}>
-                Active Orders ({activeOrders.length})
-              </Text>
-            </View>
-            {activeOrders.length > 1 && (
-              <TouchableOpacity onPress={toggleShowAllActiveOrders}>
-                <Text style={styles.premiumActiveOrdersToggle}>
-                  {showAllActiveOrders ? 'Show less' : 'See all'}
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          
-          <View style={styles.premiumActiveOrdersList}>
-            {displayedActiveOrders.map((order) => (
-              <PremiumActiveOrderCard
-                key={order.id}
-                order={order}
-                onPress={handleOrderPress}
-              />
-            ))}
-          </View>
-        </View>
+      {/* Active Orders Section - Only for logged-in users */}
+      {!isGuest && (
+        <ActiveOrdersSection 
+          orders={activeOrders}
+          onOrderPress={handleOrderPress}
+          loading={ordersLoading}
+        />
       )}
 
-      {/* Cart Summary */}
       {pastKitchenDetails && activeOrders.length === 0 && (
-        <PremiumCartSummary
+        <CartSummary
           pastKitchenDetails={pastKitchenDetails}
           onViewCart={handleViewCart}
-          onBackToKitchen={handleBackToKitchen}
         />
       )}
     </View>
   );
 };
-
-// ============== NAVIGATORS ==============
 
 const KitchenTabNavigator = () => {
   return (
@@ -2846,25 +3268,19 @@ const HomeTabsNavigator = React.memo(({ isGuest }: { isGuest: boolean }) => {
   }, []);
 
   const tabBarHeight = useMemo(() => 
-    Platform.OS === 'ios' ? verticalScale(90) : verticalScale(80), 
-  []);
+    Platform.select({
+      ios: verticalScale(85),
+      android: verticalScale(75),
+    }), 
+    []
+  );
 
   const tabIcons = {
-    Kitchen: { focused: 'restaurant', unfocused: 'restaurant-outline' },
-    Eatmart: { focused: 'basket', unfocused: 'basket-outline' },
+    Kitchen: { focused: 'fast-food', unfocused: 'fast-food-outline' },
+    Eatmart: { focused: 'cart', unfocused: 'cart-outline' },
     Reorder: { focused: 'repeat', unfocused: 'repeat-outline' },
     Partner: { focused: 'people', unfocused: 'people-outline' },
   };
-
-  // FIXED: Platform specific tab bar positioning
-  const tabBarPosition = Platform.select({
-    ios: {
-      bottom: 0,
-    },
-    android: {
-      bottom: 0,
-    },
-  });
 
   return (
     <Tab.Navigator
@@ -2876,31 +3292,24 @@ const HomeTabsNavigator = React.memo(({ isGuest }: { isGuest: boolean }) => {
             : tabIcons[routeName]?.unfocused;
           
           return (
-            <View style={styles.premiumTabIconContainer}>
-              <Icon 
-                name={iconName || 'restaurant-outline'} 
-                size={focused ? scale(24) : scale(22)} 
-                color={focused ? COLORS.primary : color} 
-              />
-              {focused && (
-                <View style={styles.premiumTabIndicator} />
-              )}
-            </View>
+            <Icon 
+              name={iconName || 'restaurant-outline'} 
+              size={focused ? scale(24) : scale(22)} 
+              color={focused ? COLORS.primary : color} 
+            />
           );
         },
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.text.tertiary,
         tabBarStyle: [
-          styles.premiumTabBar,
+          styles.main_app_tab_bar,
           {
             height: tabBarHeight,
             paddingBottom: insets.bottom || verticalScale(8),
-            ...tabBarPosition,
           }
         ],
-        tabBarLabelStyle: styles.premiumTabLabel,
+        tabBarLabelStyle: styles.main_app_tab_label,
         headerShown: false,
-        tabBarShowLabel: true,
       })}
     >
       <Tab.Screen name="Kitchen" component={KitchenTabNavigator} />
@@ -2911,901 +3320,1589 @@ const HomeTabsNavigator = React.memo(({ isGuest }: { isGuest: boolean }) => {
   );
 });
 
-// ============== MAIN EXPORT ==============
-
 const HomeTabs = () => {
   const { isGuest } = useContext(AuthContext);
-  const insets = useSafeAreaInsets();
 
   return (
-    <>
-      <StatusBar 
-        barStyle="light-content" 
-        backgroundColor="transparent" 
-        translucent={true}
-      />
-      <View style={[styles.premiumRootContainer, { paddingBottom: 0 }]}>
-        <HomeTabsNavigator isGuest={isGuest} />
-      </View>
-    </>
+    <View style={styles.main_app_screen_container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <HomeTabsNavigator isGuest={isGuest} />
+    </View>
   );
 };
 
-// ============== UPDATED STYLES ==============
-
 const styles = StyleSheet.create({
-  // Root Container
-  premiumRootContainer: {
+  // Track Order Styles
+  track_order_container: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  premiumContainer: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-
-  // Loading States
-  premiumLoadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.primary,
-  },
-  premiumLoadingGradient: {
-    backgroundColor: COLORS.primary,
-  },
-  premiumLoadingContent: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  premiumLoadingTitle: {
-    ...TYPOGRAPHY.h1,
-    color: '#FFFFFF',
-    marginTop: verticalScale(20),
-    fontWeight: '700',
-  },
-  premiumLoadingText: {
-    ...TYPOGRAPHY.body1,
-    color: 'rgba(255,255,255,0.9)',
-    marginTop: verticalScale(8),
-  },
-  premiumLoadingSpinner: {
-    marginTop: verticalScale(30),
-  },
-
-  // Error States
-  premiumErrorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: scale(24),
-    backgroundColor: '#F8FAFC',
-  },
-  premiumErrorGradient: {
-    backgroundColor: '#F8FAFC',
-  },
-  premiumErrorTitle: {
-    ...TYPOGRAPHY.h3,
-    color: COLORS.text.primary,
-    marginTop: verticalScale(20),
-  },
-  premiumErrorText: {
-    ...TYPOGRAPHY.body1,
-    color: COLORS.text.secondary,
-    marginTop: verticalScale(8),
-  },
-  premiumErrorButton: {
-    marginTop: verticalScale(30),
-    borderRadius: scale(30),
-    overflow: 'hidden',
-    backgroundColor: COLORS.primary,
-    ...Platform.select({
-      ios: {
-        shadowColor: COLORS.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
-  },
-  premiumErrorButtonContent: {
+  track_order_header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: scale(24),
-    paddingVertical: verticalScale(14),
-    gap: scale(8),
-  },
-  premiumErrorButtonText: {
-    ...TYPOGRAPHY.button,
-    color: '#FFFFFF',
-  },
-
-  // Premium Banner Overlay
-  premiumBannerOverlay: {
-    backgroundColor: 'rgba(0,0,0,0.3)',
-  },
-
-  // Premium Header - INCREASED HEIGHT with BOTTOM RADIUS
-  premiumHeader: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 1000,
-    overflow: 'hidden',
-    borderBottomLeftRadius: scale(32),
-    borderBottomRightRadius: scale(32),
-  },
-  premiumHeaderBottomRadius: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: verticalScale(40),
-    borderBottomLeftRadius: scale(32),
-    borderBottomRightRadius: scale(32),
-    backgroundColor: 'rgba(0,0,0,0.1)',
-  },
-  premiumHeaderContent: {
-    flex: 1,
-    paddingHorizontal: scale(20),
-  },
-  premiumHeaderTop: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    width: '100%',
-    marginBottom: verticalScale(16),
-  },
-  premiumHeaderActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: scale(8),
-  },
-  premiumHeaderAction: {
-    borderRadius: scale(18),
-    overflow: 'hidden',
-  },
-  premiumHeaderActionGradient: {
-    width: scale(36),
-    height: scale(36),
-    borderRadius: scale(18),
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.25)',
-  },
-
-  // FIXED: Premium Header Offer Cards Styles - Platform specific
-  premiumHeaderOfferCardsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginHorizontal: scale(16),
-    marginBottom: verticalScale(16),
-    gap: scale(12),
-    ...Platform.select({
-      ios: {
-        // iOS specific positioning
-        marginTop: 0,
-      },
-      android: {
-        // Android specific positioning - ensures cards are properly aligned
-        marginTop: verticalScale(4),
-      },
-    }),
-  },
-  premiumHeaderOfferCard: {
-    flex: 1,
-    height: verticalScale(80),
-    borderRadius: scale(16),
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  premiumHeaderOfferCardContent: {
-    flex: 1,
-    overflow: 'hidden',
-    borderRadius: scale(16),
-    borderWidth: Platform.select({
-      ios: 1,
-      android: 0.5,
-    }),
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  // FIXED: Android specific overlay for better transparency
-  premiumHeaderOfferAndroidOverlay: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  premiumHeaderOfferInner: {
-    flex: 1,
-    flexDirection: 'row',
-    padding: scale(12),
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-  },
-  premiumHeaderOfferContent: {
-    flex: 1,
-  },
-  premiumHeaderOfferTitle: {
-    ...TYPOGRAPHY.caption,
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: fontScale(13),
-    marginBottom: verticalScale(2),
-    textShadowColor: 'rgba(0,0,0,0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  premiumHeaderOfferSubtitle: {
-    ...TYPOGRAPHY.caption,
-    color: '#FFFFFF',
-    fontSize: fontScale(9),
-    marginBottom: verticalScale(4),
-    textShadowColor: 'rgba(0,0,0,0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  premiumHeaderOfferChip: {
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    paddingHorizontal: scale(6),
-    paddingVertical: verticalScale(2),
-    borderRadius: scale(8),
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  premiumHeaderOfferChipText: {
-    ...TYPOGRAPHY.caption,
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: fontScale(8),
-  },
-  premiumHeaderOfferImageContainer: {
-    width: scale(50),
-    height: scale(50),
-    borderRadius: scale(12),
-    overflow: 'hidden',
-    marginLeft: scale(8),
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  premiumHeaderOfferImage: {
-    width: '100%',
-    height: '100%',
-  },
-
-  // Premium Banner
-  premiumBannerContainer: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#000000',
-  },
-  premiumBannerImage: {
-    width: '100%',
-    height: '100%',
-  },
-  premiumBannerVideo: {
-    width: '100%',
-    height: '100%',
-  },
-
-  // Premium Address
-  premiumAddressContainer: {
-    overflow: 'hidden',
-    maxWidth: screenWidth * 0.55,
-  },
-  premiumAddressHomeTypeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: scale(4),
-    marginBottom: verticalScale(2),
-  },
-  premiumAddressHomeTypeLabel: {
-    ...TYPOGRAPHY.caption,
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: fontScale(13),
-  },
-  premiumAddressMainLabel: {
-    ...TYPOGRAPHY.caption,
-    color: '#FFFFFF',
-    fontWeight: '500',
-    fontSize: fontScale(11),
-    opacity: 0.9,
-  },
-
-  // Premium Search - iOS Optimized
-  premiumSearchWrapper: {
-    width: '100%',
-    paddingHorizontal: scale(4),
-    marginTop: verticalScale(8),
-  },
-  premiumSearchContainer: {
-    borderRadius: scale(20),
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.25,
-        shadowRadius: 12,
-        backgroundColor: 'transparent',
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  premiumSearchContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingHorizontal: scale(16),
     paddingVertical: verticalScale(12),
-  },
-  premiumSearchIconWrapper: {
-    marginRight: scale(12),
-  },
-  premiumSearchPlaceholder: {
-    ...TYPOGRAPHY.body2,
-    color: '#FFFFFF',
-    flex: 1,
-    fontWeight: '500',
-    fontSize: fontScale(14),
-  },
-
-  // Sticky Categories Header - iOS Optimized
-  stickyCategoriesContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 1001,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border.light,
+  },
+  track_order_back_button: {
+    width: scale(40),
+    height: scale(40),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  track_order_header_title: {
+    ...TYPOGRAPHY.h4,
+    color: COLORS.text.primary,
+    fontWeight: '600',
+  },
+  track_order_content: {
+    padding: scale(16),
+  },
+  track_order_info_card: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: scale(12),
+    padding: scale(16),
+    marginBottom: verticalScale(20),
+    borderWidth: 1,
+    borderColor: COLORS.border.light,
+  },
+  track_order_restaurant_image: {
+    width: scale(60),
+    height: scale(60),
+    borderRadius: scale(12),
+    marginRight: scale(12),
+  },
+  track_order_info_details: {
+    flex: 1,
+  },
+  track_order_restaurant_name: {
+    ...TYPOGRAPHY.body1,
+    color: COLORS.text.primary,
+    fontWeight: '600',
+    marginBottom: verticalScale(4),
+  },
+  track_order_number: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.secondary,
+    marginBottom: verticalScale(6),
+  },
+  track_order_status_badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: `${COLORS.primary}10`,
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(4),
+    borderRadius: scale(12),
+    gap: scale(4),
+  },
+  track_order_status_dot: {
+    width: scale(6),
+    height: scale(6),
+    borderRadius: scale(3),
+  },
+  track_order_status_text: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
+    fontWeight: '500',
+  },
+  track_order_progress_container: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: scale(12),
+    padding: scale(20),
+    marginBottom: verticalScale(20),
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: COLORS.border.light,
+  },
+  track_order_progress_bar_background: {
+    position: 'absolute',
+    top: scale(40),
+    left: scale(50),
+    right: scale(50),
+    height: scale(4),
+    backgroundColor: COLORS.border.light,
+    borderRadius: scale(2),
+  },
+  track_order_progress_bar_fill: {
+    height: '100%',
+    backgroundColor: COLORS.primary,
+    borderRadius: scale(2),
+  },
+  track_order_step: {
+    position: 'absolute',
+    alignItems: 'center',
+    width: scale(80),
+    marginLeft: -scale(40),
+  },
+  track_order_step_icon_container: {
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: verticalScale(8),
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+  },
+  track_order_step_name: {
+    ...TYPOGRAPHY.caption,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginBottom: verticalScale(2),
+  },
+  track_order_step_time: {
+    ...TYPOGRAPHY.caption,
+    fontSize: fontScale(10),
+    color: COLORS.text.tertiary,
+    textAlign: 'center',
+  },
+  track_order_delivery_card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: scale(12),
+    padding: scale(16),
+    marginBottom: verticalScale(16),
+    borderWidth: 1,
+    borderColor: COLORS.border.light,
+  },
+  track_order_section_title: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.primary,
+    fontWeight: '600',
+    marginBottom: verticalScale(12),
+  },
+  track_order_delivery_info: {
+    flexDirection: 'row',
+    marginBottom: verticalScale(12),
+    gap: scale(12),
+  },
+  track_order_delivery_text: {
+    flex: 1,
+  },
+  track_order_delivery_label: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.secondary,
+    marginBottom: verticalScale(2),
+  },
+  track_order_delivery_value: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.primary,
+    fontWeight: '500',
+  },
+  track_order_summary_card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: scale(12),
+    padding: scale(16),
+    marginBottom: verticalScale(20),
+    borderWidth: 1,
+    borderColor: COLORS.border.light,
+  },
+  track_order_summary_item: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: verticalScale(8),
+  },
+  track_order_summary_label: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.secondary,
+  },
+  track_order_summary_value: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.primary,
+  },
+  track_order_summary_total: {
+    marginTop: verticalScale(8),
+    paddingTop: verticalScale(8),
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border.light,
+  },
+  track_order_summary_total_label: {
+    ...TYPOGRAPHY.body1,
+    color: COLORS.text.primary,
+    fontWeight: '600',
+  },
+  track_order_summary_total_value: {
+    ...TYPOGRAPHY.body1,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  track_order_support_button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: `${COLORS.primary}10`,
+    padding: scale(14),
+    borderRadius: scale(12),
+    gap: scale(8),
+  },
+  track_order_support_text: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.primary,
+    fontWeight: '500',
+  },
+
+  // Main App Container
+  main_app_screen_container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  main_app_root_container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  
+  // Enhanced Loader Styles
+  main_app_loader_container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+  },
+  main_app_loader_background: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  main_app_loader_background_circle: {
+    position: 'absolute',
+    borderRadius: scale(100),
+    backgroundColor: COLORS.primary,
+  },
+  main_app_loader_bike_container: {
+    position: 'absolute',
+    top: '10%',
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  main_app_loader_bike_image: {
+    width: scale(220),
+    height: scale(220),
+  },
+  main_app_loader_content: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 3,
+    paddingHorizontal: scale(20),
+  },
+  main_app_loader_food_icons: {
+    position: 'relative',
+    width: screenWidth,
+    height: verticalScale(180),
+    marginBottom: verticalScale(10),
+  },
+  main_app_loader_food_icon: {
+    position: 'absolute',
+    backgroundColor: 'rgba(229, 92, 24, 0.1)',
+    borderRadius: scale(40),
+    padding: scale(8),
+  },
+  main_app_loader_food_emoji: {
+    fontSize: fontScale(32),
+  },
+  main_app_loader_brand_name: {
+    ...TYPOGRAPHY.h1,
+    fontSize: fontScale(36),
+    fontWeight: '800',
+    marginBottom: verticalScale(8),
+    color: COLORS.primary,
+  },
+  main_app_loader_tagline: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.secondary,
+    fontSize: fontScale(13),
+    marginBottom: verticalScale(20),
+    textAlign: 'center',
+  },
+  main_app_loader_progress_container: {
+    width: screenWidth * 0.7,
+    height: verticalScale(4),
+    backgroundColor: COLORS.border.light,
+    borderRadius: scale(2),
+    overflow: 'hidden',
+    marginBottom: verticalScale(24),
+  },
+  main_app_loader_progress_bar: {
+    height: '100%',
+    borderRadius: scale(2),
+  },
+  main_app_loader_text_container: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(4),
+  },
+  main_app_loader_text: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.secondary,
+    fontSize: fontScale(13),
+  },
+  main_app_loader_dots: {
+    flexDirection: 'row',
+    gap: scale(4),
+  },
+  main_app_loader_dot: {
+    width: scale(6),
+    height: scale(6),
+    borderRadius: scale(3),
+    backgroundColor: COLORS.primary,
+  },
+  main_app_loader_particles: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    pointerEvents: 'none',
+  },
+  main_app_loader_particle: {
+    position: 'absolute',
+    width: scale(4),
+    height: scale(4),
+    borderRadius: scale(2),
+    backgroundColor: COLORS.primary,
+    opacity: 0.5,
+  },
+  
+  // Banner Solid Container
+  main_app_banner_container_solid: {
+    flex: 1,
+    padding: scale(20),
+    position: 'relative',
+  },
+  
+  // Offers Category Card Styles
+  main_app_offers_category_card_wrapper: {
+    alignItems: 'center',
+    width: scale(70),
+  },
+  main_app_offers_category_card: {
+    width: scale(56),
+    height: scale(56),
+    borderRadius: scale(28),
+    overflow: 'hidden',
+    marginBottom: verticalScale(6),
+    ...Platform.select({
+      ios: {
+        shadowColor: '#E55C18',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 6,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
+  },
+  main_app_offers_category_particles: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  main_app_offers_particle1: {
+    position: 'absolute',
+    top: scale(5),
+    right: scale(5),
+  },
+  main_app_offers_particle2: {
+    position: 'absolute',
+    bottom: scale(5),
+    left: scale(5),
+  },
+  main_app_offers_particle3: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginLeft: -scale(15),
+    marginTop: -scale(15),
+  },
+  main_app_offers_category_icon_container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  main_app_offers_category_text: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.secondary,
+    textAlign: 'center',
+    fontSize: fontScale(11),
+    marginTop: verticalScale(2),
+    fontWeight: '500',
+  },
+  main_app_offers_category_badge: {
+    position: 'absolute',
+    top: -scale(5),
+    right: -scale(5),
+    borderRadius: scale(12),
+    paddingHorizontal: scale(4),
+    paddingVertical: scale(2),
+    minWidth: scale(20),
+    alignItems: 'center',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-    paddingTop: Platform.OS === 'ios' ? 50 : 40,
-  },
-  stickyCategoriesContent: {
-    paddingVertical: verticalScale(12),
-  },
-  stickyCategoriesScrollContent: {
-    paddingHorizontal: scale(16),
-    gap: scale(16),
-  },
-  stickyCategoryItem: {
-    alignItems: 'center',
-    width: scale(64),
-  },
-  stickyCategoryItemActive: {
-    opacity: 1,
-  },
-  stickyCategoryIconWrapper: {
-    width: scale(48),
-    height: scale(48),
-    borderRadius: scale(24),
-    overflow: 'hidden',
-    marginBottom: verticalScale(4),
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  stickyCategoryIconWrapperActive: {
-    borderColor: COLORS.primary,
-  },
-  stickyCategoryIcon: {
-    width: '100%',
-    height: '100%',
-  },
-  stickyCategoryText: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.text.secondary,
-    fontSize: fontScale(10),
-    textAlign: 'center',
-  },
-  stickyCategoryTextActive: {
-    color: COLORS.primary,
-    fontWeight: '600',
-  },
-
-  // Premium Categories
-  premiumCategoriesContainer: {
-    marginBottom: verticalScale(20),
-  },
-  premiumCategoriesContent: {
-    paddingHorizontal: scale(16),
-    gap: scale(12),
-  },
-  premiumCategoryCard: {
-    alignItems: 'center',
-    width: scale(72),
-  },
-  premiumCategoryCardActive: {
-    transform: [{ scale: 1.05 }],
-  },
-  premiumCategoryIconContainer: {
-    width: scale(64),
-    height: scale(64),
-    borderRadius: scale(32),
-    backgroundColor: COLORS.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: verticalScale(6),
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: COLORS.border.light,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
+        shadowRadius: 2,
       },
       android: {
         elevation: 2,
       },
     }),
   },
-  premiumCategoryIconContainerActive: {
-    borderColor: COLORS.primary,
+  main_app_offers_category_badge_text: {
+    fontSize: fontScale(10),
   },
-  premiumCategoryIcon: {
-    width: '100%',
-    height: '100%',
-  },
-  premiumCategoryText: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.text.secondary,
-    textAlign: 'center',
-    fontWeight: '500',
-    fontSize: fontScale(11),
-  },
-  premiumCategoryTextActive: {
-    color: COLORS.primary,
-    fontWeight: '600',
-  },
-
-  // Premium Sections
-  premiumScrollView: {
+  
+  // Error Container
+  main_app_error_container: {
     flex: 1,
-  },
-  premiumScrollContent: {
-    paddingBottom: verticalScale(100),
-  },
-  premiumSection: {
-    marginBottom: verticalScale(28),
-    paddingHorizontal: scale(16),
-  },
-  premiumSectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: verticalScale(14),
+    paddingHorizontal: scale(24),
+    backgroundColor: '#FFFFFF',
   },
-  premiumSectionTitle: {
+  main_app_error_title: {
     ...TYPOGRAPHY.h4,
     color: COLORS.text.primary,
-    fontWeight: '700',
-    fontSize: fontScale(18),
+    marginTop: verticalScale(16),
+    textAlign: 'center',
   },
-  premiumSectionSubtitle: {
-    ...TYPOGRAPHY.caption,
+  main_app_error_text: {
+    ...TYPOGRAPHY.body2,
     color: COLORS.text.secondary,
-    marginTop: verticalScale(2),
-    fontSize: fontScale(12),
+    marginTop: verticalScale(4),
+    textAlign: 'center',
   },
-
-  // Premium Top Restaurants
-  premiumTopRestaurantsContent: {
-    paddingRight: scale(16),
-    gap: scale(25),
-  },
-
-  // Premium Restaurant Cards
-  premiumRestaurantCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: scale(14),
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  premiumTopRestaurantCard: {
-    width: (screenWidth) / 3.2,
-  },
-  premiumRestaurantImageContainer: {
-    position: 'relative',
-    height: verticalScale(110),
-  },
-  premiumRestaurantImage: {
-    width: '100%',
-    height: '100%',
-  },
-  premiumRestaurantImagePlaceholder: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: COLORS.border.light,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  premiumRestaurantImageGradient: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.2)',
-  },
-  premiumRestaurantNewBadge: {
-    position: 'absolute',
-    top: scale(8),
-    left: scale(8),
-    backgroundColor: COLORS.success,
-    paddingHorizontal: scale(6),
-    paddingVertical: verticalScale(2),
+  main_app_error_button: {
+    marginTop: verticalScale(24),
+    paddingHorizontal: scale(24),
+    paddingVertical: verticalScale(12),
+    backgroundColor: COLORS.primary,
     borderRadius: scale(8),
   },
-  premiumRestaurantNewBadgeText: {
-    ...TYPOGRAPHY.caption,
+  main_app_error_button_text: {
+    ...TYPOGRAPHY.button,
     color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: fontScale(8),
   },
-  premiumRestaurantFavorite: {
+  
+  // Integrated Header
+  main_app_integrated_header: {
     position: 'absolute',
-    top: scale(8),
-    right: scale(8),
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    width: scale(28),
-    height: scale(28),
-    borderRadius: scale(14),
-    justifyContent: 'center',
-    alignItems: 'center',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
   },
-  premiumTopRestaurantFavorite: {
-    top: scale(6),
-    right: scale(6),
-    width: scale(24),
-    height: scale(24),
-    borderRadius: scale(12),
-  },
-  premiumRestaurantInfo: {
-    padding: scale(12),
-  },
-  premiumTopRestaurantInfo: {
-    padding: scale(8),
-  },
-  premiumRestaurantName: {
-    ...TYPOGRAPHY.body2,
-    color: COLORS.text.primary,
-    fontWeight: '600',
-    marginBottom: verticalScale(2),
-    fontSize: fontScale(14),
-  },
-  premiumTopRestaurantName: {
-    fontSize: fontScale(12),
-    marginBottom: verticalScale(1),
-  },
-  premiumRestaurantMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: verticalScale(4),
-  },
-  premiumRestaurantCuisine: {
+  main_app_integrated_header_content: {
     flex: 1,
+    paddingHorizontal: scale(16),
+    paddingBottom: verticalScale(8),
   },
-  premiumRestaurantCuisineText: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.text.secondary,
-    fontSize: fontScale(11),
-  },
-  premiumTopRestaurantCuisineText: {
-    fontSize: fontScale(9),
-  },
-  premiumRestaurantDelivery: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: scale(2),
-  },
-  premiumRestaurantDeliveryText: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.text.secondary,
-    fontSize: fontScale(11),
-  },
-  premiumTopRestaurantDeliveryText: {
-    fontSize: fontScale(9),
-  },
-  premiumRestaurantGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: scale(14),
-  },
-
-  // Premium Active Orders - iOS Optimized
-  premiumActiveOrdersContainer: {
+  
+  // Collapsed Header
+  main_app_collapsed_header: {
     position: 'absolute',
-    left: scale(16),
-    right: scale(16),
-    zIndex: 100,
-    ...Platform.select({
-      ios: {
-        // iOS specific positioning
-      },
-      android: {
-        // Android specific positioning to ensure proper alignment from bottom
-      },
-    }),
-  },
-  premiumActiveOrdersHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: verticalScale(10),
-  },
-  premiumActiveOrdersTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: scale(6),
-  },
-  premiumActiveOrdersTitle: {
-    ...TYPOGRAPHY.body2,
-    color: COLORS.text.primary,
-    fontWeight: '600',
-    fontSize: fontScale(14),
-  },
-  premiumActiveOrdersToggle: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.primary,
-    fontWeight: '600',
-    fontSize: fontScale(12),
-  },
-  premiumActiveOrdersList: {
-    gap: verticalScale(10),
-  },
-  premiumActiveOrderCard: {
-    borderRadius: scale(14),
-    overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 999,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.12,
-        shadowRadius: 8,
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
       },
       android: {
         elevation: 4,
       },
     }),
   },
-  premiumActiveOrderContent: {
+  main_app_collapsed_header_content: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: scale(12),
-  },
-  premiumActiveOrderImage: {
-    width: scale(52),
-    height: scale(52),
-    borderRadius: scale(12),
-    marginRight: scale(12),
-  },
-  premiumActiveOrderDetails: {
-    flex: 1,
-  },
-  premiumActiveOrderHeader: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: verticalScale(4),
+    paddingHorizontal: scale(16),
+    paddingBottom: verticalScale(8),
   },
-  premiumActiveOrderKitchen: {
-    ...TYPOGRAPHY.body2,
-    color: COLORS.text.primary,
-    fontWeight: '600',
-    flex: 1,
-    fontSize: fontScale(13),
-  },
-  premiumActiveOrderStatusBadge: {
+  main_app_collapsed_header_actions: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: scale(8),
-    paddingVertical: verticalScale(2),
-    borderRadius: scale(12),
+    gap: scale(8),
+  },
+  main_app_collapsed_header_action: {
+    width: scale(32),
+    height: scale(32),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  
+  // Collapsed Address
+  main_app_collapsed_address_container: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: scale(4),
+    maxWidth: screenWidth * 0.35,
   },
-  premiumActiveOrderStatusDot: {
-    width: scale(6),
-    height: scale(6),
-    borderRadius: scale(3),
-  },
-  premiumActiveOrderStatusText: {
+  main_app_collapsed_address_text: {
     ...TYPOGRAPHY.caption,
     fontWeight: '500',
     fontSize: fontScale(11),
+    flex: 1,
   },
-  premiumActiveOrderNumber: {
+  
+  // Collapsed Search
+  main_app_collapsed_search_container: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: scale(20),
+    borderWidth: 1,
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(6),
+    marginHorizontal: scale(8),
+    gap: scale(6),
+  },
+  main_app_collapsed_search_placeholder: {
     ...TYPOGRAPHY.caption,
-    color: COLORS.text.secondary,
-    marginBottom: verticalScale(4),
-    fontSize: fontScale(11),
+    fontSize: fontScale(12),
+    flex: 1,
   },
-  premiumActiveOrderTimeContainer: {
+  
+  // Header Components
+  main_app_header_top: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: verticalScale(8),
+  },
+  main_app_header_actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(12),
+  },
+  main_app_header_action: {
+    width: scale(40),
+    height: scale(40),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  main_app_search_wrapper: {
+    width: '100%',
+    marginBottom: verticalScale(12),
+  },
+  main_app_header_banner_container: {
+    marginHorizontal: -scale(16),
+    marginTop: verticalScale(4),
+    marginBottom: verticalScale(4),
+  },
+  
+  // Address Header
+  main_app_address_container: {
+    maxWidth: screenWidth * 0.55,
+  },
+  main_app_address_content: {
+    paddingVertical: verticalScale(4),
+  },
+  main_app_address_home_type: {
+    ...TYPOGRAPHY.body1,
+    fontWeight: '900',
+    fontSize: fontScale(16),
+    marginBottom: verticalScale(2),
+  },
+  main_app_address_row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: scale(4),
   },
-  premiumActiveOrderTime: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.text.tertiary,
-    fontSize: fontScale(11),
+  main_app_address_text: {
+    ...TYPOGRAPHY.body2,
+    fontWeight: '500',
+    fontSize: fontScale(13),
+    maxWidth: screenWidth * 0.4,
   },
-  premiumActiveOrderArrow: {
-    marginLeft: scale(8),
-  },
-
-  // Premium Cart Summary - iOS Optimized
-  premiumCartSummary: {
-    position: 'absolute',
-    left: scale(16),
-    right: scale(16),
-    bottom: Platform.OS === 'ios' ? verticalScale(95) : verticalScale(86),
-    borderRadius: scale(18),
-    overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
-    zIndex: 100,
+  
+  // Search Bar
+  main_app_search_container: {
+    borderRadius: scale(12),
+    borderWidth: 1,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
       },
       android: {
-        elevation: 8,
+        elevation: 2,
       },
     }),
   },
-  premiumCartSummaryContent: {
+  main_app_search_content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(10),
+    gap: scale(8),
+  },
+  main_app_search_placeholder: {
+    ...TYPOGRAPHY.body2,
+    flex: 1,
+    fontSize: fontScale(14),
+  },
+  main_app_search_filter: {
+    width: scale(34),
+    height: scale(34),
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: scale(8),
+  },
+  
+  // Scroll View
+  main_app_scroll_view: {
+    flex: 1,
+  },
+  main_app_scroll_content: {
+    paddingBottom: verticalScale(100),
+  },
+  
+  // Banner Styles
+  main_app_banner_container: {
+    width: screenWidth,
+    height: verticalScale(180),
+  },
+  main_app_banner_wrapper: {
+    width: screenWidth,
+    height: verticalScale(180),
+  },
+  main_app_banner_card: {
+    flex: 1,
+    marginHorizontal: scale(0),
+    overflow: 'hidden',
+    borderRadius: 0,
+  },
+  main_app_banner_decor: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    overflow: 'hidden',
+  },
+  main_app_banner_decor1: {
+    position: 'absolute',
+    top: scale(20),
+    right: scale(20),
+  },
+  main_app_banner_decor2: {
+    position: 'absolute',
+    bottom: scale(20),
+    left: scale(20),
+  },
+  main_app_banner_decor3: {
+    position: 'absolute',
+    top: '50%',
+    right: '30%',
+    opacity: 0.5,
+  },
+  main_app_banner_content: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: scale(14),
   },
-  premiumCartSummaryInfo: {
+  main_app_banner_left_content: {
+    flex: 1.2,
+    marginRight: scale(16),
+    zIndex: 2,
+  },
+  main_app_banner_right_content: {
+    flex: 0.8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    zIndex: 2,
+  },
+  main_app_banner_badge: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(5),
+    borderRadius: scale(20),
+    alignSelf: 'flex-start',
+    marginBottom: verticalScale(10),
+  },
+  main_app_banner_badge_text: {
+    ...TYPOGRAPHY.caption,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: fontScale(11),
+  },
+  main_app_banner_title: {
+    fontSize: fontScale(22),
+    fontWeight: '800',
+    marginBottom: verticalScale(6),
+    letterSpacing: -0.5,
+    lineHeight: fontScale(26),
+  },
+  main_app_banner_subtitle: {
+    fontSize: fontScale(12),
+    fontWeight: '500',
+    opacity: 0.9,
+    marginBottom: verticalScale(12),
+    lineHeight: fontScale(16),
+  },
+  main_app_banner_chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(6),
+    borderRadius: scale(25),
+    alignSelf: 'flex-start',
+    gap: scale(8),
   },
-  premiumCartSummaryImage: {
-    width: scale(48),
-    height: scale(48),
+  main_app_banner_chip_text: {
+    fontSize: fontScale(12),
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  main_app_banner_image: {
+    width: scale(110),
+    height: scale(110),
+    borderRadius: scale(20),
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.5)',
+  },
+  main_app_banner_image_overlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '30%',
+    borderBottomLeftRadius: scale(20),
+    borderBottomRightRadius: scale(20),
+  },
+  main_app_banner_discount_badge: {
+    position: 'absolute',
+    bottom: -scale(8),
+    right: -scale(8),
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(5),
+    borderRadius: scale(15),
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+  },
+  main_app_banner_discount_text: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
+    fontWeight: '800',
+    fontSize: fontScale(10),
+  },
+  
+  // Categories Section
+  main_app_categories_section: {
+    marginBottom: verticalScale(20),
+  },
+  main_app_categories_content: {
+    paddingHorizontal: scale(16),
+    gap: scale(16),
+  },
+  main_app_category_card: {
+    alignItems: 'center',
+    width: scale(70),
+  },
+  main_app_category_icon_container: {
+    width: scale(56),
+    height: scale(56),
+    borderRadius: scale(28),
+    backgroundColor: COLORS.cardAlt,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: verticalScale(6),
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border.light,
+  },
+  main_app_category_icon: {
+    width: '100%',
+    height: '100%',
+  },
+  main_app_category_text: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.secondary,
+    textAlign: 'center',
+    fontSize: fontScale(11),
+  },
+  
+  // Restaurant Section
+  main_app_section: {
+    marginBottom: verticalScale(28),
+    paddingHorizontal: scale(16),
+  },
+  main_app_section_header: {
+    marginBottom: verticalScale(12),
+  },
+  main_app_section_title: {
+    ...TYPOGRAPHY.h4,
+    color: COLORS.text.primary,
+    fontWeight: '600',
+    fontSize: fontScale(18),
+  },
+  main_app_section_subtitle: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.secondary,
+    marginTop: verticalScale(2),
+    fontSize: fontScale(12),
+  },
+  main_app_top_restaurants_content: {
+    paddingRight: scale(16),
+    gap: scale(12),
+  },
+  
+  // Restaurant Card
+  main_app_restaurant_card: {
+    backgroundColor: COLORS.card,
     borderRadius: scale(12),
-    marginRight: scale(12),
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border.light,
   },
-  premiumCartSummaryText: {
-    flex: 1,
+  main_app_restaurant_image_container: {
+    position: 'relative',
+    height: verticalScale(110),
   },
-  premiumCartSummaryTitle: {
+  main_app_restaurant_image: {
+    width: '100%',
+    height: '100%',
+  },
+  main_app_restaurant_favorite: {
+    position: 'absolute',
+    top: scale(6),
+    right: scale(6),
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    width: scale(28),
+    height: scale(28),
+    borderRadius: scale(14),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  main_app_top_restaurant_favorite: {
+    width: scale(24),
+    height: scale(24),
+    borderRadius: scale(12),
+  },
+  main_app_restaurant_new_badge: {
+    position: 'absolute',
+    top: scale(6),
+    left: scale(6),
+    backgroundColor: COLORS.success,
+    paddingHorizontal: scale(6),
+    paddingVertical: verticalScale(2),
+    borderRadius: scale(4),
+  },
+  main_app_restaurant_new_badge_text: {
+    ...TYPOGRAPHY.caption,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: fontScale(8),
+  },
+  main_app_restaurant_info: {
+    padding: scale(10),
+  },
+  main_app_restaurant_name: {
     ...TYPOGRAPHY.body2,
     color: COLORS.text.primary,
     fontWeight: '600',
     marginBottom: verticalScale(2),
     fontSize: fontScale(13),
   },
-  premiumCartSummarySubtitle: {
+  main_app_top_restaurant_name: {
+    fontSize: fontScale(12),
+  },
+  main_app_restaurant_cuisine: {
     ...TYPOGRAPHY.caption,
-    color: COLORS.primary,
+    color: COLORS.text.secondary,
+    marginBottom: verticalScale(4),
+    fontSize: fontScale(11),
+  },
+  main_app_top_restaurant_cuisine: {
+    fontSize: fontScale(10),
+  },
+  main_app_restaurant_meta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(6),
+  },
+  main_app_restaurant_rating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(2),
+  },
+  main_app_restaurant_rating_text: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.primary,
     fontWeight: '500',
     fontSize: fontScale(11),
   },
-  premiumCartSummaryButton: {
-    borderRadius: scale(28),
-    overflow: 'hidden',
-    backgroundColor: COLORS.primary,
+  main_app_top_restaurant_rating_text: {
+    fontSize: fontScale(9),
   },
-  premiumCartSummaryButtonContent: {
+  main_app_restaurant_dot: {
+    width: scale(3),
+    height: scale(3),
+    borderRadius: scale(1.5),
+    backgroundColor: COLORS.text.tertiary,
+  },
+  main_app_restaurant_delivery: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.secondary,
+    fontSize: fontScale(11),
+  },
+  main_app_top_restaurant_delivery: {
+    fontSize: fontScale(9),
+  },
+  main_app_restaurant_grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: scale(12),
+  },
+  
+  // New Active Orders Section Styles
+  active_orders_section: {
+    position: 'absolute',
+    bottom: verticalScale(85),
+    left: scale(12),
+    right: scale(12),
+    zIndex: 100,
+  },
+  active_orders_container: {
+    gap: verticalScale(8),
+  },
+  active_orders_loading: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: scale(14),
-    paddingVertical: verticalScale(10),
-    gap: scale(6),
+    justifyContent: 'center',
+    gap: scale(8),
+    paddingVertical: verticalScale(12),
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: scale(12),
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
-  premiumCartSummaryButtonText: {
-    ...TYPOGRAPHY.body2,
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: fontScale(13),
+  active_orders_loading_text: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.secondary,
+    fontSize: fontScale(12),
   },
-  premiumCartBadge: {
+  
+  // All Orders Button
+  all_orders_button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
-    width: scale(22),
-    height: scale(22),
-    borderRadius: scale(11),
+    borderRadius: scale(12),
+    borderColor: COLORS.border.default,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+  all_orders_button_left: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(12),
+  },
+  all_orders_button_icon_container: {
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
+    backgroundColor: `${COLORS.primary}10`,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  premiumCartBadgeText: {
+  all_orders_button_title: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.primary,
+    fontWeight: '600',
+    fontSize: fontScale(14),
+  },
+  all_orders_button_subtitle: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.secondary,
+    fontSize: fontScale(11),
+    marginTop: verticalScale(2),
+  },
+  
+  // Remaining Orders Indicator
+  remaining_orders_indicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: scale(8),
+    paddingVertical: verticalScale(10),
+    backgroundColor: `${COLORS.primary}05`,
+    borderRadius: scale(12),
+    borderWidth: 1,
+    borderColor: `${COLORS.primary}20`,
+  },
+  remaining_orders_text: {
     ...TYPOGRAPHY.caption,
     color: COLORS.primary,
-    fontWeight: '700',
-    fontSize: fontScale(11),
+    fontWeight: '500',
+    fontSize: fontScale(12),
   },
-
-  // FIXED: Premium Tab Bar - No border, only top radius, properly positioned
-  premiumTabBar: {
+  
+  // Active Order Card
+  active_order_card: {
+    backgroundColor: '#f4efef',
+    borderRadius: scale(12),
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+  active_order_content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: scale(7),
+  },
+  active_order_image_container: {
+    position: 'relative',
+    marginRight: scale(12),
+  },
+  active_order_image: {
+    width: scale(44),
+    height: scale(44),
+    borderRadius: scale(10),
+  },
+  active_order_status_icon: {
+    position: 'absolute',
+    bottom: -scale(4),
+    right: -scale(4),
+    width: scale(18),
+    height: scale(18),
+    borderRadius: scale(9),
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  active_order_details: {
+    flex: 1,
+  },
+  active_order_header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: verticalScale(4),
+  },
+  active_order_kitchen: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.primary,
+    fontWeight: '600',
+    flex: 1,
+    fontSize: fontScale(13),
+  },
+  active_order_status_badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: scale(6),
+    paddingVertical: verticalScale(2),
+    borderRadius: scale(8),
+    gap: scale(3),
+  },
+  active_order_status_dot: {
+    width: scale(4),
+    height: scale(4),
+    borderRadius: scale(2),
+  },
+  active_order_status_text: {
+    ...TYPOGRAPHY.caption,
+    fontWeight: '600',
+    fontSize: fontScale(9),
+  },
+  active_order_number: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.secondary,
+    fontSize: fontScale(10),
+    marginBottom: verticalScale(2),
+  },
+  active_order_time_container: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(4),
+  },
+  active_order_time: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.tertiary,
+    fontSize: fontScale(9),
+  },
+  
+  // All Orders Modal Styles
+  all_orders_backdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  all_orders_backdrop_touchable: {
+    flex: 1,
+  },
+  all_orders_modal_container: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     backgroundColor: '#FFFFFF',
-    borderTopWidth: 0, // Remove top border
-    borderWidth: 0, // Remove all borders
-    elevation: 0,
+    borderTopLeftRadius: scale(24),
+    borderTopRightRadius: scale(24),
+    maxHeight: screenHeight * 0.8,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.08,
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 10,
+      },
+    }),
+  },
+  all_orders_modal_header: {
+    paddingTop: verticalScale(12),
+    paddingHorizontal: scale(20),
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border.light,
+  },
+  all_orders_modal_handle: {
+    width: scale(40),
+    height: scale(4),
+    backgroundColor: COLORS.border.default,
+    borderRadius: scale(2),
+    alignSelf: 'center',
+    marginBottom: verticalScale(12),
+  },
+  all_orders_modal_header_content: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: verticalScale(16),
+  },
+  all_orders_modal_title: {
+    ...TYPOGRAPHY.h4,
+    color: COLORS.text.primary,
+    fontWeight: '700',
+    fontSize: fontScale(20),
+  },
+  all_orders_modal_subtitle: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.secondary,
+    fontSize: fontScale(13),
+    marginLeft: scale(8),
+  },
+  all_orders_modal_close: {
+    padding: scale(4),
+  },
+  all_orders_modal_list: {
+    paddingVertical: verticalScale(8),
+    paddingHorizontal: scale(16),
+    paddingBottom: verticalScale(20),
+  },
+  all_orders_modal_item: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: verticalScale(12),
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border.light,
+  },
+  all_orders_modal_item_image_container: {
+    position: 'relative',
+    marginRight: scale(12),
+  },
+  all_orders_modal_item_image: {
+    width: scale(52),
+    height: scale(52),
+    borderRadius: scale(12),
+  },
+  all_orders_modal_item_status_icon: {
+    position: 'absolute',
+    bottom: -scale(4),
+    right: -scale(4),
+    width: scale(20),
+    height: scale(20),
+    borderRadius: scale(10),
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  all_orders_modal_item_details: {
+    flex: 1,
+  },
+  all_orders_modal_item_name: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.primary,
+    fontWeight: '600',
+    fontSize: fontScale(14),
+    marginBottom: verticalScale(2),
+  },
+  all_orders_modal_item_number: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.secondary,
+    fontSize: fontScale(11),
+    marginBottom: verticalScale(4),
+  },
+  all_orders_modal_item_meta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(8),
+  },
+  all_orders_modal_item_status_badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(3),
+    borderRadius: scale(10),
+    gap: scale(4),
+  },
+  all_orders_modal_item_status_dot: {
+    width: scale(5),
+    height: scale(5),
+    borderRadius: scale(2.5),
+  },
+  all_orders_modal_item_status_text: {
+    ...TYPOGRAPHY.caption,
+    fontWeight: '600',
+    fontSize: fontScale(10),
+  },
+  all_orders_modal_item_time: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.secondary,
+    fontSize: fontScale(10),
+  },
+  all_orders_modal_empty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: verticalScale(60),
+    paddingHorizontal: scale(32),
+  },
+  all_orders_modal_empty_title: {
+    ...TYPOGRAPHY.body1,
+    color: COLORS.text.primary,
+    marginTop: verticalScale(16),
+    marginBottom: verticalScale(4),
+    fontSize: fontScale(16),
+  },
+  all_orders_modal_empty_text: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.secondary,
+    textAlign: 'center',
+    fontSize: fontScale(13),
+  },
+  
+  // Cart Summary
+  main_app_cart_summary: {
+    position: 'absolute',
+    left: scale(16),
+    right: scale(16),
+    bottom: Platform.select({
+      ios: verticalScale(85),
+      android: verticalScale(85),
+    }),
+    borderRadius: scale(12),
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: COLORS.border.default,
+    zIndex: 100,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
         shadowRadius: 12,
       },
       android: {
-        elevation: 8,
-        // Android specific shadow
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: -2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
+        elevation: 4,
       },
     }),
-    borderTopLeftRadius: scale(24), // Only top left radius
-    borderTopRightRadius: scale(24), // Only top right radius
-    borderBottomLeftRadius: 0, // No bottom radius
-    borderBottomRightRadius: 0, // No bottom radius
-    overflow: 'hidden',
   },
-  premiumTabLabel: {
+  main_app_cart_summary_content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: scale(12),
+  },
+  main_app_cart_summary_info: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: scale(10),
+  },
+  main_app_cart_summary_image: {
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(8),
+  },
+  main_app_cart_summary_title: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.primary,
+    fontWeight: '600',
+    fontSize: fontScale(12),
+  },
+  main_app_cart_summary_subtitle: {
     ...TYPOGRAPHY.caption,
-    fontWeight: '500',
-    marginBottom: verticalScale(4),
+    color: COLORS.text.secondary,
+    fontSize: fontScale(10),
+  },
+  main_app_cart_summary_button: {
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(6),
+    backgroundColor: COLORS.primary,
+    borderRadius: scale(6),
+  },
+  main_app_cart_summary_button_text: {
+    ...TYPOGRAPHY.caption,
+    color: '#FFFFFF',
+    fontWeight: '600',
     fontSize: fontScale(11),
   },
-  premiumTabIconContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  premiumTabIndicator: {
+  
+  // Tab Bar
+  main_app_tab_bar: {
     position: 'absolute',
-    bottom: -verticalScale(6),
-    width: scale(4),
-    height: scale(4),
-    borderRadius: scale(2),
-    backgroundColor: COLORS.primary,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border.light,
+    elevation: 0,
+  },
+  main_app_tab_label: {
+    ...TYPOGRAPHY.caption,
+    fontWeight: '500',
+    fontSize: fontScale(10),
+  },
+  
+  // Search Modal
+  main_app_search_modal_container: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  main_app_search_modal_header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: scale(16),
+    paddingBottom: verticalScale(12),
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border.light,
+  },
+  main_app_search_modal_back_button: {
+    width: scale(40),
+    height: scale(40),
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: scale(8),
+  },
+  main_app_search_modal_input_container: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.search.background,
+    borderRadius: scale(20),
+    paddingHorizontal: scale(12),
+    borderWidth: 1,
+    borderColor: COLORS.border.default,
+  },
+  main_app_search_modal_input_icon: {
+    marginRight: scale(6),
+  },
+  main_app_search_modal_input: {
+    flex: 1,
+    height: verticalScale(40),
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.primary,
+    paddingVertical: 0,
+    fontSize: fontScale(13),
+  },
+  main_app_search_modal_clear_button: {
+    padding: scale(4),
+  },
+  main_app_search_modal_content: {
+    flex: 1,
+    backgroundColor: COLORS.search.background,
+  },
+  main_app_search_modal_loading: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  main_app_search_modal_loading_text: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.secondary,
+    marginTop: verticalScale(8),
+  },
+  main_app_search_modal_empty: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: scale(32),
+  },
+  main_app_search_modal_empty_title: {
+    ...TYPOGRAPHY.body1,
+    color: COLORS.text.primary,
+    marginTop: verticalScale(12),
+    marginBottom: verticalScale(4),
+  },
+  main_app_search_modal_empty_text: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.secondary,
+    textAlign: 'center',
+  },
+  main_app_search_section: {
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(16),
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border.light,
+  },
+  main_app_search_section_last: {
+    borderBottomWidth: 0,
+  },
+  main_app_search_section_header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: verticalScale(12),
+  },
+  main_app_search_section_title: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.primary,
+    fontWeight: '600',
+    fontSize: fontScale(14),
+  },
+  main_app_search_section_action: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
+    fontWeight: '500',
+    fontSize: fontScale(11),
+  },
+  main_app_search_recent_list: {
+    gap: verticalScale(8),
+  },
+  main_app_search_recent_item: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: verticalScale(6),
+    gap: scale(8),
+  },
+  main_app_search_recent_text: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.primary,
+    flex: 1,
+    fontSize: fontScale(13),
+  },
+  main_app_search_category_grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: scale(16),
+  },
+  main_app_search_category_item: {
+    width: (screenWidth - scale(64)) / 4,
+    alignItems: 'center',
+  },
+  main_app_search_category_image: {
+    width: scale(50),
+    height: scale(50),
+    borderRadius: scale(25),
+    marginBottom: verticalScale(4),
+    borderWidth: 1,
+    borderColor: COLORS.border.light,
+  },
+  main_app_search_category_name: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.secondary,
+    textAlign: 'center',
+    fontSize: fontScale(10),
+  },
+  main_app_search_results_list: {
+    paddingVertical: verticalScale(4),
+  },
+  main_app_search_result_item: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(10),
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border.light,
+  },
+  main_app_search_result_image: {
+    width: scale(48),
+    height: scale(48),
+    borderRadius: scale(8),
+    marginRight: scale(12),
+  },
+  main_app_search_result_info: {
+    flex: 1,
+  },
+  main_app_search_result_name: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.primary,
+    fontWeight: '500',
+    marginBottom: verticalScale(2),
+    fontSize: fontScale(13),
+  },
+  main_app_search_result_type: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.text.secondary,
+    marginBottom: verticalScale(2),
+    fontSize: fontScale(11),
+  },
+  main_app_search_result_price: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
+    fontWeight: '600',
+    fontSize: fontScale(11),
   },
 });
 

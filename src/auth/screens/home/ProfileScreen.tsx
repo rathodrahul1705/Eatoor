@@ -833,11 +833,7 @@ const ProfileScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar 
-        barStyle="dark-content" 
-        backgroundColor="#FFF" 
-        translucent={isAndroid}
-      />
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       
       {/* Animated Header */}
       <Animated.View 
@@ -846,8 +842,6 @@ const ProfileScreen = ({ navigation }) => {
           {
             opacity: fadeAnim,
             transform: [{ translateY: slideAnim }],
-            paddingTop: isIOS ? scaleHeight(16) : StatusBar.currentHeight + scaleHeight(10),
-            paddingBottom: isIOS ? scaleHeight(10) : StatusBar.currentHeight + scaleHeight(0),
             paddingHorizontal: responsivePadding,
           }
         ]}
@@ -1316,11 +1310,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#FFF',
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
+    padding:10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 3,

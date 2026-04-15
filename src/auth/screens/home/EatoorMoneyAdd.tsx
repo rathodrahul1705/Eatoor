@@ -14,6 +14,7 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   ActivityIndicator,
+  findNodeHandle,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
@@ -45,6 +46,7 @@ const EatoorMoneyAdd = () => {
   const [successMessage, setSuccessMessage] = useState('');
   const amountInputRef = useRef(null);
   const scrollViewRef = useRef(null);
+  const amountContainerRef = useRef(null); // New ref for the container
 
   const cartScreenBalance = route?.params?.amountToAdd;
 
@@ -58,7 +60,7 @@ const EatoorMoneyAdd = () => {
   const MIN_AMOUNT = 1;
   const MAX_AMOUNT = 100000;
 
-  // Handle keyboard
+  // Handle keyboard with proper scrolling
   useEffect(() => {
     const showSubscription = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
@@ -68,17 +70,7 @@ const EatoorMoneyAdd = () => {
         
         // Scroll to input when keyboard appears
         setTimeout(() => {
-          if (scrollViewRef.current && amountInputRef.current) {
-            amountInputRef.current.measureLayout(
-              scrollViewRef.current.getInnerViewNode(),
-              (x, y, width, height) => {
-                scrollViewRef.current.scrollTo({
-                  y: y - 100,
-                  animated: true
-                });
-              }
-            );
-          }
+          scrollToInput();
         }, 100);
       }
     );
@@ -96,6 +88,41 @@ const EatoorMoneyAdd = () => {
       hideSubscription.remove();
     };
   }, []);
+
+  // Function to scroll to input - Fixed version
+  const scrollToInput = () => {
+    if (scrollViewRef.current && amountInputRef.current) {
+      try {
+        // Get the native node handle
+        const inputHandle = findNodeHandle(amountInputRef.current);
+        
+        if (inputHandle) {
+          // Use measure instead of measureLayout
+          amountInputRef.current.measure((x, y, width, height, pageX, pageY) => {
+            scrollViewRef.current.scrollTo({
+              y: pageY - 100,
+              animated: true
+            });
+          });
+        } else {
+          // Fallback: scroll to a default position
+          scrollViewRef.current.scrollTo({
+            y: 200,
+            animated: true
+          });
+        }
+      } catch (error) {
+        console.log('Scroll error:', error);
+        // Fallback scrolling
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollTo({
+            y: 200,
+            animated: true
+          });
+        }
+      }
+    }
+  };
 
   // Fetch user data on component mount
   useEffect(() => {
@@ -268,7 +295,6 @@ const EatoorMoneyAdd = () => {
       }
 
     } catch (error) {
-      console.error('Payment error:', error);
       setProcessingPayment(false);
       setPaymentSuccess(false);
 
@@ -383,7 +409,11 @@ const EatoorMoneyAdd = () => {
                 <View style={styles.amountSection}>
                   <Text style={styles.sectionLabel}>Enter Amount</Text>
                   
-                  <View style={styles.amountInputContainer}>
+                  <View 
+                    ref={amountContainerRef}
+                    style={styles.amountInputContainer}
+                    collapsable={false}
+                  >
                     <Text style={styles.currencySymbol}>₹</Text>
                     <TextInput
                       ref={amountInputRef}
@@ -486,7 +516,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8F9FA',
-    paddingTop:20,
   },
   header: {
     flexDirection: 'row',
@@ -494,7 +523,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
   },

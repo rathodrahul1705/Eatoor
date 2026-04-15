@@ -25,13 +25,8 @@ const App: React.FC = () => {
   const isDarkMode = useColorScheme() === 'dark';
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView>
       <SafeAreaProvider>
-        <StatusBar
-          barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-          backgroundColor="transparent"
-          translucent
-        />
         <MainApp isDarkMode={isDarkMode} />
       </SafeAreaProvider>
     </GestureHandlerRootView>

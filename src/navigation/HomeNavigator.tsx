@@ -27,6 +27,7 @@ import LoginScreen from '../auth/screens/LoginScreen';
 import { HomeStackParamList } from '../types/navigation.d';
 import OTPScreen from '../auth/screens/OTPScreen';
 import NotificationSettingsScreen from '../auth/screens/NotificationSettingsScreen';
+import OfferDetailsPage from '../auth/screens/offer/OfferDetailsPage';
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();
 
@@ -126,6 +127,7 @@ const HomeNavigator = () => {
       <Stack.Screen name="MapLocationPicker" component={MapLocationPicker} />
       <Stack.Screen name="AddressScreen" component={AddressScreen} />
       <Stack.Screen name="ReorderScreen" component={ReorderScreen} />
+      <Stack.Screen name="OfferDetailsPage" component={OfferDetailsPage} />
       <Stack.Screen name="HomeKitchenNavigate" component={HomeKitchenNavigate} />
       <Stack.Screen name="ProfileScreen" component={ProfileScreen} />
       <Stack.Screen name="LoginScreen" component={LoginScreen} />

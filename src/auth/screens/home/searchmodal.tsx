@@ -357,7 +357,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
     );
   };
 
-  // NEW: Grid layout for popular categories
+  // NEW: Grid layout for popular categories with sexy design
   const PopularCategoriesGrid = () => {
     // Split POPULAR_SEARCHES into chunks of 3 for grid layout
     const chunkArray = (array: any[], chunkSize: number) => {
@@ -491,12 +491,6 @@ const SearchModal: React.FC<SearchModalProps> = ({
         </Text>
         
         <View style={styles.searchModalSearchResultMeta}>
-          {/* {item.price && (
-            <View style={styles.searchModalPriceBadge}>
-              <Text style={styles.searchModalPriceText}>{item.price}</Text>
-            </View>
-          )} */}
-          
           {item.deliveryTime && (
             <View style={styles.searchModalTimeBadge}>
               <Icon name="time-outline" size={10} color={COLORS.textMedium} />
@@ -607,7 +601,6 @@ const SearchModal: React.FC<SearchModalProps> = ({
                 <Text style={styles.searchModalSectionTitle}>Popular Categories</Text>
               </View>
             </View>
-            {/* UPDATED: Using grid layout instead of horizontal scroll */}
             <PopularCategoriesGrid />
           </View>
 

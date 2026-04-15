@@ -184,12 +184,12 @@ const ReorderScreen: React.FC<ReorderScreenProps> = () => {
 
   const VegNonVegIcon = ({ type }: { type: 'veg' | 'non-veg' }) => (
     <View style={[
-      styles.vegNonVegIcon,
-      type === 'veg' ? styles.vegIcon : styles.nonVegIcon
+      styles.reorder_screen_vegNonVegIcon,
+      type === 'veg' ? styles.reorder_screen_vegIcon : styles.reorder_screen_nonVegIcon
     ]}>
       <View style={[
-        styles.vegNonVegInner,
-        type === 'veg' ? styles.vegInner : styles.nonVegInner
+        styles.reorder_screen_vegNonVegInner,
+        type === 'veg' ? styles.reorder_screen_vegInner : styles.reorder_screen_nonVegInner
       ]} />
     </View>
   );
@@ -203,21 +203,21 @@ const ReorderScreen: React.FC<ReorderScreenProps> = () => {
   };
 
   const renderOrderItem = ({ item }: { item: Order }) => (
-    <View style={styles.orderCard}>
-      <View style={styles.kitchenHeader}>
+    <View style={styles.reorder_screen_orderCard}>
+      <View style={styles.reorder_screen_kitchenHeader}>
         <Image 
           source={{ uri: item.delivery_address?.restaurant_image || DUMMY_IMAGES.DEFAULT_KITCHEN }} 
-          style={styles.kitchenImage}
+          style={styles.reorder_screen_kitchenImage}
           defaultSource={{ uri: DUMMY_IMAGES.DEFAULT_KITCHEN }}
         />
-        <View style={styles.kitchenInfo}>
-          <Text style={styles.kitchenName} numberOfLines={1} ellipsizeMode="tail">
+        <View style={styles.reorder_screen_kitchenInfo}>
+          <Text style={styles.reorder_screen_kitchenName} numberOfLines={1} ellipsizeMode="tail">
             {item.delivery_address?.restaurant_name || 'Unknown Kitchen'}
           </Text>
-          <Text style={styles.orderDate}>{formatDate(item.placed_on)}</Text>
+          <Text style={styles.reorder_screen_orderDate}>{formatDate(item.placed_on)}</Text>
         </View>
         {item.rating ? (
-          <View style={styles.ratedStars}>
+          <View style={styles.reorder_screen_ratedStars}>
             {[...Array(5)].map((_, i) => (
               <Icon 
                 key={i} 
@@ -229,10 +229,10 @@ const ReorderScreen: React.FC<ReorderScreenProps> = () => {
           </View>
         ) : (
           <TouchableOpacity 
-            style={styles.rateButton}
+            style={styles.reorder_screen_rateButton}
             onPress={() => navigation.navigate('RateOrderScreen', { order: item })}
           >
-            <Text style={styles.rateButtonText}>Rate Order</Text>
+            <Text style={styles.reorder_screen_rateButtonText}>Rate Order</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -240,33 +240,33 @@ const ReorderScreen: React.FC<ReorderScreenProps> = () => {
       <ScrollView 
         horizontal 
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.itemsContainer}
+        contentContainerStyle={styles.reorder_screen_itemsContainer}
       >
         {item.items?.map((foodItem, index) => (
-          <View key={`${item.order_number}-${index}`} style={styles.foodItem}>
+          <View key={`${item.order_number}-${index}`} style={styles.reorder_screen_foodItem}>
             <VegNonVegIcon type={determineFoodType(foodItem.item_name)} />
-            <Text style={styles.itemText}>
+            <Text style={styles.reorder_screen_itemText}>
               {foodItem.item_name} (x{foodItem.quantity})
             </Text>
           </View>
         ))}
       </ScrollView>
 
-      <View style={styles.orderFooter}>
-        <View style={styles.priceStatusContainer}>
-          <Text style={styles.orderPrice}>₹{item.total || '0'}</Text>
-          <View style={[styles.statusBadge, 
-            item.status === 'Delivered' ? styles.deliveredBadge : 
-            item.status === 'Cancelled' ? styles.cancelledBadge : 
-            styles.pendingBadge
+      <View style={styles.reorder_screen_orderFooter}>
+        <View style={styles.reorder_screen_priceStatusContainer}>
+          <Text style={styles.reorder_screen_orderPrice}>₹{item.total || '0'}</Text>
+          <View style={[styles.reorder_screen_statusBadge, 
+            item.status === 'Delivered' ? styles.reorder_screen_deliveredBadge : 
+            item.status === 'Cancelled' ? styles.reorder_screen_cancelledBadge : 
+            styles.reorder_screen_pendingBadge
           ]}>
-            <Text style={styles.statusText}>{item.status}</Text>
+            <Text style={styles.reorder_screen_statusText}>{item.status}</Text>
           </View>
         </View>
 
-        <View style={styles.actionButtons}>
+        <View style={styles.reorder_screen_actionButtons}>
           <TouchableOpacity 
-            style={styles.reorderButton}
+            style={styles.reorder_screen_reorderButton}
             onPress={() => handleReorder(item)}
             disabled={reordering === item.order_number || item.status === 'Cancelled'}
           >
@@ -274,17 +274,17 @@ const ReorderScreen: React.FC<ReorderScreenProps> = () => {
               <ActivityIndicator size="small" color="#E65C00" />
             ) : (
               <>
-                <Icon name="refresh" size={16} color="#E65C00" style={styles.buttonIcon} />
-                <Text style={styles.reorderButtonText}>Reorder</Text>
+                <Icon name="refresh" size={16} color="#E65C00" style={styles.reorder_screen_buttonIcon} />
+                <Text style={styles.reorder_screen_reorderButtonText}>Reorder</Text>
               </>
             )}
           </TouchableOpacity>
           <TouchableOpacity 
-            style={styles.viewButton}
+            style={styles.reorder_screen_viewButton}
             onPress={() => navigation.navigate('OrderDetailsScreen', { order: item })}
           >
-            <Icon name="document-text" size={16} color="#fff" style={styles.buttonIcon} />
-            <Text style={styles.viewButtonText}>Details</Text>
+            <Icon name="document-text" size={16} color="#fff" style={styles.reorder_screen_buttonIcon} />
+            <Text style={styles.reorder_screen_viewButtonText}>Details</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -293,11 +293,11 @@ const ReorderScreen: React.FC<ReorderScreenProps> = () => {
 
   if (loading && !refreshing) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.reorder_screen_container}>
         <StatusBar backgroundColor="#fff" barStyle="dark-content" />
-        <View style={styles.loadingContainer}>
+        <View style={styles.reorder_screen_loadingContainer}>
           <ActivityIndicator size="large" color="#E65C00" />
-          <Text style={styles.loadingText}>Loading your orders...</Text>
+          <Text style={styles.reorder_screen_loadingText}>Loading your orders...</Text>
         </View>
       </SafeAreaView>
     );
@@ -305,16 +305,16 @@ const ReorderScreen: React.FC<ReorderScreenProps> = () => {
 
   if (error && !loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.reorder_screen_container}>
         <StatusBar backgroundColor="#fff" barStyle="dark-content" />
-        <View style={styles.errorContainer}>
+        <View style={styles.reorder_screen_errorContainer}>
           <Icon name="alert-circle" size={50} color="#ff4444" />
-          <Text style={styles.errorText}>{error}</Text>
+          <Text style={styles.reorder_screen_errorText}>{error}</Text>
           <TouchableOpacity 
-            style={styles.retryButton}
+            style={styles.reorder_screen_retryButton}
             onPress={fetchPastOrders}
           >
-            <Text style={styles.retryButtonText}>Try Again</Text>
+            <Text style={styles.reorder_screen_retryButtonText}>Try Again</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -322,26 +322,25 @@ const ReorderScreen: React.FC<ReorderScreenProps> = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar backgroundColor="#fff" barStyle="dark-content" />
+    <SafeAreaView style={styles.reorder_screen_container}>
       
       {/* Header with Back Button and Title */}
-      <View style={styles.header}>
+      <View style={styles.reorder_screen_header}>
         <TouchableOpacity 
-          style={styles.backButton}
+          style={styles.reorder_screen_backButton}
           onPress={() => navigation.goBack()}
         >
           <Icon name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Reorder</Text>
-        <View style={styles.headerRightPlaceholder} />
+        <Text style={styles.reorder_screen_headerTitle}>Reorder</Text>
+        <View style={styles.reorder_screen_headerRightPlaceholder} />
       </View>
 
       {/* Search Box */}
-      <View style={styles.searchContainer}>
-        <Icon name="search" size={20} color="#888" style={styles.searchIcon} />
+      <View style={styles.reorder_screen_searchContainer}>
+        <Icon name="search" size={20} color="#888" style={styles.reorder_screen_searchIcon} />
         <TextInput
-          style={styles.searchInput}
+          style={styles.reorder_screen_searchInput}
           placeholder="Search by kitchen or dish..."
           placeholderTextColor="#888"
           value={searchQuery}
@@ -358,7 +357,7 @@ const ReorderScreen: React.FC<ReorderScreenProps> = () => {
         data={filteredOrders}
         renderItem={renderOrderItem}
         keyExtractor={item => item.order_number}
-        contentContainerStyle={filteredOrders.length === 0 ? styles.emptyContainer : styles.listContainer}
+        contentContainerStyle={filteredOrders.length === 0 ? styles.reorder_screen_emptyContainer : styles.reorder_screen_listContainer}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -369,10 +368,10 @@ const ReorderScreen: React.FC<ReorderScreenProps> = () => {
           />
         }
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
+          <View style={styles.reorder_screen_emptyContainer}>
             <Icon name="fast-food-outline" size={60} color="#ddd" />
-            <Text style={styles.emptyText}>No delivered orders found</Text>
-            <Text style={styles.emptySubtext}>Try adjusting your search</Text>
+            <Text style={styles.reorder_screen_emptyText}>No delivered orders found</Text>
+            <Text style={styles.reorder_screen_emptySubtext}>Try adjusting your search</Text>
           </View>
         }
       />
@@ -381,12 +380,11 @@ const ReorderScreen: React.FC<ReorderScreenProps> = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
+  reorder_screen_container: {
     flex: 1,
     backgroundColor: '#f8f8f8',
-    paddingTop:25
   },
-  header: {
+  reorder_screen_header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -396,18 +394,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
-  backButton: {
+  reorder_screen_backButton: {
     padding: 4,
   },
-  headerTitle: {
+  reorder_screen_headerTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: '#333',
   },
-  headerRightPlaceholder: {
+  reorder_screen_headerRightPlaceholder: {
     width: 32,
   },
-  searchContainer: {
+  reorder_screen_searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
@@ -422,72 +420,72 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  searchIcon: {
+  reorder_screen_searchIcon: {
     marginRight: 10,
   },
-  searchInput: {
+  reorder_screen_searchInput: {
     flex: 1,
     fontSize: 14,
     height: '100%',
     paddingVertical: 8,
     color: '#333',
   },
-  loadingContainer: {
+  reorder_screen_loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  loadingText: {
+  reorder_screen_loadingText: {
     marginTop: 16,
     fontSize: 16,
     color: '#666',
   },
-  errorContainer: {
+  reorder_screen_errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
   },
-  errorText: {
+  reorder_screen_errorText: {
     fontSize: 18,
     color: '#ff4444',
     marginTop: 16,
     textAlign: 'center',
   },
-  retryButton: {
+  reorder_screen_retryButton: {
     marginTop: 20,
     backgroundColor: '#E65C00',
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
   },
-  retryButtonText: {
+  reorder_screen_retryButtonText: {
     color: '#fff',
     fontWeight: '600',
     fontSize: 16,
   },
-  emptyContainer: {
+  reorder_screen_emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
   },
-  emptyText: {
+  reorder_screen_emptyText: {
     fontSize: 18,
     color: '#666',
     marginTop: 16,
     fontWeight: '600',
   },
-  emptySubtext: {
+  reorder_screen_emptySubtext: {
     fontSize: 14,
     color: '#999',
     marginTop: 8,
   },
-  listContainer: {
+  reorder_screen_listContainer: {
     paddingHorizontal: 16,
     paddingBottom: 20,
   },
-  orderCard: {
+  reorder_screen_orderCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
@@ -498,50 +496,50 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  kitchenHeader: {
+  reorder_screen_kitchenHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
   },
-  kitchenImage: {
+  reorder_screen_kitchenImage: {
     width: 50,
     height: 50,
     borderRadius: 10,
     marginRight: 12,
     backgroundColor: '#f0f0f0',
   },
-  kitchenInfo: {
+  reorder_screen_kitchenInfo: {
     flex: 1,
   },
-  kitchenName: {
+  reorder_screen_kitchenName: {
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
     maxWidth: '70%',
   },
-  orderDate: {
+  reorder_screen_orderDate: {
     fontSize: 9,
     color: '#888',
     marginTop: 4,
   },
-  ratedStars: {
+  reorder_screen_ratedStars: {
     flexDirection: 'row',
   },
-  rateButton: {
+  reorder_screen_rateButton: {
     backgroundColor: '#f0f0f0',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
   },
-  rateButtonText: {
+  reorder_screen_rateButtonText: {
     fontSize: 12,
     color: '#E65C00',
     fontWeight: '600',
   },
-  itemsContainer: {
+  reorder_screen_itemsContainer: {
     paddingVertical: 8,
   },
-  foodItem: {
+  reorder_screen_foodItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f9f9f9',
@@ -550,12 +548,12 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     marginRight: 8,
   },
-  itemText: {
+  reorder_screen_itemText: {
     fontSize: 13,
     color: '#555',
     marginLeft: 6,
   },
-  vegNonVegIcon: {
+  reorder_screen_vegNonVegIcon: {
     width: 14,
     height: 14,
     borderRadius: 2,
@@ -563,63 +561,63 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  vegIcon: {
+  reorder_screen_vegIcon: {
     borderColor: 'green',
   },
-  nonVegIcon: {
+  reorder_screen_nonVegIcon: {
     borderColor: 'red',
   },
-  vegNonVegInner: {
+  reorder_screen_vegNonVegInner: {
     width: 8,
     height: 8,
     borderRadius: 1,
   },
-  vegInner: {
+  reorder_screen_vegInner: {
     backgroundColor: 'green',
   },
-  nonVegInner: {
+  reorder_screen_nonVegInner: {
     backgroundColor: 'red',
   },
-  orderFooter: {
+  reorder_screen_orderFooter: {
     marginTop: 12,
     borderTopWidth: 1,
     borderTopColor: '#f0f0f0',
     paddingTop: 12,
   },
-  priceStatusContainer: {
+  reorder_screen_priceStatusContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-  orderPrice: {
+  reorder_screen_orderPrice: {
     fontSize: 16,
     fontWeight: '700',
     color: '#333',
   },
-  statusBadge: {
+  reorder_screen_statusBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
   },
-  deliveredBadge: {
+  reorder_screen_deliveredBadge: {
     backgroundColor: '#e3f9e5',
   },
-  cancelledBadge: {
+  reorder_screen_cancelledBadge: {
     backgroundColor: '#ffe6e6',
   },
-  pendingBadge: {
+  reorder_screen_pendingBadge: {
     backgroundColor: '#fff0cc',
   },
-  statusText: {
+  reorder_screen_statusText: {
     fontSize: 12,
     fontWeight: '600',
   },
-  actionButtons: {
+  reorder_screen_actionButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  reorderButton: {
+  reorder_screen_reorderButton: {
     flex: 1,
     backgroundColor: '#f0f0f0',
     padding: 12,
@@ -629,13 +627,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
   },
-  reorderButtonText: {
+  reorder_screen_reorderButtonText: {
     color: '#E65C00',
     fontWeight: '600',
     fontSize: 14,
     marginLeft: 6,
   },
-  viewButton: {
+  reorder_screen_viewButton: {
     flex: 1,
     backgroundColor: '#E65C00',
     padding: 12,
@@ -644,13 +642,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
   },
-  viewButtonText: {
+  reorder_screen_viewButtonText: {
     color: '#fff',
     fontWeight: '600',
     fontSize: 14,
     marginLeft: 6,
   },
-  buttonIcon: {
+  reorder_screen_buttonIcon: {
     marginRight: 4,
   }
 });

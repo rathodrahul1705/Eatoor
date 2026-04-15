@@ -1264,9 +1264,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   header: {
-    backgroundColor: '#FFFFFF',
     zIndex: 40,
-    paddingTop: Platform.OS === 'ios' ? 0 : StatusBar.currentHeight || 0,
     paddingBottom: verticalScale(12),
     ...Platform.select({
       ios: {

@@ -1321,7 +1321,7 @@ const HomeKitchenDetails = ({ route }) => {
 
   return (
     <SafeAreaView style={styles.kitchenDetails__container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
       {/* Sticky Header */}
       <Animated.View

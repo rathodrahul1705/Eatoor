@@ -928,7 +928,7 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
   };
 
   return (
-    <SafeAreaView style={[styles.safeArea, { paddingTop: insets.top }]}>
+    <SafeAreaView style={[styles.safeArea]}>
       <StatusBar 
         barStyle="dark-content" 
         backgroundColor="#FFF"
@@ -980,7 +980,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    backgroundColor: '#FFF',
     borderBottomWidth: 0.5,
     borderBottomColor: '#E0E0E0',
     ...Platform.select({

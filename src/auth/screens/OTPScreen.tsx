@@ -15,6 +15,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   AppState,
+  Alert,
 } from 'react-native';
 
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -26,7 +27,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { verifyOTP, resendOTP } from '../../api/auth';
 import { AuthContext } from '../../context/AuthContext';
 
-import RNOtpVerify from 'react-native-otp-verify';
+// Safe import for react-native-otp-verify
+let RNOtpVerify: any = null;
+if (Platform.OS === 'android') {
+  try {
+    RNOtpVerify = require('react-native-otp-verify');
+  } catch (error) {
+    console.log('Failed to load react-native-otp-verify:', error);
+  }
+}
 
 const { width, height } = Dimensions.get('window');
 const isSmallDevice = height < 700;
@@ -49,6 +58,7 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
   const [shouldVerify, setShouldVerify] = useState(false);
 
   const [isListeningSMS, setIsListeningSMS] = useState(false);
+  const [otpListener, setOtpListener] = useState<any>(null);
 
   // Refs
   const inputRefs = useRef<Array<TextInput | null>>([]);
@@ -63,54 +73,92 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
   const { login } = useContext(AuthContext);
 
   /** *****************************************************************
-   *            NEW OTP LISTENER USING react-native-otp-verify
+   *            SAFE OTP LISTENER METHODS WITH ERROR HANDLING
    ***************************************************************** */
   const startOtpListener = async () => {
-    if (Platform.OS !== 'android') return;
+    // Only run on Android and if the module is available
+    if (Platform.OS !== 'android' || !RNOtpVerify) {
+      console.log('OTP verification not available on this platform');
+      return;
+    }
 
     try {
       console.log('Starting OTP listener...');
       setIsListeningSMS(true);
 
+      // Check if the module has the required methods
+      if (typeof RNOtpVerify.getOtp !== 'function') {
+        console.log('RNOtpVerify.getOtp is not a function - module may not be properly linked');
+        setIsListeningSMS(false);
+        return;
+      }
+
       const started = await RNOtpVerify.getOtp();
       console.log('getOtp started:', started);
 
-      if (started) {
-        RNOtpVerify.addListener(handleOTPMessage);
+      if (started && typeof RNOtpVerify.addListener === 'function') {
+        const listener = RNOtpVerify.addListener(handleOTPMessage);
+        setOtpListener(listener);
       }
-    } catch (e) {
-      console.log('OTP Listener error:', e);
+    } catch (e: any) {
+      console.log('OTP Listener error:', e?.message || e);
       setIsListeningSMS(false);
+      
+      // Don't show error to user, just log it
+      if (e?.message?.includes('not linked')) {
+        console.log('Package not linked properly - please check Android setup');
+      }
     }
   };
 
   const stopOtpListener = () => {
+    if (Platform.OS !== 'android' || !RNOtpVerify) return;
+    
     try {
-      RNOtpVerify.removeListener();
-    } catch (e) {
-      console.log('removeListener error', e);
+      if (otpListener && typeof RNOtpVerify.removeListener === 'function') {
+        RNOtpVerify.removeListener();
+        setOtpListener(null);
+      } else if (typeof RNOtpVerify.removeListener === 'function') {
+        RNOtpVerify.removeListener();
+      }
+    } catch (e: any) {
+      console.log('removeListener error', e?.message || e);
     }
     setIsListeningSMS(false);
   };
 
   /** Extract OTP from SMS */
   const handleOTPMessage = (message: string) => {
+    if (!message || typeof message !== 'string') return;
+    
     console.log('Received SMS Message:', message);
 
+    // Try to match 6-digit OTP
     const match = message.match(/(\d{6})/);
     if (match) {
       const code = match[1];
       console.log('OTP Auto-Extracted:', code);
       autoFillOTP(code);
       stopOtpListener();
+    } else {
+      // Try to match 4-digit OTP as fallback
+      const fourDigitMatch = message.match(/(\d{4})/);
+      if (fourDigitMatch && OTP_LENGTH === 4) {
+        const code = fourDigitMatch[1];
+        console.log('OTP Auto-Extracted (4-digit):', code);
+        autoFillOTP(code);
+        stopOtpListener();
+      }
     }
   };
 
   /** Fill UI boxes with OTP */
   const autoFillOTP = (code: string) => {
+    if (!code) return;
+    
     setManualOtp(code);
 
-    const arr = code.split('');
+    const arr = code.split('').slice(0, OTP_LENGTH);
     setOtp(arr);
 
     setActiveInput(OTP_LENGTH - 1);
@@ -123,14 +171,16 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
    *            APP STATE LISTENER (FOREGROUND / BACKGROUND)
    ***************************************************************** */
   useEffect(() => {
-    if (Platform.OS === 'android') startOtpListener();
+    startOtpListener();
 
     const stateSub = AppState.addEventListener('change', nextState => {
       if (appState.current.match(/inactive|background/) && nextState === 'active') {
-        if (Platform.OS === 'android') startOtpListener();
+        // App came to foreground - restart listener
+        startOtpListener();
       }
       if (nextState.match(/inactive|background/)) {
-        if (Platform.OS === 'android') stopOtpListener();
+        // App went to background - stop listener
+        stopOtpListener();
       }
       appState.current = nextState;
     });
@@ -166,7 +216,7 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
         manualInputRef.current?.focus();
       }, 300);
 
-      if (Platform.OS === 'android') startOtpListener();
+      startOtpListener();
 
       return () => {
         clearTimeout(t);
@@ -223,9 +273,6 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
 
       login(response.data.tokens.access);
       navigation.navigate(response.data.navigate_to);
-      // IMPORTANT: Since the login function in AuthContext will update userToken,
-      // AppNavigator will automatically switch from Auth navigator to Home navigator.
-      // The Home navigator should handle its own initial screen based on user data.
 
     } catch (err: any) {
       console.log('OTP verify error:', err);
@@ -233,7 +280,7 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
       shakeInput();
 
       // restart OTP listener
-      if (Platform.OS === 'android') startOtpListener();
+      startOtpListener();
 
       setOtp(Array(OTP_LENGTH).fill(''));
       setManualOtp('');
@@ -269,11 +316,10 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
       console.log('Resend OTP response:', response.data);
 
       manualInputRef.current?.focus();
-
-      if (Platform.OS === 'android') startOtpListener();
-    } catch (e) {
+      startOtpListener();
+    } catch (e: any) {
       console.log('Resend error:', e);
-      setError('Failed to resend OTP.');
+      setError(e?.response?.data?.error || 'Failed to resend OTP.');
     } finally {
       setIsLoading(false);
     }
@@ -304,7 +350,7 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
   const handleManualOtpChange = (v: string) => {
     if (!/^\d*$/.test(v)) return;
 
-    const clean = v.replace(/[^0-9]/g, '');
+    const clean = v.replace(/[^0-9]/g, '').slice(0, OTP_LENGTH);
     setManualOtp(clean);
 
     const arr = Array(OTP_LENGTH).fill('');
@@ -404,7 +450,7 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
                   <Text style={styles.phoneNumber}>{userInput}</Text>
                 </Text>
 
-                {Platform.OS === 'android' && isListeningSMS && (
+                {Platform.OS === 'android' && isListeningSMS && RNOtpVerify && (
                   <View style={styles.smsStatus}>
                     <ActivityIndicator size="small" color="#E65C00" />
                     <Text style={styles.smsStatusText}>Listening for OTP…</Text>
@@ -493,7 +539,7 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ route }) => {
               </View>
 
               {/* AUTO-FILL INFO */}
-              {Platform.OS === 'android' && (
+              {Platform.OS === 'android' && RNOtpVerify && (
                 <View style={styles.autofillHint}>
                   <Icon name="flash-outline" size={16} color="#E65C00" />
                   <Text style={styles.autofillHintText}>OTP will be auto-filled from SMS</Text>
