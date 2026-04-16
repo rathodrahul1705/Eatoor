@@ -60,6 +60,7 @@ const moderateScale = (size, factor = 0.5) => {
 };
 
 const ORDER_TIMEOUT = 5 * 60; // 5 minutes in seconds
+const PAYMENT_FAILURE_TIMEOUT = 3 * 60; // 3 minutes in seconds
 
 // Filter options
 const FILTER_OPTIONS = [
@@ -72,6 +73,7 @@ const FILTER_OPTIONS = [
   { id: 'delivered', label: 'Delivered', icon: 'checkmark-done' },
   { id: 'cancelled', label: 'Cancelled', icon: 'close-circle-outline' },
   { id: 'refunded', label: 'Refunded', icon: 'arrow-undo-outline' },
+  { id: 'payment_failed', label: 'Payment Failed', icon: 'alert-circle-outline' },
 ];
 
 // Order status mapping from API
@@ -84,6 +86,7 @@ const ORDER_STATUS_MAPPING = {
   6: 'delivered',
   7: 'cancelled',
   8: 'refunded',
+  9: 'inprogress',
 };
 
 // Reverse mapping for API
@@ -96,6 +99,8 @@ const STATUS_TO_API_MAPPING = {
   'delivered': 6,
   'cancelled': 7,
   'refunded': 8,
+  'inprogress': 9,
+  'payment_failed': 9, // Still status 9 but marked as failed
 };
 
 // Status flow for order progression
@@ -118,6 +123,8 @@ const NEXT_STATUS_MAPPING = {
   'delivered': null,
   'cancelled': null,
   'refunded': null,
+  'inprogress': null,
+  'payment_failed': null,
 };
 
 // Status colors for UI
@@ -130,6 +137,8 @@ const STATUS_COLORS = {
   'delivered': '#F07119',
   'cancelled': '#EF4444',
   'refunded': '#6B7280',
+  'inprogress': '#EF4444',
+  'payment_failed': '#DC2626',
 };
 
 // Button colors for status updates
@@ -142,6 +151,8 @@ const STATUS_BUTTON_COLORS = {
   'delivered': '#10B981',
   'cancelled': '#EF4444',
   'refunded': '#6B7280',
+  'inprogress': '#EF4444',
+  'payment_failed': '#DC2626',
 };
 
 // Button text for status updates
@@ -153,6 +164,8 @@ const STATUS_BUTTON_TEXT = {
   'delivered': 'Delivered',
   'cancelled': 'Cancelled',
   'refunded': 'Refunded',
+  'inprogress': 'Payment Failed',
+  'payment_failed': 'Payment Failed',
 };
 
 // Reverse mapping for display
@@ -165,6 +178,8 @@ const STATUS_DISPLAY_MAP = {
   'delivered': 'Delivered',
   'cancelled': 'Cancelled',
   'refunded': 'Refunded',
+  'inprogress': 'Payment Failed',
+  'payment_failed': 'Payment Failed',
 };
 
 // Restaurant status mapping
@@ -293,6 +308,7 @@ const PartnerScreen = ({ navigation, route }) => {
     ready: 0,
     onTheWay: 0,
     delivered: 0,
+    paymentFailed: 0,
   });
 
   const [isPolling, setIsPolling] = useState(false);
@@ -305,6 +321,7 @@ const PartnerScreen = ({ navigation, route }) => {
   const [isRestaurantChanging, setIsRestaurantChanging] = useState(false);
   const [notificationOrderId, setNotificationOrderId] = useState(null);
   const [notificationRestaurantId, setNotificationRestaurantId] = useState(null);
+  const [paymentFailedOrders, setPaymentFailedOrders] = useState(new Set());
 
   const slideAnim = useRef(new Animated.Value(height)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -328,6 +345,7 @@ const PartnerScreen = ({ navigation, route }) => {
   const notificationTimeoutRef = useRef(null);
   const storedRestaurantIdRef = useRef(null);
   const notificationDataRef = useRef(null);
+  const paymentFailureCheckIntervalRef = useRef(null);
 
   const userRole = user?.role || 1;
   const userPermissions = ROLE_PERMISSIONS[userRole] || ROLE_PERMISSIONS[1];
@@ -336,6 +354,99 @@ const PartnerScreen = ({ navigation, route }) => {
   const isFullAccessUser = userRole === 2;
 
   const orders = selectedRestaurant ? ordersData[selectedRestaurant.restaurant_id] || [] : [];
+
+  // Helper function to check if order is payment failed
+  const isPaymentFailedOrder = useCallback((order) => {
+    // Check if status is 9 (inprogress) and payment_status is 'in progress'
+    if (order.apiData?.status === 9 && order.apiData?.payment_status === 'in progress') {
+      const placedOn = order.apiData?.placed_on;
+      if (placedOn) {
+        const placedTime = new Date(placedOn).getTime();
+        const currentTime = new Date().getTime();
+        const timeDifferenceMinutes = (currentTime - placedTime) / (1000 * 60);
+        
+        // If more than 3 minutes have passed, mark as payment failed
+        if (timeDifferenceMinutes >= 3) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }, []);
+
+  // Auto-mark payment failed orders
+  const checkAndMarkPaymentFailedOrders = useCallback(async () => {
+    if (!selectedRestaurant) return;
+    
+    const restaurantId = selectedRestaurant.restaurant_id;
+    const currentOrders = ordersData[restaurantId] || [];
+    
+    for (const order of currentOrders) {
+      // Skip if already marked as payment failed
+      if (order.status === 'payment_failed') continue;
+      
+      // Check if order should be marked as payment failed
+      if (isPaymentFailedOrder(order)) {
+        const orderId = order.order_number;
+        
+        // Check if we already processed this order
+        if (paymentFailedOrders.has(orderId)) continue;
+        
+        console.log(`💰 Marking order ${orderId} as payment failed`);
+        
+        // Update order status to payment_failed
+        const updatedOrder = { 
+          ...order, 
+          status: 'payment_failed',
+          paymentFailedAt: new Date().toLocaleTimeString('en-IN'),
+          autoMarked: true
+        };
+        
+        // Update orders data
+        const updatedOrders = currentOrders.map(o => 
+          o.uniqueId === order.uniqueId ? updatedOrder : o
+        );
+        
+        setOrdersData(prev => ({
+          ...prev,
+          [restaurantId]: updatedOrders
+        }));
+        
+        // Add to failed orders set
+        setPaymentFailedOrders(prev => new Set([...prev, orderId]));
+        
+        // Update stats
+        setStats(prev => ({
+          ...prev,
+          paymentFailed: (prev.paymentFailed || 0) + 1,
+          pending: order.status === 'pending' ? Math.max(0, prev.pending - 1) : prev.pending,
+          confirmed: order.status === 'confirmed' ? Math.max(0, prev.confirmed - 1) : prev.confirmed,
+          preparing: order.status === 'preparing' ? Math.max(0, prev.preparing - 1) : prev.preparing,
+        }));
+        
+        // Show alert for payment failure
+        if (order.status !== 'payment_failed') {
+          Alert.alert(
+            '💰 Payment Failed',
+            `Order ${order.order_number} has been marked as payment failed due to payment timeout.`,
+            [{ text: 'OK' }]
+          );
+        }
+      }
+    }
+  }, [selectedRestaurant, ordersData, paymentFailedOrders, isPaymentFailedOrder]);
+
+  // Start periodic payment failure check
+  const startPaymentFailureCheck = useCallback(() => {
+    if (paymentFailureCheckIntervalRef.current) {
+      clearInterval(paymentFailureCheckIntervalRef.current);
+    }
+    
+    // Check every 30 seconds for payment failures
+    paymentFailureCheckIntervalRef.current = setInterval(() => {
+      checkAndMarkPaymentFailedOrders();
+    }, 30000);
+  }, [checkAndMarkPaymentFailedOrders]);
 
   useEffect(() => {
     navigationRef.current = navigation;
@@ -578,6 +689,9 @@ const PartnerScreen = ({ navigation, route }) => {
         if (notificationDataRef.current && !notificationDataRef.current.processed) {
           handleNotificationData(notificationDataRef.current.data);
         }
+        
+        // Check for payment failures when app becomes active
+        checkAndMarkPaymentFailedOrders();
       }
     };
 
@@ -602,6 +716,7 @@ const PartnerScreen = ({ navigation, route }) => {
       if (selectedRestaurant) {
         try {
           await fetchOrdersForRestaurant(selectedRestaurant.restaurant_id, true);
+          await checkAndMarkPaymentFailedOrders();
         } catch (error) {
           console.error('Background polling error:', error);
         }
@@ -618,10 +733,15 @@ const PartnerScreen = ({ navigation, route }) => {
     const restaurantOrders = ordersData[selectedRestaurant.restaurant_id] || [];
     
     let result = restaurantOrders.filter(order => {
+      // Filter by status
       if (selectedFilter !== 'all') {
+        if (selectedFilter === 'payment_failed') {
+          return order.status === 'payment_failed';
+        }
         return order.status === selectedFilter;
       }
       
+      // Filter by search query
       if (searchQuery.trim() !== '') {
         const query = searchQuery.toLowerCase();
         return (
@@ -675,6 +795,9 @@ const PartnerScreen = ({ navigation, route }) => {
       if (notificationTimeoutRef.current) {
         clearTimeout(notificationTimeoutRef.current);
       }
+      if (paymentFailureCheckIntervalRef.current) {
+        clearInterval(paymentFailureCheckIntervalRef.current);
+      }
     };
   }, []);
 
@@ -725,6 +848,7 @@ const PartnerScreen = ({ navigation, route }) => {
           ready: 0,
           onTheWay: 0,
           delivered: 0,
+          paymentFailed: 0,
         }));
         
         setRestaurants(restaurantList);
@@ -790,14 +914,16 @@ const PartnerScreen = ({ navigation, route }) => {
 
     if (selectedRestaurant) {
       fetchOrdersForRestaurant(selectedRestaurant.restaurant_id);
+      checkAndMarkPaymentFailedOrders();
 
       pollingIntervalRef.current = setInterval(() => {
         if (selectedRestaurant) {
           fetchOrdersForRestaurant(selectedRestaurant.restaurant_id, true);
+          checkAndMarkPaymentFailedOrders();
         }
       }, 30000);
     }
-  }, [selectedRestaurant, fetchOrdersForRestaurant]);
+  }, [selectedRestaurant, fetchOrdersForRestaurant, checkAndMarkPaymentFailedOrders]);
 
   const fetchOrdersForRestaurant = useCallback(async (restaurantId, isSilentFetch = false) => {
     try {
@@ -847,6 +973,7 @@ const PartnerScreen = ({ navigation, route }) => {
                 deliveredAt: existingOrder.deliveredAt || newOrder.deliveredAt,
                 cancelledAt: existingOrder.cancelledAt || newOrder.cancelledAt,
                 refundedAt: existingOrder.refundedAt || newOrder.refundedAt,
+                paymentFailedAt: existingOrder.paymentFailedAt || newOrder.paymentFailedAt,
               };
             }
             return newOrder;
@@ -866,6 +993,11 @@ const PartnerScreen = ({ navigation, route }) => {
         setLastUpdated(new Date());
         
         updateStatsFromOrders(uniqueRestaurantOrders);
+        
+        // Check for payment failures after fetching orders
+        setTimeout(() => {
+          checkAndMarkPaymentFailedOrders();
+        }, 1000);
         
         if (notificationDataRef.current && !notificationDataRef.current.processed) {
           const notificationRestaurantId = notificationDataRef.current.data?.restaurant_id;
@@ -906,7 +1038,7 @@ const PartnerScreen = ({ navigation, route }) => {
       setIsPolling(false);
       setOrdersLoading(false);
     }
-  }, [isPolling, updateStatsFromOrders]);
+  }, [isPolling, updateStatsFromOrders, checkAndMarkPaymentFailedOrders]);
 
   const checkForNewOrders = useCallback((restaurantId, newOrders) => {
     if (!selectedRestaurant || selectedRestaurant.restaurant_id !== restaurantId) return;
@@ -1022,6 +1154,8 @@ const PartnerScreen = ({ navigation, route }) => {
         if (userData && userData.id) {
           await fetchRestaurants(userData);
           setInitialLoading(false);
+          // Start payment failure check after initial load
+          startPaymentFailureCheck();
         } else {
           setLoading(false);
           setInitialLoading(false);
@@ -1297,7 +1431,23 @@ const PartnerScreen = ({ navigation, route }) => {
   }, [fetchOrdersForRestaurant, startPolling, isAlarmPlaying]);
 
   const mapApiOrderToAppFormat = (apiOrder) => {
-    const status = ORDER_STATUS_MAPPING[apiOrder.status] || 'pending';
+    let status = ORDER_STATUS_MAPPING[apiOrder.status] || 'pending';
+    const paymentStatus = apiOrder.payment_status;
+    
+    // Check if order should be marked as payment failed
+    if (apiOrder.status === 9 && paymentStatus === 'in progress') {
+      const placedOn = apiOrder.placed_on;
+      if (placedOn) {
+        const placedTime = new Date(placedOn).getTime();
+        const currentTime = new Date().getTime();
+        const timeDifferenceMinutes = (currentTime - placedTime) / (1000 * 60);
+        
+        if (timeDifferenceMinutes >= 3) {
+          status = 'payment_failed';
+        }
+      }
+    }
+    
     const items = apiOrder.items || [];
     const totalAmount = parseFloat(apiOrder.total || 0);
     const orderDate = apiOrder.placed_on ? new Date(apiOrder.placed_on) : new Date();
@@ -1329,7 +1479,7 @@ const PartnerScreen = ({ navigation, route }) => {
       orderTimestamp: orderDate.getTime(),
       specialInstructions: apiOrder.special_instructions || '',
       paymentMethod: apiOrder.payment_method || 'Cash',
-      paymentStatus: 'pending',
+      paymentStatus: paymentStatus,
       status: status,
       urgency: 'normal',
       acceptedAt: status === 'confirmed' ? formatTimeString(apiOrder.accepted_at || orderDate) : null,
@@ -1339,6 +1489,7 @@ const PartnerScreen = ({ navigation, route }) => {
       deliveredAt: status === 'delivered' ? formatTimeString(apiOrder.delivered_at || orderDate) : null,
       cancelledAt: status === 'cancelled' ? formatTimeString(apiOrder.cancelled_at || orderDate) : null,
       refundedAt: status === 'refunded' ? formatTimeString(apiOrder.refunded_at || orderDate) : null,
+      paymentFailedAt: status === 'payment_failed' ? new Date().toLocaleTimeString('en-IN') : null,
       apiData: apiOrder,
       createdAt: new Date().toISOString(),
     };
@@ -1364,6 +1515,7 @@ const PartnerScreen = ({ navigation, route }) => {
     const ready = orders.filter(order => order.status === 'ready').length;
     const onTheWay = orders.filter(order => order.status === 'on_the_way').length;
     const delivered = orders.filter(order => order.status === 'delivered').length;
+    const paymentFailed = orders.filter(order => order.status === 'payment_failed').length;
     
     setStats({
       todayOrders,
@@ -1374,6 +1526,7 @@ const PartnerScreen = ({ navigation, route }) => {
       ready,
       onTheWay,
       delivered,
+      paymentFailed,
     });
   }, []);
 
@@ -1387,6 +1540,7 @@ const PartnerScreen = ({ navigation, route }) => {
       ready: 0,
       onTheWay: 0,
       delivered: 0,
+      paymentFailed: 0,
     });
   }, []);
 
@@ -1405,6 +1559,7 @@ const PartnerScreen = ({ navigation, route }) => {
       
       if (userData && userData.id) {
         await fetchRestaurants(userData);
+        await checkAndMarkPaymentFailedOrders();
         
         if (currentRestaurantId) {
           setTimeout(() => {
@@ -1601,7 +1756,7 @@ const PartnerScreen = ({ navigation, route }) => {
     
     const currentStatus = currentOrder.status;
     
-    if (['delivered', 'cancelled', 'refunded'].includes(currentStatus)) {
+    if (['delivered', 'cancelled', 'refunded', 'payment_failed'].includes(currentStatus)) {
       return null;
     }
     
@@ -2141,11 +2296,11 @@ const PartnerScreen = ({ navigation, route }) => {
               </View>
               
               <View style={styles.statCard}>
-                <View style={[styles.statIconContainer, { backgroundColor: '#E0E7FF' }]}>
-                  <Icon name="timer-outline" size={scaleSize(18)} color="#4F46E5" />
+                <View style={[styles.statIconContainer, { backgroundColor: '#FEE2E2' }]}>
+                  <Icon name="alert-circle-outline" size={scaleSize(18)} color="#DC2626" />
                 </View>
-                <Text style={styles.statValue}>{activeOrders.length}</Text>
-                <Text style={styles.statLabel}>Active</Text>
+                <Text style={styles.statValue}>{stats.paymentFailed || 0}</Text>
+                <Text style={styles.statLabel}>Failed</Text>
               </View>
             </View>
             
@@ -2300,6 +2455,13 @@ const PartnerScreen = ({ navigation, route }) => {
                           <Text style={styles.urgentText}>URGENT</Text>
                         </View>
                       )}
+                      
+                      {item.status === 'payment_failed' && (
+                        <View style={[styles.urgentBadge, { backgroundColor: '#DC2626' }]}>
+                          <Icon name="alert-circle" size={scaleSize(8)} color="#fff" />
+                          <Text style={styles.urgentText}>PAYMENT FAILED</Text>
+                        </View>
+                      )}
                     </TouchableOpacity>
                   );
                 }}
@@ -2345,6 +2507,7 @@ const PartnerScreen = ({ navigation, route }) => {
                           selectedFilter === 'delivered' ? 'No delivered orders yet' :
                           selectedFilter === 'cancelled' ? 'No cancelled orders' :
                           selectedFilter === 'refunded' ? 'No refunded orders' :
+                          selectedFilter === 'payment_failed' ? 'No payment failed orders' :
                           'No orders found for the selected filter'}
                       </Text>
                       {searchQuery.trim() !== '' && (
@@ -2495,6 +2658,11 @@ const PartnerScreen = ({ navigation, route }) => {
                       ⏰ Accept in: {formatTime(timeRemaining)}
                     </Text>
                   )}
+                  {currentOrder?.status === 'payment_failed' && (
+                    <Text style={[styles.modalSubtitle, { color: '#DC2626' }]}>
+                      ⚠️ Payment Failed
+                    </Text>
+                  )}
                   {updatingStatus && (
                     <Text style={[styles.modalSubtitle, { color: '#F07119' }]}>
                       Updating status...
@@ -2562,6 +2730,7 @@ const PartnerScreen = ({ navigation, route }) => {
                         currentOrder?.status === 'on_the_way' ? 'car' :
                         currentOrder?.status === 'delivered' ? 'checkmark-done' :
                         currentOrder?.status === 'cancelled' ? 'close-circle' :
+                        currentOrder?.status === 'payment_failed' ? 'alert-circle' :
                         'arrow-undo'
                       } 
                       size={scaleSize(18)} 
@@ -2644,6 +2813,14 @@ const PartnerScreen = ({ navigation, route }) => {
                     <Icon name="location-outline" size={scaleSize(14)} color="#6B7280" />
                     <Text style={styles.detailText} numberOfLines={2}>{currentOrder?.deliveryAddress}</Text>
                   </View>
+                  {currentOrder?.paymentStatus && (
+                    <View style={styles.detailRow}>
+                      <Icon name="card-outline" size={scaleSize(14)} color="#6B7280" />
+                      <Text style={styles.detailText}>
+                        Payment: {currentOrder.paymentStatus}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </View>
 
@@ -2748,6 +2925,14 @@ const PartnerScreen = ({ navigation, route }) => {
                     </Text>
                   </View>
                 )}
+                {currentOrder?.paymentFailedAt && (
+                  <View style={styles.timestampRow}>
+                    <Icon name="alert-circle" size={scaleSize(12)} color="#DC2626" />
+                    <Text style={styles.timestampText}>
+                      Payment failed at {currentOrder.paymentFailedAt}
+                    </Text>
+                  </View>
+                )}
               </View>
 
               {/* Role Information Badge */}
@@ -2761,7 +2946,8 @@ const PartnerScreen = ({ navigation, route }) => {
 
             {/* Action Buttons */}
             {currentOrder?.status && currentOrder.status !== 'delivered' && 
-              currentOrder.status !== 'cancelled' && currentOrder.status !== 'refunded' && (
+              currentOrder.status !== 'cancelled' && currentOrder.status !== 'refunded' &&
+              currentOrder.status !== 'payment_failed' && (
               <View style={styles.actionButtons}>
                 {/* Cancel Button - Always shown for restaurant owners */}
                 {userPermissions.canCancelOrders && (
@@ -2830,7 +3016,8 @@ const PartnerScreen = ({ navigation, route }) => {
             {/* Final Status Display */}
             {(currentOrder?.status === 'delivered' || 
               currentOrder?.status === 'cancelled' || 
-              currentOrder?.status === 'refunded') && (
+              currentOrder?.status === 'refunded' ||
+              currentOrder?.status === 'payment_failed') && (
               <View style={styles.finalStatusActions}>
                 <View style={[
                   styles.finalStatusCard,
@@ -2840,6 +3027,7 @@ const PartnerScreen = ({ navigation, route }) => {
                     name={
                       currentOrder.status === 'delivered' ? 'checkmark-done-circle' :
                       currentOrder.status === 'cancelled' ? 'close-circle' :
+                      currentOrder.status === 'payment_failed' ? 'alert-circle' :
                       'arrow-undo-circle'
                     } 
                     size={scaleSize(30)} 
@@ -2854,6 +3042,7 @@ const PartnerScreen = ({ navigation, route }) => {
                   <Text style={styles.finalStatusSubtitle}>
                     {currentOrder.status === 'delivered' ? 'Order has been delivered successfully' :
                      currentOrder.status === 'cancelled' ? 'Order has been cancelled' :
+                     currentOrder.status === 'payment_failed' ? 'Payment failed after 3 minutes' :
                      'Order has been refunded'}
                   </Text>
                 </View>
@@ -4141,6 +4330,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#10B981',
   },
   statusUpdateButtonText: {
+    color: '#fff',
+    fontSize: scaleFont(15),
+    fontWeight: '600',
+    marginLeft: scaleSize(8),
+  },
+  cancelButton: {
+    backgroundColor: '#EF4444',
+  },
+  cancelButtonText: {
     color: '#fff',
     fontSize: scaleFont(15),
     fontWeight: '600',

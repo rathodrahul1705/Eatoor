@@ -19,13 +19,11 @@ import {
   Vibration,
   LayoutAnimation,
   UIManager,
-  KeyboardAvoidingView
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Circle, LatLng, Region } from 'react-native-maps';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Circle, LatLng } from 'react-native-maps';
 import { getOrderDetails, getLiveTrackingDetails } from '../../../api/profile';
-import moment from 'moment';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Enable LayoutAnimation for Android
@@ -40,9 +38,7 @@ const LATITUDE_DELTA = 0.0922;
 const LONGITUDE_DELTA = LATITUDE_DELTA * ASPECT_RATIO;
 const SMALL_MAP_HEIGHT = 320;
 const EXPANDED_MAP_HEIGHT = height * 0.75;
-const CARD_WIDTH = width - 40;
 const HEADER_HEIGHT = Platform.OS === 'ios' ? 90 : 70;
-const STATUS_BAR_HEIGHT = Platform.OS === 'ios' ? 44 : StatusBar.currentHeight || 0;
 const CARD_PADDING = 20;
 const CARD_RADIUS = 24;
 const CARD_MARGIN = 20;
@@ -2187,7 +2183,7 @@ const TrackOrder = () => {
               </View>
               
               {/* Action Buttons */}
-              <View style={styles.addressActions}>
+              {/* <View style={styles.addressActions}>
                 <TouchableOpacity 
                   style={[styles.addressActionButton, { backgroundColor: statusDetails.color }]} 
                   onPress={() => handleAddressCall(order.delivery_address?.phone_number)}
@@ -2206,13 +2202,13 @@ const TrackOrder = () => {
                     Navigate
                   </Text>
                 </TouchableOpacity>
-              </View>
+              </View> */}
             </View>
             
             {/* Address Content */}
             <View style={styles.addressContent}>
               {/* Recipient Info */}
-              <View style={styles.recipientInfo}>
+              {/* <View style={styles.recipientInfo}>
                 <View style={styles.recipientIconContainer}>
                   <View style={[styles.recipientIcon, { backgroundColor: statusDetails.bgColor }]}>
                     <Icon name="person" size={20} color={statusDetails.color} />
@@ -2234,7 +2230,7 @@ const TrackOrder = () => {
                     <Icon name="chevron-forward" size={16} color="#888" />
                   </TouchableOpacity>
                 </View>
-              </View>
+              </View> */}
               
               {/* Address Details */}
               <View style={styles.addressDetailsSection}>
@@ -2245,14 +2241,6 @@ const TrackOrder = () => {
                   <Text style={styles.addressText}>
                     {order.delivery_address?.address || 'Address not available'}
                   </Text>
-                  {order.delivery_address?.landmark && (
-                    <View style={styles.landmarkContainer}>
-                      <Icon name="flag-outline" size={16} color="#888" />
-                      <Text style={styles.landmarkText}>
-                        Near {order.delivery_address.landmark}
-                      </Text>
-                    </View>
-                  )}
                 </View>
               </View>
             </View>
@@ -3455,16 +3443,10 @@ const styles = StyleSheet.create({
   landmarkContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8FAFD',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
   },
   landmarkText: {
     fontSize: getResponsiveFontSize(14),
-    color: '#666',
+    color: '#db6e6e',
     fontWeight: '500',
     marginLeft: 8,
     flex: 1,

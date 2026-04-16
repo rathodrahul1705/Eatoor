@@ -178,6 +178,10 @@ const CartScreen = ({ route, navigation }: any) => {
   const [showSavedUpiIds, setShowSavedUpiIds] = useState(false);
   const [checkingApps, setCheckingApps] = useState(true);
   
+  // New states for VPA and payment method type
+  const [selectedUpiVpa, setSelectedUpiVpa] = useState<string>('');
+  const [selectedUpiPaymentMethodType, setSelectedUpiPaymentMethodType] = useState<string>('');
+  
   // Payment tracking states
   const [isPaymentInProgress, setIsPaymentInProgress] = useState(false);
   const [currentTransactionId, setCurrentTransactionId] = useState<string | null>(null);
@@ -252,7 +256,7 @@ const CartScreen = ({ route, navigation }: any) => {
     }
   };
 
-  const addCustomUpiId = (upiId: string) => {
+  const addCustomUpiId = (upiId: string, vpa?: string) => {
     if (!upiId.trim()) {
       Alert.alert('Error', 'Please enter a valid UPI ID');
       return;
@@ -269,7 +273,8 @@ const CartScreen = ({ route, navigation }: any) => {
       upiId: upiId,
       name: upiId.split('@')[0],
       isDefault: savedUpiIds.length === 0,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      vpa: vpa || upiId
     };
 
     const updatedUpiIds = [...savedUpiIds, newUpiId];
@@ -570,6 +575,23 @@ const CartScreen = ({ route, navigation }: any) => {
     }
   };
 
+  const getPaymentMethodType = (): string => {
+    switch (selectedPaymentType) {
+      case 'upi':
+        return selectedUpiPaymentMethodType || 'APP';
+      case 'wallet':
+        return 'WALLET';
+      case 'cod':
+        return 'COD';
+      case 'netbanking':
+        return 'NETBANKING';
+      case 'cards':
+        return selectedCardType === 'credit_card' ? 'CREDIT_CARD' : 'DEBIT_CARD';
+      default:
+        return 'UNKNOWN';
+    }
+  };
+
   const updatePaymentAndCreateOrder = async (
     transactionId: string | null,
     paymentId: string | null,
@@ -608,11 +630,13 @@ const CartScreen = ({ route, navigation }: any) => {
         coupon_discount: 0,
         discount_amount: 0,
         delivery_offer_applied: cartData.delivery_offer_exist,
-        upi_id: selectedUpiApp?.id || selectedUpiApp?.vpa || customUpiId,
+        upi_id: selectedUpiApp?.id || selectedUpiApp?.vpa || selectedUpiVpa || customUpiId,
+        vpa: selectedUpiVpa || selectedUpiApp?.vpa || customUpiId,
+        payment_method_type: getPaymentMethodType(),
         payment_gateway: selectedPaymentType?.toUpperCase() || 'UPI',
         order_reference: currentOrderRef,
         bank_code: selectedBank?.code,
-        card_type: selectedCardType
+        card_type: selectedCardType,
       };
 
       const response = await updatePyamentData(payload);
@@ -628,7 +652,6 @@ const CartScreen = ({ route, navigation }: any) => {
     }
   };
 
-  // NEW FUNCTION: Finalize payment after verification (ONLY FOR SUCCESSFUL PAYMENTS)
   const finalizePaymentAfterVerification = async (
     transactionId: string,
     paymentId: string,
@@ -667,7 +690,9 @@ const CartScreen = ({ route, navigation }: any) => {
         coupon_discount: 0,
         discount_amount: 0,
         delivery_offer_applied: cartData.delivery_offer_exist,
-        upi_id: selectedUpiApp?.id || selectedUpiApp?.vpa || customUpiId,
+        upi_id: selectedUpiApp?.id || selectedUpiApp?.vpa || selectedUpiVpa || customUpiId,
+        vpa: selectedUpiVpa || selectedUpiApp?.vpa || customUpiId,
+        payment_method_type: getPaymentMethodType(),
         payment_gateway: selectedPaymentType?.toUpperCase() || 'UPI',
         order_reference: currentOrderRef || transactionId,
         bank_code: selectedBank?.code,
@@ -723,12 +748,10 @@ const CartScreen = ({ route, navigation }: any) => {
     resetPaymentState();
   };
 
-  // UPDATED: Handle view order navigation
   const handleViewOrder = (orderNumber: string) => {
     setPaymentModalVisible(false);
     resetPaymentState();
-    // Navigate to TrackOrder with the correct format
-    navigation.navigate('TrackOrder', { order: { order_number: orderNumber } });
+    navigation.navigate('TrackOrder', { order: { order_number: orderNumber, prev_location: "HomeTabs" } });
   };
 
   const initiateUPIPaymentFlow = async () => {
@@ -799,12 +822,15 @@ const CartScreen = ({ route, navigation }: any) => {
         firstname: customerDetails.full_name || 'Customer',
         email: customerDetails.email || 'customer@example.com',
         phone: customerDetails.contact_number,
-        upi_id: selectedUpiApp?.id || selectedUpiApp?.vpa || customUpiId,
+        upi_id: selectedUpiApp?.id || selectedUpiApp?.vpa || selectedUpiVpa || customUpiId,
+        vpa: selectedUpiVpa || selectedUpiApp?.vpa || customUpiId,
+        payment_method_type: getPaymentMethodType(),
         bank_code: selectedBank?.code,
         card_type: selectedCardType
       };
       
       const paymentInit = await initiateBackendPayment(orderData);
+      
       
       setCurrentPaymentData(paymentInit);
       setCurrentTransactionId(paymentInit.txnid);
@@ -813,12 +839,15 @@ const CartScreen = ({ route, navigation }: any) => {
       setCreatedOrderNumber(paymentInit.order_number);
       setCreatedOrderTotal(paymentInit.order_total);
       
-      const upiResult = await processUPIPayment(paymentInit, selectedUpiApp?.id);
-      
-      if (!upiResult.success) {
-        throw new Error(upiResult.error || 'Failed to initiate payment app');
+      if(getPaymentMethodType() == "APP"){
+        const upiResult = await processUPIPayment(paymentInit, selectedUpiApp?.id);
+
+        if (!upiResult.success) {
+          throw new Error(upiResult.error || 'Failed to initiate payment app');
+        }
+
       }
-      
+            
       setPaymentModalStatus('pending');
       setPollingAttempts(0);
       
@@ -839,7 +868,6 @@ const CartScreen = ({ route, navigation }: any) => {
             pollingControlRef.current = null;
             
             if (result.success) {
-              // ONLY call finalizePaymentAfterVerification for successful payments
               try {
                 console.log('Payment verified successfully, finalizing order...');
                 
@@ -853,15 +881,12 @@ const CartScreen = ({ route, navigation }: any) => {
                 
                 console.log('Finalization result:', finalizeResult);
                 
-                // Debit wallet if wallet was used
                 if (useWallet && calculateWalletUsage() > 0) {
                   await debitWalletAmount(calculateWalletUsage(), result.order_id || paymentInit.order_id);
                 }
                 
-                // Clear cart data from storage
                 await AsyncStorage.removeItem('pastKitchenDetails');
                 
-                // Update state with final order details
                 const finalOrderNumber = finalizeResult.order_number || paymentInit.order_number;
                 const finalOrderId = finalizeResult.order_id || paymentInit.order_id;
                 const finalOrderTotal = finalizeResult.total_amount || finalizeResult.final_amount || paymentInit.order_total;
@@ -877,13 +902,9 @@ const CartScreen = ({ route, navigation }: any) => {
                 setPaymentModalStatus('failed');
               }
             } else {
-              // PAYMENT FAILED - DO NOT call finalizePaymentAfterVerification
               setPaymentError(result.error || 'Payment could not be verified');
               setPaymentModalStatus('failed');
-              
-              // Optional: Log failed transaction for analytics
               console.log('Payment failed for transaction:', paymentInit.txnid);
-              // Do NOT create or update any order record for failed payments
             }
             
             paymentInProgressRef.current = false;
@@ -891,7 +912,7 @@ const CartScreen = ({ route, navigation }: any) => {
           },
           {
             interval: 3000,
-            maxAttempts: 5,
+            maxAttempts: 2,
             timeout: 120000,
             onPending: (pendingInfo) => {
               setPollingAttempts(pendingInfo.attempts);
@@ -1054,20 +1075,37 @@ const CartScreen = ({ route, navigation }: any) => {
     }
   };
 
-  const selectPaymentMethod = (type: SelectedPaymentType, data?: any) => {
+  const selectPaymentMethod = (type: SelectedPaymentType, data?: any, vpa?: string, paymentMethodType?: string) => {
     setSelectedPaymentType(type);
+    
     if (type === 'upi' && data) {
       setSelectedUpiApp(data);
+      // Store VPA and payment method type
+      if (vpa) {
+        setSelectedUpiVpa(vpa);
+      } else if (data.customUPIID) {
+        setSelectedUpiVpa(data.customUPIID);
+      } else if (data.vpa) {
+        setSelectedUpiVpa(data.vpa);
+      } else {
+        setSelectedUpiVpa(data.id);
+      }
+      
+      setSelectedUpiPaymentMethodType(paymentMethodType || (data.customUPIID ? 'VPA' : 'APP'));
     }
+    
     if (type === 'wallet' && data) {
       setSelectedWalletApp(data);
     }
+    
     if (type === 'netbanking' && data) {
       setSelectedBank(data);
     }
+    
     if (type === 'cards' && data) {
       setSelectedCardType(data);
     }
+    
     setShowPaymentSectionModal(false);
   };
 
@@ -1157,7 +1195,7 @@ const CartScreen = ({ route, navigation }: any) => {
 
     return (
       <TouchableOpacity 
-        style={styles.suggestedItemCard}
+        style={styles.cartscreen_page_suggestedItemCard}
         onPress={() => {
           if (quantity === 0) {
             updateItemQuantity(item.item_id, 'increment', 'SUGGESTION');
@@ -1166,45 +1204,48 @@ const CartScreen = ({ route, navigation }: any) => {
         activeOpacity={0.7}
         disabled={isPaymentInProgress}
       >
-        <Image 
-          source={{ uri: item.item_image || 'https://via.placeholder.com/150' }} 
-          style={styles.suggestedItemImage} 
-          resizeMode="cover"
-        />
-        <View style={styles.suggestedItemContent}>
-          <View style={styles.suggestedItemHeader}>
+        <View style={styles.cartscreen_page_suggestedItemImageContainer}>
+          <Image 
+            source={{ uri: item.item_image || 'https://via.placeholder.com/150' }} 
+            style={styles.cartscreen_page_suggestedItemImage} 
+            resizeMode="cover"
+          />
+          <View style={[
+            styles.cartscreen_page_suggestedItemTypeBadge,
+            item.type === 'Veg' ? styles.cartscreen_page_vegBadge : styles.cartscreen_page_nonVegBadge
+          ]}>
             <View style={[
-              styles.suggestedItemTypeBadge,
-              item.type === 'Veg' ? styles.vegBadge : styles.nonVegBadge
-            ]}>
-              <View style={[
-                styles.suggestedItemTypeIndicator,
-                item.type === 'Veg' ? styles.vegIndicator : styles.nonVegIndicator
-              ]} />
-            </View>
-            <Text style={styles.suggestedItemName} numberOfLines={1}>
-              {safeText(item.item_name, 'Unnamed Item')}
-            </Text>
+              styles.cartscreen_page_suggestedItemTypeIndicator,
+              item.type === 'Veg' ? styles.cartscreen_page_vegIndicator : styles.cartscreen_page_nonVegIndicator
+            ]} />
           </View>
+        </View>
+        
+        <View style={styles.cartscreen_page_suggestedItemContent}>
+          <Text style={styles.cartscreen_page_suggestedItemName} numberOfLines={2}>
+            {safeText(item.item_name, 'Unnamed Item')}
+          </Text>
           
-          <View style={styles.suggestedItemDetails}>
+          <View style={styles.cartscreen_page_suggestedItemDetails}>
             {item.discount_active ? (
-              <View style={styles.priceRow}>
-                <Text style={styles.originalPrice}>₹{originalPrice.toFixed(2)}</Text>
-                <Text style={styles.discountText}>{discountPercent}% OFF</Text>
+              <View style={styles.cartscreen_page_priceRow}>
+                <Text style={styles.cartscreen_page_originalPrice}>₹{originalPrice.toFixed(2)}</Text>
+                <View style={styles.cartscreen_page_discountBadge}>
+                  <Text style={styles.cartscreen_page_discountText}>{discountPercent}% OFF</Text>
+                </View>
               </View>
             ) : null}
             
-            <Text style={styles.itemPrice}>₹{itemPrice.toFixed(2)}</Text>
+            <Text style={styles.cartscreen_page_itemPrice}>₹{itemPrice.toFixed(2)}</Text>
           </View>
           
-          <View style={styles.suggestedItemFooter}>
+          <View style={styles.cartscreen_page_suggestedItemFooter}>
             {quantity > 0 ? (
-              <View style={styles.quantityContainer}>
+              <View style={styles.cartscreen_page_quantityContainer}>
                 <TouchableOpacity 
                   style={[
-                    styles.quantityButton,
-                    (quantity <= 1 || isPaymentInProgress) && styles.disabledButton
+                    styles.cartscreen_page_quantityButton,
+                    (quantity <= 1 || isPaymentInProgress) && styles.cartscreen_page_disabledButton
                   ]} 
                   onPress={() => updateItemQuantity(item.item_id, 'decrement', 'SUGGESTION')}
                 >
@@ -1215,12 +1256,12 @@ const CartScreen = ({ route, navigation }: any) => {
                   )}
                 </TouchableOpacity>
                 
-                <Text style={styles.quantityText}>{safeText(quantity, '0')}</Text>
+                <Text style={styles.cartscreen_page_quantityText}>{safeText(quantity, '0')}</Text>
                 
                 <TouchableOpacity 
                   style={[
-                    styles.quantityButton,
-                    isPaymentInProgress && styles.disabledButton
+                    styles.cartscreen_page_quantityButton,
+                    isPaymentInProgress && styles.cartscreen_page_disabledButton
                   ]} 
                   onPress={() => updateItemQuantity(item.item_id, 'increment', 'SUGGESTION')}
                 >
@@ -1234,9 +1275,9 @@ const CartScreen = ({ route, navigation }: any) => {
             ) : (
               <TouchableOpacity 
                 style={[
-                  styles.addItemButton,
-                  isUpdating && styles.addItemButtonDisabled,
-                  isPaymentInProgress && styles.disabledButton
+                  styles.cartscreen_page_addItemButton,
+                  isUpdating && styles.cartscreen_page_addItemButtonDisabled,
+                  isPaymentInProgress && styles.cartscreen_page_disabledButton
                 ]}
                 onPress={() => updateItemQuantity(item.item_id, 'increment', 'SUGGESTION')}
                 disabled={isUpdating || isPaymentInProgress}
@@ -1244,7 +1285,7 @@ const CartScreen = ({ route, navigation }: any) => {
                 {isUpdating && currentAction === 'increment' ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={styles.addItemButtonText}>ADD</Text>
+                  <Text style={styles.cartscreen_page_addItemButtonText}>ADD</Text>
                 )}
               </TouchableOpacity>
             )}
@@ -1254,22 +1295,17 @@ const CartScreen = ({ route, navigation }: any) => {
     );
   };
 
-  // Handle wallet toggle with automatic payment method selection
   const handleWalletToggle = () => {
     const newUseWallet = !useWallet;
     setUseWallet(newUseWallet);
     
-    // If user is enabling wallet, automatically select Eatoor Money as payment method
     if (newUseWallet && walletBalance && walletBalance.balance > 0) {
-      // Check if Eatoor Money is available
       const isEatoorMoneyAvailable = paymentMethods?.wallets?.isActive && 
         paymentMethods?.wallets?.wallets?.some(w => w.id === 'eatoor_money');
       
       if (isEatoorMoneyAvailable) {
-        // Find the Eatoor Money wallet method
         const eatoorWallet = paymentMethods?.wallets?.wallets?.find(w => w.id === 'eatoor_money');
         
-        // Auto-select wallet payment method
         setSelectedPaymentType('wallet');
         if (eatoorWallet) {
           setSelectedWalletApp(eatoorWallet);
@@ -1286,32 +1322,32 @@ const CartScreen = ({ route, navigation }: any) => {
     if (!isWalletActive) return null;
 
     return (
-      <View style={styles.eatoorMoneyContainer}>
-        <View style={styles.eatoorMoneyToggleRow}>
+      <View style={styles.cartscreen_page_eatoorMoneyContainer}>
+        <View style={styles.cartscreen_page_eatoorMoneyToggleRow}>
           <TouchableOpacity 
-            style={styles.checkboxContainer}
+            style={styles.cartscreen_page_checkboxContainer}
             onPress={handleWalletToggle}
             disabled={isPaymentInProgress}
           >
             <View style={[
-              styles.checkbox,
-              useWallet && styles.checkboxChecked,
-              (balance <= 0 || isPaymentInProgress) && styles.checkboxDisabled
+              styles.cartscreen_page_checkbox,
+              useWallet && styles.cartscreen_page_checkboxChecked,
+              (balance <= 0 || isPaymentInProgress) && styles.cartscreen_page_checkboxDisabled
             ]}>
               {useWallet && <Icon name="checkmark" size={moderateScale(12)} color="#fff" />}
             </View>
-            <View style={styles.checkboxLabelContainer}>
-              <Text style={styles.checkboxLabel}>Use Eatoor Money</Text>
-              <Text style={styles.balanceTextSmall}>Balance: ₹{balance.toFixed(2)}</Text>
+            <View style={styles.cartscreen_page_checkboxLabelContainer}>
+              <Text style={styles.cartscreen_page_checkboxLabel}>Use Eatoor Money</Text>
+              <Text style={styles.cartscreen_page_balanceTextSmall}>Balance: ₹{balance.toFixed(2)}</Text>
             </View>
           </TouchableOpacity>
           
           <TouchableOpacity 
-            style={styles.addMoneyButton}
+            style={styles.cartscreen_page_addMoneyButton}
             onPress={() => navigation.navigate('EatoorMoneyAdd', { prevScreen: 'CartScreen' })}
             disabled={isPaymentInProgress}
           >
-            <Text style={styles.addMoneyButtonText}>Add Money</Text>
+            <Text style={styles.cartscreen_page_addMoneyButtonText}>Add Money</Text>
             <Icon name="arrow-forward" size={moderateScale(14)} color="#E65C00" />
           </TouchableOpacity>
         </View>
@@ -1341,9 +1377,11 @@ const CartScreen = ({ route, navigation }: any) => {
       
       switch (selectedPaymentType) {
         case 'upi':
+          const vpaDisplay = selectedUpiVpa ? `VPA: ${selectedUpiVpa}` : '';
+          const methodTypeDisplay = selectedUpiPaymentMethodType === 'VPA' ? ' (UPI ID)' : ' (UPI App)';
           return { 
             title: selectedUpiApp?.name || 'UPI', 
-            subtitle: 'Pay using UPI app', 
+            subtitle: vpaDisplay || `Pay using UPI${methodTypeDisplay}`, 
             icon: 'phone-portrait-outline' 
           };
         case 'wallet':
@@ -1366,50 +1404,55 @@ const CartScreen = ({ route, navigation }: any) => {
     const display = getSelectedMethodDisplay();
 
     return (
-      <View style={styles.paymentMethodInlineContainer}>
+      <View style={styles.cartscreen_page_paymentMethodInlineContainer}>
         <TouchableOpacity 
-          style={styles.paymentMethodDropdown}
+          style={styles.cartscreen_page_paymentMethodDropdown}
           onPress={() => setShowPaymentSectionModal(true)}
           disabled={isPaymentInProgress}
           activeOpacity={0.7}
         >
-          <View style={styles.paymentMethodContent}>
-            <View style={styles.iconContainer}>
-              <View style={styles.paymentIcon}>
-                <Icon name={display.icon} size={moderateScale(24)} color="#E65C00" />
+          <View style={styles.cartscreen_page_paymentMethodContent}>
+            <View style={styles.cartscreen_page_iconContainer}>
+              <View style={styles.cartscreen_page_paymentIconContainer}>
+                <Icon name={display.icon} size={moderateScale(22)} color="#E65C00" />
               </View>
             </View>
 
-            <View style={styles.textContainer}>
-              <View style={styles.topRow}>
-                <Text style={styles.payUsingLabel}>PAY USING</Text>
-                <Icon name="chevron-up" size={moderateScale(12)} color="#666" />
+            <View style={styles.cartscreen_page_textContainer}>
+              <View style={styles.cartscreen_page_topRow}>
+                <Text style={styles.cartscreen_page_payUsingLabel}>PAY USING</Text>
+                <Icon name="chevron-down" size={moderateScale(12)} color="#999" />
               </View>
 
-              <View style={styles.paymentMethodRow}>
-                <Text style={styles.paymentMethodName} numberOfLines={1}>
+              <View style={styles.cartscreen_page_paymentMethodRow}>
+                <Text style={styles.cartscreen_page_paymentMethodName} numberOfLines={1}>
                   {display.title}
                 </Text>
               </View>
+              <Text style={styles.cartscreen_page_paymentMethodSubtitle} numberOfLines={1}>
+                {display.subtitle}
+              </Text>
             </View>
           </View>
         </TouchableOpacity>
 
         <TouchableOpacity 
           style={[
-            styles.proceedButton,
-            (isPaymentInProgress || paymentModalStatus === 'processing') && styles.proceedButtonDisabled,
-            !isAddressSelected && styles.selectLocationButton
+            styles.cartscreen_page_proceedButton,
+            (isPaymentInProgress || paymentModalStatus === 'processing') && styles.cartscreen_page_proceedButtonDisabled,
+            !isAddressSelected && styles.cartscreen_page_selectLocationButton
           ]}
           onPress={initiatePayment}
           disabled={paymentModalStatus === 'processing' || isPaymentInProgress}
           activeOpacity={0.8}
         >
-          {paymentModalStatus === 'processing' || isPaymentInProgress ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.proceedButtonText}>{buttonText}</Text>
-          )}
+          <View style={styles.cartscreen_page_proceedButtonContent}>
+            {paymentModalStatus === 'processing' || isPaymentInProgress ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.cartscreen_page_proceedButtonText}>{buttonText}</Text>
+            )}
+          </View>
         </TouchableOpacity>
       </View>
     );
@@ -1422,39 +1465,41 @@ const CartScreen = ({ route, navigation }: any) => {
     const discountPercent = safePrice(item.discount_percent);
 
     return (
-      <View style={styles.cartItemCard}>
-        <View style={styles.cartItemContent}>
-          <View style={styles.itemTypeContainer}>
+      <View style={styles.cartscreen_page_cartItemCard}>
+        <View style={styles.cartscreen_page_cartItemContent}>
+          <View style={styles.cartscreen_page_itemTypeContainer}>
             <View style={[
-              styles.itemTypeBadge,
-              item.type === 'Veg' ? styles.vegBadge : styles.nonVegBadge
+              styles.cartscreen_page_itemTypeBadge,
+              item.type === 'Veg' ? styles.cartscreen_page_vegBadge : styles.cartscreen_page_nonVegBadge
             ]}>
               <View style={[
-                styles.itemTypeIndicator,
-                item.type === 'Veg' ? styles.vegIndicator : styles.nonVegIndicator
+                styles.cartscreen_page_itemTypeIndicator,
+                item.type === 'Veg' ? styles.cartscreen_page_vegIndicator : styles.cartscreen_page_nonVegIndicator
               ]} />
             </View>
           </View>
           
-          <View style={styles.itemDetails}>
-            <Text style={styles.itemName} numberOfLines={1}>
+          <View style={styles.cartscreen_page_itemDetails}>
+            <Text style={styles.cartscreen_page_itemName} numberOfLines={2}>
               {safeText(item.item_name, 'Unnamed Item')}
             </Text>            
             {item.discount_active ? (
-              <View style={styles.priceRow}>
-                <Text style={styles.originalPrice}>₹{originalPrice.toFixed(2)}</Text>
-                <Text style={styles.discountText}>{discountPercent}% OFF</Text>
+              <View style={styles.cartscreen_page_priceRow}>
+                <Text style={styles.cartscreen_page_originalPrice}>₹{originalPrice.toFixed(2)}</Text>
+                <View style={styles.cartscreen_page_discountBadge}>
+                  <Text style={styles.cartscreen_page_discountText}>{discountPercent}% OFF</Text>
+                </View>
               </View>
             ) : null}
             
-            <Text style={styles.itemPrice}>₹{itemPrice.toFixed(2)}</Text>
+            <Text style={styles.cartscreen_page_itemPrice}>₹{itemPrice.toFixed(2)}</Text>
           </View>
           
-          <View style={styles.quantityContainer}>
+          <View style={styles.cartscreen_page_quantityContainer}>
             <TouchableOpacity 
               style={[
-                styles.quantityButton,
-                (item.quantity <= 1 || isPaymentInProgress) && styles.disabledButton
+                styles.cartscreen_page_quantityButton,
+                (item.quantity <= 1 || isPaymentInProgress) && styles.cartscreen_page_disabledButton
               ]} 
               onPress={() => updateItemQuantity(item.item_id, 'decrement')}
             >
@@ -1465,12 +1510,12 @@ const CartScreen = ({ route, navigation }: any) => {
               )}
             </TouchableOpacity>
             
-            <Text style={styles.quantityText}>{safeText(item.quantity, '0')}</Text>
+            <Text style={styles.cartscreen_page_quantityText}>{safeText(item.quantity, '0')}</Text>
             
             <TouchableOpacity 
               style={[
-                styles.quantityButton,
-                isPaymentInProgress && styles.disabledButton
+                styles.cartscreen_page_quantityButton,
+                isPaymentInProgress && styles.cartscreen_page_disabledButton
               ]} 
               onPress={() => updateItemQuantity(item.item_id, 'increment')}
             >
@@ -1487,38 +1532,40 @@ const CartScreen = ({ route, navigation }: any) => {
   };
 
   const renderEmptyCart = () => (
-    <View style={styles.emptyContainer}>
-      <View style={styles.emptyHeader}>
-        <TouchableOpacity onPress={BackToKitchen} style={styles.backButton}>
+    <View style={styles.cartscreen_page_emptyContainer}>
+      <View style={styles.cartscreen_page_emptyHeader}>
+        <TouchableOpacity onPress={BackToKitchen} style={styles.cartscreen_page_backButton}>
           <Icon name="arrow-back" size={moderateScale(24)} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.emptyHeaderTitle}>
+        <Text style={styles.cartscreen_page_emptyHeaderTitle}>
           {safeText(cartData?.restaurant_name, 'Your Cart')}
         </Text>
         <View style={{ width: moderateScale(24) }} />
       </View>
       
-      <View style={styles.emptyContent}>
-        <View style={styles.emptyIllustration}>
+      <View style={styles.cartscreen_page_emptyContent}>
+        <View style={styles.cartscreen_page_emptyIllustration}>
           <Icon name="cart-outline" size={moderateScale(80)} color="#E8ECF4" />
-          <View style={styles.emptyIconOverlay}>
+          <View style={styles.cartscreen_page_emptyIconOverlay}>
             <Icon name="close" size={moderateScale(40)} color="#E65C00" />
           </View>
         </View>
-        <Text style={styles.emptyTitle}>Your cart is empty</Text>
-        <Text style={styles.emptyDescription}>
+        <Text style={styles.cartscreen_page_emptyTitle}>Your cart is empty</Text>
+        <Text style={styles.cartscreen_page_emptyDescription}>
           Looks like you haven't added anything to your cart yet
         </Text>
         
-        <TouchableOpacity style={styles.exploreButton} onPress={BackToKitchen}>
-          <Text style={styles.exploreButtonText}>Browse Menu</Text>
-          <Icon name="arrow-forward" size={moderateScale(20)} color="#fff" />
+        <TouchableOpacity style={styles.cartscreen_page_exploreButton} onPress={BackToKitchen}>
+          <View style={styles.cartscreen_page_exploreButtonContent}>
+            <Text style={styles.cartscreen_page_exploreButtonText}>Browse Menu</Text>
+            <Icon name="arrow-forward" size={moderateScale(20)} color="#fff" />
+          </View>
         </TouchableOpacity>
       </View>
 
       {cartData?.suggestion_cart_items && cartData?.suggestion_cart_items.length > 0 && (
-        <View style={styles.emptySuggestionsContainer}>
-          <Text style={styles.suggestionTitle}>
+        <View style={styles.cartscreen_page_emptySuggestionsContainer}>
+          <Text style={styles.cartscreen_page_suggestionTitle}>
             Popular Items from {safeText(cartData?.restaurant_name, 'this restaurant')}
           </Text>
           <FlatList
@@ -1527,7 +1574,7 @@ const CartScreen = ({ route, navigation }: any) => {
             keyExtractor={item => safeText(item.item_id, '0')}
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.suggestedItemsHorizontalContainer}
+            contentContainerStyle={styles.cartscreen_page_suggestedItemsHorizontalContainer}
           />
         </View>
       )}
@@ -1536,11 +1583,11 @@ const CartScreen = ({ route, navigation }: any) => {
 
   const renderCartContent = () => (
     <KeyboardAvoidingView 
-      style={styles.scrollContainer}
+      style={styles.cartscreen_page_scrollContainer}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView 
-        contentContainerStyle={styles.scrollContentContainer}
+        contentContainerStyle={styles.cartscreen_page_scrollContentContainer}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -1549,31 +1596,33 @@ const CartScreen = ({ route, navigation }: any) => {
             tintColor="#E65C00"
           />
         }
+        showsVerticalScrollIndicator={false}
       >
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleContainer}>
-              <Text style={styles.sectionTitle}>Your Order</Text>
+        <View style={styles.cartscreen_page_sectionCard}>
+          <View style={styles.cartscreen_page_sectionHeader}>
+            <View style={styles.cartscreen_page_sectionTitleContainer}>
+              <Icon name="restaurant-outline" size={moderateScale(20)} color="#E65C00" />
+              <Text style={styles.cartscreen_page_sectionTitle}>Your Items</Text>
               {cartData?.cart_details?.length > 0 && (
-                <View style={styles.itemCountBadge}>
-                  <Text style={styles.itemCountText}>{getTotalItems()}</Text>
+                <View style={styles.cartscreen_page_itemCountBadge}>
+                  <Text style={styles.cartscreen_page_itemCountText}>{getTotalItems()}</Text>
                 </View>
               )}
             </View>
 
             {cartData?.cart_details?.length > 0 && (
               <TouchableOpacity 
-                style={styles.clearCartButton}
+                style={styles.cartscreen_page_clearCartButton}
                 onPress={handleClearCart}
                 disabled={isPaymentInProgress}
               >
-                <Icon name="trash-outline" size={moderateScale(18)} color="#E65C00" />
-                <Text style={styles.clearCartText}>Clear All</Text>
+                <Icon name="trash-outline" size={moderateScale(16)} color="#E65C00" />
+                <Text style={styles.cartscreen_page_clearCartText}>Clear All</Text>
               </TouchableOpacity>
             )}
           </View>
 
-          <View style={styles.cartItemsList}>
+          <View style={styles.cartscreen_page_cartItemsList}>
             <FlatList
               data={cartData?.cart_details}
               renderItem={renderCartItem}
@@ -1584,15 +1633,18 @@ const CartScreen = ({ route, navigation }: any) => {
         </View>
 
         {cartData?.suggestion_cart_items && cartData?.suggestion_cart_items.length > 0 && (
-          <View style={styles.sectionCard}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Add More Items</Text>
+          <View style={styles.cartscreen_page_sectionCard}>
+            <View style={styles.cartscreen_page_sectionHeader}>
+              <View style={styles.cartscreen_page_sectionTitleContainer}>
+                <Icon name="add-circle-outline" size={moderateScale(20)} color="#E65C00" />
+                <Text style={styles.cartscreen_page_sectionTitle}>Add More Items</Text>
+              </View>
               <TouchableOpacity 
-                style={styles.viewAllButton}
+                style={styles.cartscreen_page_viewAllButton}
                 onPress={BackToKitchen}
                 disabled={isPaymentInProgress}
               >
-                <Text style={styles.viewAllText}>View All</Text>
+                <Text style={styles.cartscreen_page_viewAllText}>View All</Text>
                 <Icon name="chevron-forward" size={moderateScale(16)} color="#E65C00" />
               </TouchableOpacity>
             </View>
@@ -1603,88 +1655,107 @@ const CartScreen = ({ route, navigation }: any) => {
               keyExtractor={item => safeText(item.item_id, '0')}
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.suggestedItemsHorizontalContainer}
+              contentContainerStyle={styles.cartscreen_page_suggestedItemsHorizontalContainer}
             />
           </View>
         )}
 
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Delivery Details</Text>
-          <View style={styles.detailCard}>
-            <View style={styles.detailRow}>
-              <View style={styles.detailIconContainer}>
-                <Icon name="location-outline" size={moderateScale(20)} color="#E65C00" />
+        <View style={styles.cartscreen_page_sectionCard}>
+          <View style={styles.cartscreen_page_sectionHeader}>
+            <View style={styles.cartscreen_page_sectionTitleContainer}>
+              <Icon name="location-outline" size={moderateScale(20)} color="#E65C00" />
+              <Text style={styles.cartscreen_page_sectionTitle}>Delivery Details</Text>
+            </View>
+          </View>
+          
+          <TouchableOpacity 
+            style={styles.cartscreen_page_detailCard}
+            onPress={handleAddressChange}
+            activeOpacity={0.7}
+          >
+            <View style={styles.cartscreen_page_detailRow}>
+              <View style={styles.cartscreen_page_detailIconContainer}>
+                <Icon name="navigate-circle" size={moderateScale(24)} color="#E65C00" />
               </View>
-              <View style={styles.addressContainer}>
-                <Text style={styles.detailText}>
+              <View style={styles.cartscreen_page_addressContainer}>
+                <Text style={styles.cartscreen_page_detailLabel}>Delivery Address</Text>
+                <Text style={styles.cartscreen_page_detailText}>
                   {fullAddress !== "Select Address" ? fullAddress : "Please select a delivery address"}
                 </Text>
-                <TouchableOpacity 
-                  style={styles.changeAddressButton}
-                  onPress={handleAddressChange}
-                  disabled={isPaymentInProgress}
-                >
-                  <Text style={styles.changeAddressText}>
-                    {fullAddress !== "Select Address" ? "Change" : "Add"}
-                  </Text>
-                </TouchableOpacity>
               </View>
+              <Icon name="chevron-forward" size={moderateScale(20)} color="#ccc" />
             </View>
 
             {cartData?.delivery_time?.estimated_time && (
-              <View style={styles.detailRow}>
-                <View style={styles.detailIconContainer}>
-                  <Icon name="time-outline" size={moderateScale(20)} color="#E65C00" />
+              <View style={[styles.cartscreen_page_detailRow, { marginTop: verticalScale(8), paddingTop: verticalScale(8), borderTopWidth: 1, borderTopColor: '#f0f0f0' }]}>
+                <View style={styles.cartscreen_page_detailIconContainer}>
+                  <Icon name="time-outline" size={moderateScale(24)} color="#E65C00" />
                 </View>
-                <Text style={styles.detailText}>
-                  Deliver in {safeText(cartData?.delivery_time?.estimated_time)}
-                </Text>
+                <View style={styles.cartscreen_page_addressContainer}>
+                  <Text style={styles.cartscreen_page_detailLabel}>Delivery Time</Text>
+                  <Text style={styles.cartscreen_page_detailText}>
+                    {safeText(cartData?.delivery_time?.estimated_time)}
+                  </Text>
+                </View>
               </View>
             )}
-          </View>
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Bill Details</Text>
-          <View style={styles.billCard}>
-            <View style={styles.billRow}>
-              <Text style={styles.billLabel}>Item Total</Text>
-              <Text style={styles.billValue}>
+        <View style={styles.cartscreen_page_sectionCard}>
+          <View style={styles.cartscreen_page_sectionHeader}>
+            <View style={styles.cartscreen_page_sectionTitleContainer}>
+              <Icon name="receipt-outline" size={moderateScale(20)} color="#E65C00" />
+              <Text style={styles.cartscreen_page_sectionTitle}>Bill Details</Text>
+            </View>
+          </View>
+          
+          <View style={styles.cartscreen_page_billCard}>
+            <View style={styles.cartscreen_page_billRow}>
+              <Text style={styles.cartscreen_page_billLabel}>Item Total</Text>
+              <Text style={styles.cartscreen_page_billValue}>
                 ₹{safeFormatNumber(cartData?.billing_details?.subtotal, 2)}
               </Text>
             </View>
 
-            <View style={styles.billRow}>
-              <Text style={styles.billLabel}>Delivery Fee</Text>
-              <Text style={[
-                styles.billValue,
-                cartData?.delivery_offer_exist && styles.freeDeliveryValue
-              ]}>
-                {cartData?.delivery_offer_exist ? 'FREE' : `₹${safeFormatNumber(cartData?.billing_details?.delivery_amount, 2)}`}
-              </Text>
+            <View style={styles.cartscreen_page_billRow}>
+              <Text style={styles.cartscreen_page_billLabel}>Delivery Fee</Text>
+              <View style={styles.cartscreen_page_billValueContainer}>
+                {cartData?.delivery_offer_exist && (
+                  <View style={styles.cartscreen_page_freeDeliveryBadge}>
+                    <Text style={styles.cartscreen_page_freeDeliveryBadgeText}>FREE</Text>
+                  </View>
+                )}
+                <Text style={[
+                  styles.cartscreen_page_billValue,
+                  cartData?.delivery_offer_exist && styles.cartscreen_page_freeDeliveryValue
+                ]}>
+                  {cartData?.delivery_offer_exist ? '₹0' : `₹${safeFormatNumber(cartData?.billing_details?.delivery_amount, 2)}`}
+                </Text>
+              </View>
             </View>
 
-            <View style={styles.billRow}>
-              <Text style={styles.billLabel}>Tax</Text>
-              <Text style={styles.billValue}>
+            <View style={styles.cartscreen_page_billRow}>
+              <Text style={styles.cartscreen_page_billLabel}>Tax & Charges</Text>
+              <Text style={styles.cartscreen_page_billValue}>
                 ₹{safeFormatNumber(cartData?.billing_details?.tax, 2)}
               </Text>
             </View>
 
             {useWallet && walletBalance && walletBalance.balance > 0 && (
-              <View style={styles.billRow}>
-                <Text style={styles.billLabel}>Eatoor Money</Text>
-                <Text style={[styles.billValue, styles.eatoorMoneyDeductionBill]}>
+              <View style={styles.cartscreen_page_billRow}>
+                <Text style={styles.cartscreen_page_billLabel}>Eatoor Money</Text>
+                <Text style={[styles.cartscreen_page_billValue, styles.cartscreen_page_eatoorMoneyDeductionBill]}>
                   - ₹{calculateWalletUsage().toFixed(2)}
                 </Text>
               </View>
             )}
 
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>
+            <View style={styles.cartscreen_page_totalRow}>
+              <Text style={styles.cartscreen_page_totalLabel}>
                 {useWallet && calculateFinalAmount() > 0 ? 'Amount to Pay' : 'Total Bill'}
               </Text>
-              <Text style={styles.totalValue}>
+              <Text style={styles.cartscreen_page_totalValue}>
                 ₹{calculateFinalAmount().toFixed(2)}
               </Text>
             </View>
@@ -1700,7 +1771,7 @@ const CartScreen = ({ route, navigation }: any) => {
     }
 
     return (
-      <View style={styles.paymentFooter}>
+      <View style={styles.cartscreen_page_paymentFooter}>
         {!isGuest && renderEatoorMoneySection()}
         {renderPaymentMethodSelector()}
       </View>
@@ -1709,11 +1780,11 @@ const CartScreen = ({ route, navigation }: any) => {
   
   if (loading && !cartData) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.cartscreen_page_container}>
         <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-        <View style={styles.loadingContainer}>
+        <View style={styles.cartscreen_page_loadingContainer}>
           <ActivityIndicator size="large" color="#E65C00" />
-          <Text style={styles.loadingText}>Loading your cart...</Text>
+          <Text style={styles.cartscreen_page_loadingText}>Loading your cart...</Text>
         </View>
       </SafeAreaView>
     );
@@ -1721,17 +1792,17 @@ const CartScreen = ({ route, navigation }: any) => {
 
   if (error) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.cartscreen_page_container}>
         <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-        <View style={styles.errorContainer}>
-          <View style={styles.errorContent}>
+        <View style={styles.cartscreen_page_errorContainer}>
+          <View style={styles.cartscreen_page_errorContent}>
             <Icon name="warning-outline" size={moderateScale(48)} color="#E65C00" />
-            <Text style={styles.errorText}>{safeText(error)}</Text>
-            <TouchableOpacity style={styles.primaryButton} onPress={fetchCartData}>
-              <Text style={styles.primaryButtonText}>Try Again</Text>
+            <Text style={styles.cartscreen_page_errorText}>{safeText(error)}</Text>
+            <TouchableOpacity style={styles.cartscreen_page_primaryButton} onPress={fetchCartData}>
+              <Text style={styles.cartscreen_page_primaryButtonText}>Try Again</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.secondaryButton} onPress={BackToKitchen}>
-              <Text style={styles.secondaryButtonText}>Back to Menu</Text>
+            <TouchableOpacity style={styles.cartscreen_page_secondaryButton} onPress={BackToKitchen}>
+              <Text style={styles.cartscreen_page_secondaryButtonText}>Back to Menu</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1742,7 +1813,7 @@ const CartScreen = ({ route, navigation }: any) => {
   const isCartEmpty = !cartData?.cart_details || cartData?.cart_details.length === 0;
   
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.cartscreen_page_container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       
       <PaymentModal
@@ -1782,33 +1853,35 @@ const CartScreen = ({ route, navigation }: any) => {
         customUpiId={customUpiId}
         setCustomUpiId={setCustomUpiId}
         walletBalance={walletBalance?.balance}
+        userId={userId}
       />
       
       {isCartEmpty ? (
         renderEmptyCart()
       ) : (
         <>
-          <View style={styles.header}>
+          <View style={styles.cartscreen_page_header}>
             <TouchableOpacity 
               onPress={BackToKitchen}
-              style={styles.backButton}
+              style={styles.cartscreen_page_backButton}
               disabled={isPaymentInProgress}
             >
               <Icon name="arrow-back" size={moderateScale(24)} color="#333" />
             </TouchableOpacity>
-            <View style={styles.headerContent}>
-              <Text style={styles.restaurantName} numberOfLines={1}>
+            <View style={styles.cartscreen_page_headerContent}>
+              <Text style={styles.cartscreen_page_restaurantName} numberOfLines={1}>
                 {safeText(cartData?.restaurant_name, 'Restaurant')}
               </Text>
               <TouchableOpacity 
                 onPress={handleAddressChange}
-                style={styles.headerAddressContainer}
+                style={styles.cartscreen_page_headerAddressContainer}
                 disabled={isPaymentInProgress}
               >
-                <Text style={styles.headerAddressText} numberOfLines={1}>
+                <Icon name="location-outline" size={moderateScale(14)} color="#E65C00" />
+                <Text style={styles.cartscreen_page_headerAddressText} numberOfLines={1}>
                   {safeText(shortAddress, 'Select Address')}
                 </Text>
-                <Icon name="chevron-down" size={moderateScale(16)} color="#E65C00" style={styles.downArrowIcon} />
+                <Icon name="chevron-down" size={moderateScale(14)} color="#E65C00" />
               </TouchableOpacity>
             </View>
           </View>
@@ -1822,513 +1895,526 @@ const CartScreen = ({ route, navigation }: any) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
+  cartscreen_page_container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#fff',
   },
-  loadingContainer: {
+  cartscreen_page_loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#F8F9FA',
   },
-  loadingText: {
+  cartscreen_page_loadingText: {
     marginTop: verticalScale(16),
     fontSize: FONT.LG,
     color: '#666',
     fontWeight: '500',
   },
-  scrollContainer: {
+  cartscreen_page_scrollContainer: {
     flex: 1,
   },
-  scrollContentContainer: {
+  cartscreen_page_scrollContentContainer: {
     paddingBottom: verticalScale(140),
     paddingHorizontal: scale(16),
   },
-  downArrowIcon: {
-    marginLeft: scale(4),
-  },
-  header: {
+  cartscreen_page_header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: verticalScale(12),
+    paddingVertical: verticalScale(12),
     paddingHorizontal: scale(16),
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
     minHeight: Platform.OS === 'ios' ? verticalScale(70) : verticalScale(64),
   },
-  backButton: {
+  cartscreen_page_backButton: {
     padding: moderateScale(8),
     marginRight: moderateScale(12),
     borderRadius: moderateScale(24),
     backgroundColor: '#f8f8f8',
   },
-  headerContent: {
+  cartscreen_page_headerContent: {
     flex: 1,
     justifyContent: 'center',
   },
-  restaurantName: {
+  cartscreen_page_restaurantName: {
     fontSize: FONT.XL,
     fontWeight: '700',
     color: '#1a1a1a',
     marginBottom: verticalScale(4),
   },
-  headerAddressContainer: {
+  cartscreen_page_headerAddressContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingRight: scale(4),
   },
-  headerAddressText: {
+  cartscreen_page_headerAddressText: {
     fontSize: FONT.SM,
     fontWeight: '500',
     color: '#666',
+    marginLeft: scale(4),
+    marginRight: scale(4),
     flex: 1,
   },
-  paymentMethodInlineContainer: {
+  cartscreen_page_paymentMethodInlineContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: scale(16),
     paddingVertical: verticalScale(12),
     backgroundColor: '#fff',
-    borderTopWidth: 0.5,
-    borderTopColor: '#eee',
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
   },
-  paymentMethodDropdown: {
+  cartscreen_page_paymentMethodDropdown: {
     flex: 1,
     marginRight: scale(12),
   },
-  paymentMethodContent: {
+  cartscreen_page_paymentMethodContent: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
-  iconContainer: {
+  cartscreen_page_iconContainer: {
     marginRight: moderateScale(12),
-    marginTop: verticalScale(2),
   },
-  paymentIcon: {
-    width: moderateScale(28),
-    height: moderateScale(28),
+  cartscreen_page_paymentIconContainer: {
+    width: moderateScale(44),
+    height: moderateScale(44),
+    borderRadius: moderateScale(22),
+    backgroundColor: '#FFF0E6',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  textContainer: {
+  cartscreen_page_textContainer: {
     flex: 1,
   },
-  topRow: {
+  cartscreen_page_topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: verticalScale(4),
-  },
-  payUsingLabel: {
-    fontSize: FONT.SM,
-    color: '#666',
-    fontWeight: '500',
-    marginRight: scale(6),
-  },
-  paymentMethodRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     marginBottom: verticalScale(2),
   },
-  paymentMethodName: {
-    fontSize: FONT.BASE,
+  cartscreen_page_payUsingLabel: {
+    fontSize: FONT.XS,
+    color: '#999',
     fontWeight: '600',
+    marginRight: scale(6),
+    letterSpacing: 0.5,
+  },
+  cartscreen_page_paymentMethodRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: verticalScale(2),
+  },
+  cartscreen_page_paymentMethodName: {
+    fontSize: FONT.BASE,
+    fontWeight: '700',
     color: '#1a1a1a',
   },
-  proceedButton: {
+  cartscreen_page_paymentMethodSubtitle: {
+    fontSize: FONT.XS,
+    color: '#999',
+  },
+  cartscreen_page_proceedButton: {
     backgroundColor: '#E65C00',
-    borderRadius: moderateScale(8),
+    borderRadius: moderateScale(12),
+    overflow: 'hidden',
+    minWidth: moderateScale(110),
+  },
+  cartscreen_page_proceedButtonContent: {
     paddingVertical: verticalScale(12),
     paddingHorizontal: scale(20),
-    minWidth: moderateScale(110),
     alignItems: 'center',
     justifyContent: 'center',
   },
-  selectLocationButton: {
-    backgroundColor: '#E65C00',
+  cartscreen_page_selectLocationButton: {
+    opacity: 0.9,
   },
-  proceedButtonDisabled: {
+  cartscreen_page_proceedButtonDisabled: {
     opacity: 0.7,
   },
-  proceedButtonText: {
+  cartscreen_page_proceedButtonText: {
     color: '#fff',
     fontSize: FONT.BASE,
     fontWeight: '700',
   },
-  eatoorMoneyContainer: {
-    paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(10),
-    backgroundColor: '#fff',
+  cartscreen_page_eatoorMoneyContainer: {
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(12),
+    backgroundColor: '#FFF8F0',
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
-  eatoorMoneyToggleRow: {
+  cartscreen_page_eatoorMoneyToggleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: verticalScale(6),
   },
-  checkboxContainer: {
+  cartscreen_page_checkboxContainer: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     flex: 1,
   },
-  checkbox: {
-    width: moderateScale(20),
-    height: moderateScale(20),
-    borderRadius: moderateScale(4),
+  cartscreen_page_checkbox: {
+    width: moderateScale(22),
+    height: moderateScale(22),
+    borderRadius: moderateScale(6),
     borderWidth: 2,
-    borderColor: '#d1d1d6',
+    borderColor: '#E65C00',
     backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: scale(10),
-    marginTop: verticalScale(2),
+    marginRight: scale(12),
   },
-  checkboxChecked: {
+  cartscreen_page_checkboxChecked: {
     backgroundColor: '#E65C00',
     borderColor: '#E65C00',
   },
-  checkboxDisabled: {
-    backgroundColor: '#f0f0f0',
-    borderColor: '#d1d1d6',
+  cartscreen_page_checkboxDisabled: {
+    opacity: 0.5,
   },
-  checkboxLabelContainer: {
+  cartscreen_page_checkboxLabelContainer: {
     flex: 1,
   },
-  checkboxLabel: {
+  cartscreen_page_checkboxLabel: {
     fontSize: FONT.BASE,
     fontWeight: '600',
     color: '#1a1a1a',
   },
-  balanceTextSmall: {
+  cartscreen_page_balanceTextSmall: {
     fontSize: FONT.SM,
     color: '#E65C00',
-    fontWeight: '500',
+    fontWeight: '600',
+    marginTop: verticalScale(2),
   },
-  addMoneyButton: {
+  cartscreen_page_addMoneyButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: moderateScale(12),
-    paddingVertical: verticalScale(6),
+    paddingHorizontal: moderateScale(16),
+    paddingVertical: verticalScale(8),
     backgroundColor: '#fff',
-    borderRadius: moderateScale(6),
+    borderRadius: moderateScale(8),
     borderWidth: 1.5,
     borderColor: '#E65C00',
   },
-  addMoneyButtonText: {
+  cartscreen_page_addMoneyButtonText: {
     color: '#E65C00',
     fontSize: FONT.SM,
     fontWeight: '600',
-    marginRight: scale(4),
+    marginRight: scale(6),
   },
-  sectionCard: {
+  cartscreen_page_sectionCard: {
     backgroundColor: '#fff',
-    borderRadius: moderateScale(12),
-    padding: moderateScale(12),
+    top:10,
+    borderRadius: moderateScale(16),
+    padding: moderateScale(16),
     marginBottom: verticalScale(12),
-    marginTop: verticalScale(8),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  sectionHeader: {
+  cartscreen_page_sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: verticalScale(12),
+    marginBottom: verticalScale(16),
   },
-  sectionTitleContainer: {
+  cartscreen_page_sectionTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  sectionTitle: {
+  cartscreen_page_sectionTitle: {
     fontSize: FONT.LG,
     fontWeight: '700',
     color: '#1a1a1a',
+    marginLeft: moderateScale(8),
   },
-  itemCountBadge: {
+  cartscreen_page_itemCountBadge: {
     backgroundColor: '#E65C00',
-    paddingHorizontal: moderateScale(6),
-    paddingVertical: verticalScale(2),
-    borderRadius: moderateScale(10),
-    marginLeft: moderateScale(6),
-    minWidth: moderateScale(20),
+    paddingHorizontal: moderateScale(8),
+    paddingVertical: verticalScale(3),
+    borderRadius: moderateScale(12),
+    marginLeft: moderateScale(8),
+    minWidth: moderateScale(24),
     alignItems: 'center',
   },
-  itemCountText: {
+  cartscreen_page_itemCountText: {
     fontSize: FONT.XS,
     color: '#fff',
     fontWeight: '700',
   },
-  clearCartButton: {
+  cartscreen_page_clearCartButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: moderateScale(10),
-    paddingVertical: verticalScale(5),
-    backgroundColor: '#fff0e6',
-    borderRadius: moderateScale(6),
-    borderWidth: 1,
-    borderColor: '#ffd1b3',
+    paddingHorizontal: moderateScale(12),
+    paddingVertical: verticalScale(6),
+    backgroundColor: '#FFF0E6',
+    borderRadius: moderateScale(8),
   },
-  clearCartText: {
+  cartscreen_page_clearCartText: {
     fontSize: FONT.SM,
     color: '#E65C00',
     fontWeight: '600',
     marginLeft: moderateScale(4),
   },
-  viewAllButton: {
+  cartscreen_page_viewAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  viewAllText: {
+  cartscreen_page_viewAllText: {
     fontSize: FONT.SM,
     color: '#E65C00',
     fontWeight: '600',
   },
-  cartItemCard: {
+  cartscreen_page_cartItemCard: {
+    borderRadius: moderateScale(12),
+    marginBottom: verticalScale(8),
+    padding: moderateScale(12),
     backgroundColor: '#fff',
-    borderRadius: moderateScale(10),
-    padding: moderateScale(10),
-    marginBottom: verticalScale(6),
-    borderWidth: 1,
-    borderColor: '#f0f0f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  cartItemContent: {
+  cartscreen_page_cartItemContent: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  itemTypeContainer: {
-    marginRight: moderateScale(10),
+  cartscreen_page_itemTypeContainer: {
+    marginRight: moderateScale(12),
   },
-  itemTypeBadge: {
-    width: moderateScale(18),
-    height: moderateScale(18),
-    borderRadius: moderateScale(3),
-    borderWidth: 1.5,
+  cartscreen_page_itemTypeBadge: {
+    width: moderateScale(20),
+    height: moderateScale(20),
+    borderRadius: moderateScale(4),
+    borderWidth: 2,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  vegBadge: {
+  cartscreen_page_vegBadge: {
     borderColor: '#4CAF50',
     backgroundColor: 'rgba(76, 175, 80, 0.1)',
   },
-  nonVegBadge: {
+  cartscreen_page_nonVegBadge: {
     borderColor: '#E65C00',
     backgroundColor: 'rgba(230, 92, 0, 0.1)',
   },
-  itemTypeIndicator: {
-    width: moderateScale(8),
-    height: moderateScale(8),
-    borderRadius: moderateScale(4),
+  cartscreen_page_itemTypeIndicator: {
+    width: moderateScale(10),
+    height: moderateScale(10),
+    borderRadius: moderateScale(5),
   },
-  vegIndicator: {
+  cartscreen_page_vegIndicator: {
     backgroundColor: '#4CAF50',
   },
-  nonVegIndicator: {
+  cartscreen_page_nonVegIndicator: {
     backgroundColor: '#E65C00',
   },
-  itemDetails: {
+  cartscreen_page_itemDetails: {
     flex: 1,
-    marginRight: moderateScale(10),
+    marginRight: moderateScale(12),
   },
-  itemName: {
+  cartscreen_page_itemName: {
     fontSize: FONT.BASE,
     fontWeight: '600',
     color: '#1a1a1a',
-    marginBottom: verticalScale(3),
+    marginBottom: verticalScale(4),
+    lineHeight: verticalScale(18),
   },
-  priceRow: {
+  cartscreen_page_priceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: verticalScale(2),
+    marginBottom: verticalScale(4),
   },
-  originalPrice: {
+  cartscreen_page_originalPrice: {
     fontSize: FONT.SM,
     color: '#999',
     textDecorationLine: 'line-through',
-    marginRight: moderateScale(4),
-    fontWeight: '500',
+    marginRight: moderateScale(8),
   },
-  discountText: {
+  cartscreen_page_discountBadge: {
+    backgroundColor: '#FFF0E6',
+    paddingHorizontal: moderateScale(6),
+    paddingVertical: verticalScale(2),
+    borderRadius: moderateScale(4),
+  },
+  cartscreen_page_discountText: {
     fontSize: FONT.XS,
     color: '#E65C00',
-    fontWeight: '600',
-    backgroundColor: '#fff0e6',
-    paddingHorizontal: moderateScale(4),
-    paddingVertical: verticalScale(1),
-    borderRadius: moderateScale(3),
+    fontWeight: '700',
   },
-  itemPrice: {
+  cartscreen_page_itemPrice: {
     fontSize: FONT.BASE,
     fontWeight: '700',
-    color: '#1a1a1a',
-  },
-  quantityContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff5f5',
-    borderRadius: moderateScale(16),
-    paddingHorizontal: moderateScale(4),
-    paddingVertical: verticalScale(2),
-    borderWidth: 1.5,
-    borderColor: '#ffd6d6',
-  },
-  quantityButton: {
-    padding: moderateScale(3),
-    borderRadius: moderateScale(10),
-    backgroundColor: '#fff',
-    width: moderateScale(22),
-    height: moderateScale(22),
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  quantityText: {
-    fontSize: FONT.SM,
-    fontWeight: '700',
     color: '#E65C00',
-    marginHorizontal: moderateScale(4),
-    minWidth: moderateScale(18),
-    textAlign: 'center',
   },
-  detailCard: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: moderateScale(10),
-    padding: moderateScale(12),
-    marginTop: verticalScale(6),
-  },
-  detailRow: {
+  cartscreen_page_quantityContainer: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: verticalScale(10),
+    alignItems: 'center',
+    backgroundColor: '#FFF5F0',
+    borderRadius: moderateScale(20),
+    paddingHorizontal: moderateScale(6),
+    paddingVertical: verticalScale(4),
   },
-  detailIconContainer: {
+  cartscreen_page_quantityButton: {
+    padding: moderateScale(4),
+    borderRadius: moderateScale(12),
+    backgroundColor: '#fff',
     width: moderateScale(28),
     height: moderateScale(28),
-    borderRadius: moderateScale(14),
-    backgroundColor: '#fff8f0',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: moderateScale(10),
-    borderWidth: 1,
-    borderColor: '#ffe0cc',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  addressContainer: {
-    flex: 1,
+  cartscreen_page_quantityText: {
+    fontSize: FONT.BASE,
+    fontWeight: '700',
+    color: '#E65C00',
+    marginHorizontal: moderateScale(8),
+    minWidth: moderateScale(24),
+    textAlign: 'center',
+  },
+  cartscreen_page_detailCard: {
+    backgroundColor: '#F8F9FA',
+    borderRadius: moderateScale(12),
+    padding: moderateScale(16),
+  },
+  cartscreen_page_detailRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  detailText: {
-    fontSize: FONT.SM,
-    color: '#4a4a4a',
+  cartscreen_page_detailIconContainer: {
+    width: moderateScale(40),
+    height: moderateScale(40),
+    borderRadius: moderateScale(20),
+    backgroundColor: '#FFF0E6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: moderateScale(12),
+  },
+  cartscreen_page_addressContainer: {
     flex: 1,
-    marginRight: moderateScale(10),
+  },
+  cartscreen_page_detailLabel: {
+    fontSize: FONT.SM,
+    color: '#999',
+    fontWeight: '500',
+    marginBottom: verticalScale(4),
+  },
+  cartscreen_page_detailText: {
+    fontSize: FONT.SM,
+    color: '#1a1a1a',
     lineHeight: verticalScale(18),
     fontWeight: '500',
   },
-  changeAddressButton: {
-    paddingHorizontal: moderateScale(10),
-    paddingVertical: verticalScale(3),
-    backgroundColor: '#fff0e6',
-    borderRadius: moderateScale(5),
-    borderWidth: 1,
-    borderColor: '#ffd1b3',
+  cartscreen_page_billCard: {
+    backgroundColor: '#F8F9FA',
+    borderRadius: moderateScale(12),
+    padding: moderateScale(16),
   },
-  changeAddressText: {
-    color: '#E65C00',
-    fontWeight: '600',
-    fontSize: FONT.SM,
-  },
-  billCard: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: moderateScale(10),
-    padding: moderateScale(12),
-    marginTop: verticalScale(6),
-  },
-  billRow: {
+  cartscreen_page_billRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: verticalScale(10),
-    paddingBottom: verticalScale(10),
+    marginBottom: verticalScale(12),
+    paddingBottom: verticalScale(8),
     borderBottomWidth: 1,
-    borderBottomColor: '#e8e8e8',
+    borderBottomColor: '#E8ECF4',
   },
-  billLabel: {
+  cartscreen_page_billLabel: {
     fontSize: FONT.SM,
     color: '#666',
     fontWeight: '500',
   },
-  billValue: {
+  cartscreen_page_billValueContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  cartscreen_page_billValue: {
     fontSize: FONT.SM,
     color: '#333',
     fontWeight: '600',
   },
-  eatoorMoneyDeductionBill: {
-    color: '#E65C00',
-    fontWeight: '700',
+  cartscreen_page_freeDeliveryBadge: {
+    backgroundColor: '#E8F5E9',
+    paddingHorizontal: moderateScale(6),
+    paddingVertical: verticalScale(2),
+    borderRadius: moderateScale(4),
+    marginRight: moderateScale(8),
   },
-  freeDeliveryValue: {
+  cartscreen_page_freeDeliveryBadgeText: {
+    fontSize: FONT.XS,
     color: '#4CAF50',
     fontWeight: '700',
   },
-  totalRow: {
+  cartscreen_page_eatoorMoneyDeductionBill: {
+    color: '#E65C00',
+    fontWeight: '700',
+  },
+  cartscreen_page_freeDeliveryValue: {
+    color: '#4CAF50',
+    fontWeight: '700',
+  },
+  cartscreen_page_totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: verticalScale(6),
-    paddingTop: verticalScale(10),
-    borderTopWidth: 1.5,
-    borderTopColor: '#e8e8e8',
+    marginTop: verticalScale(8),
+    paddingTop: verticalScale(12),
+    borderTopColor: '#E8ECF4',
   },
-  totalLabel: {
+  cartscreen_page_totalLabel: {
     fontSize: FONT.LG,
     fontWeight: '700',
     color: '#1a1a1a',
   },
-  totalValue: {
-    fontSize: FONT.LG,
+  cartscreen_page_totalValue: {
+    fontSize: FONT.XL,
     fontWeight: '800',
     color: '#E65C00',
   },
-  cartItemsList: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: moderateScale(10),
-    padding: moderateScale(10),
-    marginTop: verticalScale(6),
+  cartscreen_page_cartItemsList: {
+    marginTop: verticalScale(4),
   },
-  emptyContainer: {
+  cartscreen_page_emptyContainer: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#F8F9FA',
   },
-  emptyHeader: {
+  cartscreen_page_emptyHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: moderateScale(14),
+    padding: moderateScale(16),
+    backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
     paddingTop: Platform.OS === 'ios' ? verticalScale(12) : verticalScale(20),
   },
-  emptyHeaderTitle: {
+  cartscreen_page_emptyHeaderTitle: {
     fontSize: FONT.XL,
     fontWeight: '700',
     color: '#1a1a1a',
   },
-  emptyContent: {
+  cartscreen_page_emptyContent: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: scale(20),
   },
-  emptyIllustration: {
-    width: moderateScale(100),
-    height: moderateScale(100),
-    borderRadius: moderateScale(50),
-    backgroundColor: '#f8f8f8',
+  cartscreen_page_emptyIllustration: {
+    width: moderateScale(120),
+    height: moderateScale(120),
+    borderRadius: moderateScale(60),
+    backgroundColor: '#F8F9FA',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: verticalScale(20),
+    marginBottom: verticalScale(24),
     position: 'relative',
   },
-  emptyIconOverlay: {
+  cartscreen_page_emptyIconOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
@@ -2337,178 +2423,188 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  emptyTitle: {
-    fontSize: FONT.XL,
+  cartscreen_page_emptyTitle: {
+    fontSize: FONT.XXL,
     fontWeight: '700',
     color: '#1a1a1a',
-    marginBottom: verticalScale(6),
+    marginBottom: verticalScale(8),
     textAlign: 'center',
   },
-  emptyDescription: {
+  cartscreen_page_emptyDescription: {
     fontSize: FONT.SM,
     color: '#666',
     textAlign: 'center',
-    marginBottom: verticalScale(20),
-    lineHeight: verticalScale(18),
-    paddingHorizontal: scale(16),
-    fontWeight: '500',
+    marginBottom: verticalScale(24),
+    lineHeight: verticalScale(20),
+    paddingHorizontal: scale(32),
   },
-  exploreButton: {
+  cartscreen_page_exploreButton: {
     backgroundColor: '#E65C00',
-    paddingHorizontal: moderateScale(28),
-    paddingVertical: verticalScale(12),
-    borderRadius: moderateScale(20),
+    borderRadius: moderateScale(12),
+    overflow: 'hidden',
+  },
+  cartscreen_page_exploreButtonContent: {
+    paddingHorizontal: moderateScale(32),
+    paddingVertical: verticalScale(14),
     flexDirection: 'row',
     alignItems: 'center',
   },
-  exploreButtonText: {
+  cartscreen_page_exploreButtonText: {
     color: '#fff',
     fontSize: FONT.LG,
     fontWeight: '700',
-    marginRight: moderateScale(6),
+    marginRight: moderateScale(8),
   },
-  emptySuggestionsContainer: {
+  cartscreen_page_emptySuggestionsContainer: {
     marginBottom: verticalScale(16),
   },
-  suggestionTitle: {
+  cartscreen_page_suggestionTitle: {
     fontSize: FONT.LG,
     fontWeight: '700',
     color: '#1a1a1a',
-    marginTop: verticalScale(12),
-    marginBottom: verticalScale(10),
-    paddingHorizontal: scale(14),
+    marginTop: verticalScale(8),
+    marginBottom: verticalScale(12),
+    paddingHorizontal: scale(16),
   },
-  suggestedItemsHorizontalContainer: {
-    paddingHorizontal: scale(2),
-    paddingBottom: verticalScale(2),
+  cartscreen_page_suggestedItemsHorizontalContainer: {
+    paddingHorizontal: scale(12),
+    paddingBottom: verticalScale(8),
   },
-  suggestedItemCard: {
-    width: scale(130),
+  cartscreen_page_suggestedItemCard: {
+    width: scale(140),
     backgroundColor: '#fff',
-    borderRadius: moderateScale(10),
+    borderRadius: moderateScale(12),
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#f0f0f0',
-    marginHorizontal: scale(5),
+    marginHorizontal: scale(6),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  suggestedItemImage: {
+  cartscreen_page_suggestedItemImageContainer: {
+    position: 'relative',
+  },
+  cartscreen_page_suggestedItemImage: {
     width: '100%',
-    height: verticalScale(90),
-    backgroundColor: '#f8f8f8',
+    height: verticalScale(100),
+    backgroundColor: '#F8F9FA',
   },
-  suggestedItemContent: {
-    padding: scale(8),
-  },
-  suggestedItemHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: verticalScale(4),
-  },
-  suggestedItemTypeBadge: {
-    width: moderateScale(12),
-    height: moderateScale(12),
-    borderRadius: moderateScale(2),
-    borderWidth: 1.5,
+  cartscreen_page_suggestedItemTypeBadge: {
+    position: 'absolute',
+    top: scale(8),
+    left: scale(8),
+    width: moderateScale(16),
+    height: moderateScale(16),
+    borderRadius: moderateScale(4),
+    borderWidth: 2,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: scale(4),
+    backgroundColor: '#fff',
   },
-  suggestedItemTypeIndicator: {
-    width: moderateScale(5),
-    height: moderateScale(5),
-    borderRadius: moderateScale(2.5),
+  cartscreen_page_suggestedItemTypeIndicator: {
+    width: moderateScale(8),
+    height: moderateScale(8),
+    borderRadius: moderateScale(4),
   },
-  suggestedItemName: {
+  cartscreen_page_suggestedItemContent: {
+    padding: scale(10),
+  },
+  cartscreen_page_suggestedItemName: {
     fontSize: FONT.SM,
     fontWeight: '600',
     color: '#1a1a1a',
-    flex: 1,
+    marginBottom: verticalScale(6),
+    lineHeight: verticalScale(16),
+    minHeight: verticalScale(32),
   },
-  suggestedItemDetails: {
-    marginBottom: verticalScale(4),
+  cartscreen_page_suggestedItemDetails: {
+    marginBottom: verticalScale(8),
   },
-  suggestedItemFooter: {
+  cartscreen_page_suggestedItemFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  addItemButton: {
+  cartscreen_page_addItemButton: {
     backgroundColor: '#E65C00',
-    paddingHorizontal: scale(10),
-    paddingVertical: verticalScale(5),
-    borderRadius: moderateScale(5),
-    minWidth: scale(45),
+    paddingHorizontal: scale(14),
+    paddingVertical: verticalScale(6),
+    borderRadius: moderateScale(8),
+    minWidth: scale(55),
     alignItems: 'center',
     justifyContent: 'center',
   },
-  addItemButtonDisabled: {
+  cartscreen_page_addItemButtonDisabled: {
     opacity: 0.7,
   },
-  addItemButtonText: {
+  cartscreen_page_addItemButtonText: {
     color: '#fff',
     fontSize: FONT.SM,
     fontWeight: '700',
   },
-  disabledButton: {
+  cartscreen_page_disabledButton: {
     opacity: 0.5,
   },
-  errorContainer: {
+  cartscreen_page_errorContainer: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#F8F9FA',
   },
-  errorContent: {
+  cartscreen_page_errorContent: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: scale(20),
   },
-  errorText: {
+  cartscreen_page_errorText: {
     fontSize: FONT.LG,
     color: '#E65C00',
     marginBottom: verticalScale(20),
     textAlign: 'center',
     fontWeight: '600',
   },
-  primaryButton: {
+  cartscreen_page_primaryButton: {
     backgroundColor: '#E65C00',
-    paddingHorizontal: moderateScale(28),
+    paddingHorizontal: moderateScale(32),
     paddingVertical: verticalScale(12),
-    borderRadius: moderateScale(20),
+    borderRadius: moderateScale(12),
     width: '80%',
     alignItems: 'center',
-    marginBottom: verticalScale(10),
+    marginBottom: verticalScale(12),
   },
-  primaryButtonText: {
+  cartscreen_page_primaryButtonText: {
     color: '#fff',
     fontSize: FONT.LG,
     fontWeight: '700',
   },
-  secondaryButton: {
-    paddingHorizontal: moderateScale(28),
+  cartscreen_page_secondaryButton: {
+    paddingHorizontal: moderateScale(32),
     paddingVertical: verticalScale(12),
-    borderRadius: moderateScale(20),
+    borderRadius: moderateScale(12),
     width: '80%',
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#E65C00',
     backgroundColor: '#fff',
   },
-  secondaryButtonText: {
+  cartscreen_page_secondaryButtonText: {
     color: '#E65C00',
     fontSize: FONT.LG,
     fontWeight: '600',
   },
-  paymentFooter: {
+  cartscreen_page_paymentFooter: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     backgroundColor: '#fff',
-    borderTopLeftRadius: moderateScale(16),
-    borderTopRightRadius: moderateScale(16),
-    paddingTop: verticalScale(8),
-    borderTopWidth: 1,
-    borderColor: '#f0f0f0',
+    borderTopLeftRadius: moderateScale(20),
+    borderTopRightRadius: moderateScale(20),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 10,
   },
 });
 

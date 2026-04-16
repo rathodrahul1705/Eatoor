@@ -1047,7 +1047,7 @@ const OfferDetailsPage = () => {
           <Text style={styles.heroTitle}>{offerTitle}</Text>
           <Text style={styles.heroSubtitle}>{offerSubtitle}</Text>
           
-          {offerCode && (
+          {/* {offerCode && (
             <TouchableOpacity 
               style={styles.codeContainer}
               onPress={() => {
@@ -1059,7 +1059,7 @@ const OfferDetailsPage = () => {
               <Icon name="pricetag-outline" size={16} color="#FFF" />
               <Text style={styles.codeText}>Use Code: {offerCode}</Text>
             </TouchableOpacity>
-          )}
+          )} */}
           
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>

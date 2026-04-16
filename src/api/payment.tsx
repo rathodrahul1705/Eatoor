@@ -44,3 +44,11 @@ export const verifyPayment = (txnid, payment_method, order_id) =>
 
 export const getPaymentMethods = () =>
   API.get('/payment/methods/');
+
+export const validateVpa = (vpa, user_id) =>
+  API.get('/payment/validatevpa/', {
+    params: {
+      vpa: vpa,
+      user_id: user_id,
+    },
+  });

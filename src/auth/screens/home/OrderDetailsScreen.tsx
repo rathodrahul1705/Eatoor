@@ -181,8 +181,8 @@ const OrderDetailsScreen = () => {
     const paymentChecks = orderDetails.payment_method_checks || {};
     const walletPayment = parseFloat(paymentChecks.wallet_payment_amount || '0');
     const onlinePayment = parseFloat(paymentChecks.online_payment_amount || '0');
-    const cashPayment = parseFloat(paymentChecks.cash_payment_amount || '0');
-    
+    const cashPayment = parseFloat(paymentChecks.cod_payment_pending || '0');
+        
     return {
       itemsSubtotal: itemsSubtotal.toFixed(2),
       deliveryFee: deliveryFee.toFixed(2),

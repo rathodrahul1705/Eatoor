@@ -96,6 +96,8 @@ export interface UpdateOrderDetails {
   total_amount: number;
   code: string | null;
   discount_amount: number;
+  order_number?: number;
+  order_id?: number;
 }
 
 export const updatePyamentData = (payload: UpdateOrderDetails) => {

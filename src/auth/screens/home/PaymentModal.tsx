@@ -70,7 +70,10 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       setTimeout(() => {
         try {
           navigation.navigate('TrackOrder', {
-            order: { order_number: orderNumber }
+            order: { 
+              order_number: orderNumber, 
+              prev_location: "HomeTabs" 
+            }
           });
         } catch (error) {
           console.error('Navigation error:', error);

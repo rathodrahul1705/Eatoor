@@ -4383,8 +4383,9 @@ const styles = StyleSheet.create({
   
   // Active Order Card
   active_order_card: {
-    backgroundColor: '#f4efef',
+    backgroundColor: '#F5F5F5',
     borderRadius: scale(12),
+    marginBottom: scale(8),
     overflow: 'hidden',
     ...Platform.select({
       ios: {
@@ -4646,11 +4647,11 @@ const styles = StyleSheet.create({
     left: scale(16),
     right: scale(16),
     bottom: Platform.select({
-      ios: verticalScale(85),
-      android: verticalScale(85),
+      ios: verticalScale(90),
+      android: verticalScale(90),
     }),
     borderRadius: scale(12),
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F5F5F5',
     borderWidth: 1,
     borderColor: COLORS.border.default,
     zIndex: 100,

@@ -1,7 +1,8 @@
-// services/PaymentService.js
+// services/PaymentService.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { initiateUPIPayment, getInstalledUPIApps } from './UPIPaymentService';
 import { initiatePayment, verifyPayment } from '../../../../api/payment';
+import { Linking, Platform } from 'react-native';
 
 /**
  * Payment Service - Handles all payment related operations
@@ -43,13 +44,210 @@ export const getSessionIdForPayment = async () => {
 };
 
 /**
+ * Decode base64 string
+ * @param data - Base64 encoded string
+ * @returns Decoded string
+ */
+const decodeBase64 = (data: string): string => {
+  try {
+    if (!data) return '';
+    
+    // For web environment
+    if (Platform.OS === 'web' && typeof atob === 'function') {
+      return atob(data);
+    }
+    
+    // For React Native - atob is available in React Native 0.60+
+    if (typeof atob === 'function') {
+      return atob(data);
+    }
+    
+    // Fallback: Manual base64 decoding for older React Native versions
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+    let output = '';
+    let i = 0;
+    
+    const cleanData = data.replace(/[^A-Za-z0-9+/=]/g, '');
+    
+    while (i < cleanData.length) {
+      const enc1 = chars.indexOf(cleanData.charAt(i++));
+      const enc2 = chars.indexOf(cleanData.charAt(i++));
+      const enc3 = chars.indexOf(cleanData.charAt(i++));
+      const enc4 = chars.indexOf(cleanData.charAt(i++));
+      
+      const chr1 = (enc1 << 2) | (enc2 >> 4);
+      const chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+      const chr3 = ((enc3 & 3) << 6) | enc4;
+      
+      output += String.fromCharCode(chr1);
+      if (enc3 !== 64) output += String.fromCharCode(chr2);
+      if (enc4 !== 64) output += String.fromCharCode(chr3);
+    }
+    
+    // Handle UTF-8 characters
+    try {
+      return decodeURIComponent(escape(output));
+    } catch (e) {
+      return output;
+    }
+  } catch (e) {
+    console.error("Base64 decode error:", e);
+    return data;
+  }
+};
+
+/**
+ * Process VPA payment response - handles the HTML form submission for VPA payments
+ * @param paymentData - Payment data from initiation
+ * @returns {Promise<Object>} - Payment processing result
+ */
+export const processVPAPayment = async (paymentData: any): Promise<{ success: boolean; error?: string; data?: any }> => {
+  try {
+    console.log('Processing VPA payment with data:', paymentData);
+    
+    // Check if we have acsTemplate in the response (from the new API response structure)
+    let acsTemplate = null;
+    let otpPostUrl = null;
+    
+    // Handle different response structures
+    if (paymentData.acs_template) {
+      acsTemplate = paymentData.acs_template;
+      otpPostUrl = paymentData.otpPostUrl;
+    } else if (paymentData.full_response?.result?.acsTemplate) {
+      acsTemplate = paymentData.full_response.result.acsTemplate;
+      otpPostUrl = paymentData.full_response.result.otpPostUrl;
+    } else if (paymentData.full_response?.acsTemplate) {
+      acsTemplate = paymentData.full_response.acsTemplate;
+      otpPostUrl = paymentData.full_response.otpPostUrl;
+    } else if (paymentData.result?.acsTemplate) {
+      acsTemplate = paymentData.result.acsTemplate;
+      otpPostUrl = paymentData.result.otpPostUrl;
+    }
+    
+    if (!acsTemplate) {
+      console.error('No ACS template found in payment response');
+      return {
+        success: false,
+        error: 'No payment template received from server'
+      };
+    }
+    
+    // Decode the base64 ACS template
+    const decodedHtml = decodeBase64(acsTemplate);
+    console.log('Decoded ACS template:', decodedHtml.substring(0, 500));
+    
+    // Extract the action URL from the form
+    const formActionMatch = decodedHtml.match(/action=["']([^"']+)["']/);
+    const actionUrl = formActionMatch ? formActionMatch[1] : otpPostUrl;
+    
+    console.log('Form action URL:', actionUrl);
+    
+    // For VPA payments, we need to open the UPI app or show a webview
+    // The decoded HTML contains a form that auto-submits to the UPI payment URL
+    
+    // Extract the form data if needed
+    const formData: Record<string, string> = {};
+    const inputMatches = decodedHtml.matchAll(/<input[^>]+name=["']([^"']+)["'][^>]+value=["']([^"']+)["']/gi);
+    for (const match of inputMatches) {
+      formData[match[1]] = match[2];
+    }
+    
+    console.log('Extracted form data:', formData);
+    
+    // Check if there's a direct intent URL in the form
+    let intentUrl = actionUrl;
+    
+    // For UPI intent URLs, we can try to open directly
+    if (intentUrl && (intentUrl.includes('upi://') || intentUrl.includes('paytmmp//') || 
+        intentUrl.includes('phonepe://') || intentUrl.includes('gpay://') ||
+        intentUrl.includes('tez://') || intentUrl.includes('googlepay://'))) {
+      
+      console.log('Found UPI intent URL:', intentUrl);
+      
+      const canOpen = await Linking.canOpenURL(intentUrl);
+      if (canOpen) {
+        await Linking.openURL(intentUrl);
+        return {
+          success: true,
+          data: {
+            message: 'UPI app opened successfully',
+            intentUrl: intentUrl
+          }
+        };
+      } else {
+        console.log('Cannot open intent URL, falling back to webview');
+      }
+    }
+    
+    // If no direct intent URL or cannot open, we need to use a WebView
+    // For now, we'll consider it successful and rely on polling
+    // The actual payment will be completed in the UPI app after the user approves
+    
+    // Store the ACS data for potential WebView fallback
+    await AsyncStorage.setItem('pendingVPAPayment', JSON.stringify({
+      html: decodedHtml,
+      actionUrl: actionUrl,
+      formData: formData,
+      transactionId: paymentData.txnid,
+      orderId: paymentData.order_id,
+      timestamp: Date.now()
+    }));
+    
+    // Try to construct a UPI intent URL from the form data if available
+    if (formData.pa || formData.payee_vpa) {
+      const vpa = formData.pa || formData.payee_vpa;
+      const amount = formData.amount || paymentData.amount;
+      const tn = formData.tn || formData.txnid || paymentData.txnid;
+      
+      // Construct UPI intent URL
+      const upiIntentUrl = `upi://pay?pa=${encodeURIComponent(vpa)}&pn=${encodeURIComponent(formData.pn || 'Merchant')}&am=${amount}&tn=${encodeURIComponent(tn)}&cu=INR`;
+      
+      console.log('Constructed UPI intent URL:', upiIntentUrl);
+      
+      const canOpen = await Linking.canOpenURL(upiIntentUrl);
+      if (canOpen) {
+        await Linking.openURL(upiIntentUrl);
+        return {
+          success: true,
+          data: {
+            message: 'UPI app opened for VPA payment',
+            intentUrl: upiIntentUrl,
+            vpa: vpa
+          }
+        };
+      }
+    }
+    
+    // If we can't open any UPI app, we'll consider it successful and rely on polling
+    // The user should check their UPI app for pending requests
+    return {
+      success: true,
+      data: {
+        message: 'VPA payment initiated. Please check your UPI app.',
+        requiresWebview: true,
+        html: decodedHtml,
+        actionUrl: actionUrl
+      }
+    };
+    
+  } catch (error: any) {
+    console.error('VPA payment processing error:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to process VPA payment'
+    };
+  }
+};
+
+/**
  * Initiate payment with backend - Creates order and gets payment intent
  * @param {Object} orderData - Complete order data for payment initiation
  * @returns {Promise<Object>} - Payment initiation response with order details
  */
-export const initiateBackendPayment = async (orderData) => {
+export const initiateBackendPayment = async (orderData: any) => {
   try {
     // Validate required fields
+
     const requiredFields = [
       'user_id', 'restaurant_id', 'delivery_address_id', 'payment_method',
       'payment_type', 'payment_status', 'status', 'subtotal', 'tax',
@@ -63,24 +261,54 @@ export const initiateBackendPayment = async (orderData) => {
       }
     }
     
+    console.log('Initiating backend payment with order data:', orderData);
+    
     // Using the imported initiatePayment function with complete order data
     const response = await initiatePayment(orderData);
+    
+    console.log('Backend payment response:', response);
     
     // Check if response is successful
     if (!response.data || response.status !== 200) {
       throw new Error(response?.message || "Failed to initiate payment");
     }
     
-    // Extract payment data from response
+    // Extract payment data from response - handle multiple response structures
     let intentData = null;
     let acsTemplate = null;
+    let otpPostUrl = null;
     let paymentIdValue = null;
     let txnIdValue = null;
     let orderId = null;
     let orderNumber = null;
     let orderTotal = null;
     
-    // Check if response has payu_response structure
+    // Check for VPA payment response structure (with metaData and result)
+    if (response.data.metaData && response.data.result) {
+      // New VPA response structure
+      acsTemplate = response.data.result.acsTemplate;
+      otpPostUrl = response.data.result.otpPostUrl;
+      txnIdValue = response.data.metaData.txnId;
+      orderId = response.data.order_id;
+      orderNumber = response.data.order_number;
+      orderTotal = response.data.amount;
+      
+      return {
+        payment_id: paymentIdValue,
+        txnid: txnIdValue,
+        amount: parseFloat(orderTotal),
+        order_id: orderId,
+        order_number: orderNumber,
+        order_total: orderTotal,
+        acs_template: acsTemplate,
+        otpPostUrl: otpPostUrl,
+        full_response: response.data,
+        status: response.data.metaData?.txnStatus || 'pending',
+        isVPA: true
+      };
+    }
+    
+    // Check for payu_response structure
     if (response.data.payu_response && response.data.payu_response.result) {
       intentData = response.data.payu_response.result.intentURIData;
       acsTemplate = response.data.payu_response.result.acsTemplate;
@@ -89,15 +317,49 @@ export const initiateBackendPayment = async (orderData) => {
       orderId = response.data.order_id;
       orderNumber = response.data.order_number;
       orderTotal = response.data.amount;
-    } else if (response.data.intentURIData) {
-      // Alternative response structure
+    } 
+    // Alternative response structure with intentURIData
+    else if (response.data.intentURIData) {
       intentData = response.data.intentURIData;
       paymentIdValue = response.data.paymentId;
       txnIdValue = response.data.txnid;
       orderId = response.data.order_id;
       orderNumber = response.data.order_number;
       orderTotal = response.data.amount;
-    } else {
+    }
+    // Check for result with intentURIData
+    else if (response.data.result && response.data.result.intentURIData) {
+      intentData = response.data.result.intentURIData;
+      paymentIdValue = response.data.result.paymentId;
+      txnIdValue = response.data.txnid;
+      orderId = response.data.order_id;
+      orderNumber = response.data.order_number;
+      orderTotal = response.data.amount;
+    }
+    // Check for direct acsTemplate (VPA response without metaData wrapper)
+    else if (response.data.acsTemplate) {
+      acsTemplate = response.data.acsTemplate;
+      otpPostUrl = response.data.otpPostUrl;
+      txnIdValue = response.data.txnid;
+      orderId = response.data.order_id;
+      orderNumber = response.data.order_number;
+      orderTotal = response.data.amount;
+      
+      return {
+        payment_id: paymentIdValue,
+        txnid: txnIdValue,
+        amount: parseFloat(orderTotal),
+        order_id: orderId,
+        order_number: orderNumber,
+        order_total: orderTotal,
+        acs_template: acsTemplate,
+        otpPostUrl: otpPostUrl,
+        full_response: response.data,
+        status: response.data.status || 'pending',
+        isVPA: true
+      };
+    }
+    else {
       // Try to extract from response directly
       intentData = response.data.intentURIData;
       paymentIdValue = response.data.paymentId || response.data.payment_id;
@@ -107,7 +369,7 @@ export const initiateBackendPayment = async (orderData) => {
       orderTotal = response.data.amount;
     }
     
-    if (!intentData) {
+    if (!intentData && !acsTemplate) {
       console.error("Response structure:", JSON.stringify(response.data, null, 2));
       throw new Error("No payment data received from the server");
     }
@@ -121,8 +383,10 @@ export const initiateBackendPayment = async (orderData) => {
       order_total: orderTotal,
       intent_data: intentData,
       acs_template: acsTemplate,
+      otpPostUrl: otpPostUrl,
       full_response: response.data,
-      status: response.data.status || 'pending'
+      status: response.data.status || 'pending',
+      isVPA: !!acsTemplate
     };
   } catch (error) {
     console.error("Payment initiation error:", error);
@@ -137,15 +401,19 @@ export const initiateBackendPayment = async (orderData) => {
  * @param {number} orderId - Order ID (required for verification)
  * @returns {Promise<Object>} - Payment verification result with order details
  */
-export const verifyPaymentStatus = async (txnId, paymentMethodId = null, orderId = null) => {
+export const verifyPaymentStatus = async (txnId: string, paymentMethodId: number | null = null, orderId: number | null = null) => {
   try {
     if (!orderId) {
       console.warn("Order ID is required for payment verification");
       return null;
     }
     
+    console.log(`Verifying payment for txnId: ${txnId}, orderId: ${orderId}`);
+    
     // Using the imported verifyPayment function with params
     const response = await verifyPayment(txnId, paymentMethodId, orderId);
+    
+    console.log('Payment verification response:', response);
     
     // Check if API response is successful
     if (!response.data || response.status !== 200) {
@@ -153,8 +421,22 @@ export const verifyPaymentStatus = async (txnId, paymentMethodId = null, orderId
       return null;
     }
 
-    // Extract transaction details
-    const transactionDetails = response?.data?.data?.transaction_details;
+    // Extract transaction details - handle different response structures
+    let transactionDetails = null;
+    
+    // Check for data.transaction_details structure
+    if (response.data?.data?.transaction_details) {
+      transactionDetails = response.data.data.transaction_details;
+    } 
+    // Check for direct transaction_details
+    else if (response.data?.transaction_details) {
+      transactionDetails = response.data.transaction_details;
+    }
+    // Check for payu_response structure
+    else if (response.data?.payu_response?.transaction_details) {
+      transactionDetails = response.data.payu_response.transaction_details;
+    }
+    
     if (!transactionDetails || Object.keys(transactionDetails).length === 0) {
       console.error("No transaction details found");
       return null;
@@ -185,7 +467,7 @@ export const verifyPaymentStatus = async (txnId, paymentMethodId = null, orderId
       failed: isFailed,
       status: transaction.status,
       unmappedstatus: transaction.unmappedstatus,
-      message: transaction.error_Message || "NO ERROR",
+      message: transaction.error_Message || transaction.error_message || "NO ERROR",
       error_code: transaction.error_code,
       amount: parseFloat(transaction.amt) || parseFloat(transaction.transaction_amount) || 0,
       net_amount: parseFloat(transaction.net_amount_debit) || 0,
@@ -213,7 +495,7 @@ export const verifyPaymentStatus = async (txnId, paymentMethodId = null, orderId
  * @param {Object} paymentData - Payment data including transaction details
  * @returns {Promise<Object>} - Updated order response
  */
-export const updateOrderAfterPayment = async (orderId, paymentData) => {
+export const updateOrderAfterPayment = async (orderId: number, paymentData: any) => {
   try {
     const params = {
       order_id: orderId,
@@ -243,7 +525,7 @@ export const updateOrderAfterPayment = async (orderId, paymentData) => {
  * @param {number} orderId - Order ID
  * @returns {Promise<Object>} - Payment status
  */
-export const checkPaymentStatus = async (txnId, paymentMethodId = null, orderId = null) => {
+export const checkPaymentStatus = async (txnId: string, paymentMethodId: number | null = null, orderId: number | null = null) => {
   return await verifyPaymentStatus(txnId, paymentMethodId, orderId);
 };
 
@@ -253,7 +535,7 @@ export const checkPaymentStatus = async (txnId, paymentMethodId = null, orderId 
  * @param {string} preferredApp - Preferred app ID (optional)
  * @returns {Promise<Object>} - Payment processing result
  */
-export const processUPIPayment = async (paymentData, preferredApp = null) => {
+export const processUPIPayment = async (paymentData: any, preferredApp: string | null = null) => {
   try {
     // Get installed UPI apps for logging/analytics
     const installedApps = await getInstalledUPIApps();
@@ -278,7 +560,7 @@ export const processUPIPayment = async (paymentData, preferredApp = null) => {
       error: result.error,
       paymentData: paymentData
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Payment processing error:", error);
     return {
       success: false,
@@ -298,21 +580,28 @@ export const processUPIPayment = async (paymentData, preferredApp = null) => {
  * @param {Object} options - Polling options
  * @returns {Object} - Polling control object with stop function
  */
-export const startPaymentPolling = (txnId, paymentMethodId, orderId, onStatusUpdate, onComplete, options = {}) => {
+export const startPaymentPolling = (
+  txnId: string, 
+  paymentMethodId: number | null, 
+  orderId: number | null, 
+  onStatusUpdate: (status: any) => void, 
+  onComplete: (result: any) => void, 
+  options: any = {}
+) => {
   const {
     interval = 3000,
-    maxAttempts = 2,
-    timeout = 120000,
+    maxAttempts = 10,
+    timeout = 180000,
     onPending = null
   } = options;
   
   let attempts = 0;
-  let intervalId = null;
-  let timeoutId = null;
+  let intervalId: NodeJS.Timeout | null = null;
+  let timeoutId: NodeJS.Timeout | null = null;
   let isCompleted = false;
   let currentOrderId = orderId;
   
-  const updateOrderId = (newOrderId) => {
+  const updateOrderId = (newOrderId: number | null) => {
     if (newOrderId && !currentOrderId) {
       currentOrderId = newOrderId;
       console.log(`Order ID updated to ${currentOrderId} for transaction ${txnId}`);
@@ -332,6 +621,8 @@ export const startPaymentPolling = (txnId, paymentMethodId, orderId, onStatusUpd
       });
     }
     
+    console.log(`Polling payment status for txnId: ${txnId}, attempt: ${attempts}/${maxAttempts}`);
+    
     const status = await verifyPaymentStatus(txnId, paymentMethodId, currentOrderId);
     
     if (status) {
@@ -345,6 +636,9 @@ export const startPaymentPolling = (txnId, paymentMethodId, orderId, onStatusUpd
             status: 'success',
             data: status,
             order_id: currentOrderId,
+            transaction_id: status.transaction_id,
+            payment_id: status.payment_id,
+            order_number: status.order_number,
             message: 'Payment completed successfully'
           });
         }
@@ -453,7 +747,7 @@ export const startPaymentPolling = (txnId, paymentMethodId, orderId, onStatusUpd
  * @param {number} orderId - Order ID
  * @returns {Promise<Object>} - Detailed payment status
  */
-export const getDetailedPaymentStatus = async (txnId, paymentMethodId = null, orderId = null) => {
+export const getDetailedPaymentStatus = async (txnId: string, paymentMethodId: number | null = null, orderId: number | null = null) => {
   try {
     const status = await verifyPaymentStatus(txnId, paymentMethodId, orderId);
     
@@ -478,7 +772,7 @@ export const getDetailedPaymentStatus = async (txnId, paymentMethodId = null, or
       message: status.message,
       order_id: orderId
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error getting detailed payment status:", error);
     return {
       success: false,
@@ -492,7 +786,7 @@ export const getDetailedPaymentStatus = async (txnId, paymentMethodId = null, or
  * @param {Object} paymentStatus - Payment status object
  * @returns {boolean} - Whether payment can be retried
  */
-export const canRetryPayment = (paymentStatus) => {
+export const canRetryPayment = (paymentStatus: any) => {
   if (!paymentStatus) return true;
   return !paymentStatus.success && (paymentStatus.failed || paymentStatus.pending);
 };
@@ -502,7 +796,7 @@ export const canRetryPayment = (paymentStatus) => {
  * @param {Object} paymentStatus - Payment status object
  * @returns {Object} - Formatted status for UI
  */
-export const formatPaymentStatusForDisplay = (paymentStatus) => {
+export const formatPaymentStatusForDisplay = (paymentStatus: any) => {
   if (!paymentStatus) {
     return {
       title: "Unknown",
@@ -556,20 +850,6 @@ export const formatPaymentStatusForDisplay = (paymentStatus) => {
   };
 };
 
-// Helper function for base64 decode
-const decodeBase64 = (data) => {
-  try {
-    if (!data) return null;
-    if (typeof atob === 'function') {
-      return atob(data);
-    }
-    return Buffer.from(data, 'base64').toString('utf-8');
-  } catch (e) {
-    console.error("Base64 decode error:", e);
-    return null;
-  }
-};
-
 export default {
   getCustomerDetails,
   getSessionIdForPayment,
@@ -578,6 +858,7 @@ export default {
   updateOrderAfterPayment,
   checkPaymentStatus,
   processUPIPayment,
+  processVPAPayment,
   startPaymentPolling,
   getDetailedPaymentStatus,
   canRetryPayment,

@@ -16,7 +16,7 @@ import {
   Platform,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { BlurView } from '@react-native-community/blur';
+import { validateVpa } from '../../../../api/payment';
 
 const { width, height } = Dimensions.get('window');
 
@@ -49,6 +49,7 @@ export type UPIPaymentApp = {
   installed: boolean;
   icon: string | null;
   customUPIID?: string;
+  vpa?: string; // Added VPA field
 };
 
 export type WalletPaymentMethod = {
@@ -113,6 +114,12 @@ export type PaymentMethodsResponse = {
 
 export type SelectedPaymentType = 'upi' | 'wallet' | 'cod' | 'netbanking' | 'cards' | null;
 
+export interface SelectedUPIDetails {
+  upiApp: UPIPaymentApp | null;
+  vpa: string;
+  paymentMethodType: string;
+}
+
 interface PaymentMethodModalProps {
   visible: boolean;
   onClose: () => void;
@@ -126,13 +133,17 @@ interface PaymentMethodModalProps {
   checkingApps: boolean;
   onSelectPaymentMethod: (
     type: SelectedPaymentType,
-    data?: any
+    data?: any,
+    vpa?: string,
+    paymentMethodType?: string
   ) => void;
-  onAddCustomUpiId: (upiId: string) => void;
+  onAddCustomUpiId: (upiId: string, vpa?: string) => void;
   onDeleteCustomUpiId: (id: string) => void;
   customUpiId: string;
   setCustomUpiId: (value: string) => void;
   walletBalance?: number;
+  isSavingUpi?: boolean;
+  userId?: number;
 }
 
 // Helper functions
@@ -181,8 +192,15 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
   customUpiId,
   setCustomUpiId,
   walletBalance,
+  isSavingUpi = false,
+  userId,
 }) => {
   const slideAnim = React.useRef(new Animated.Value(height)).current;
+  const [isAddUpiExpanded, setIsAddUpiExpanded] = useState(false);
+  const [validatingUpi, setValidatingUpi] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [validationSuccess, setValidationSuccess] = useState<string | null>(null);
+  const [validatedVpa, setValidatedVpa] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -199,6 +217,11 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
         easing: Easing.in(Easing.cubic),
         useNativeDriver: true,
       }).start();
+      setIsAddUpiExpanded(false);
+      setCustomUpiId('');
+      setValidationError(null);
+      setValidationSuccess(null);
+      setValidatedVpa(null);
     }
   }, [visible]);
 
@@ -210,7 +233,114 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
       useNativeDriver: true,
     }).start(() => {
       onClose();
+      setIsAddUpiExpanded(false);
+      setCustomUpiId('');
+      setValidationError(null);
+      setValidationSuccess(null);
+      setValidatedVpa(null);
     });
+  };
+
+  const handleValidateAndAddUpi = async () => {
+    const trimmedUpiId = customUpiId.trim();
+    
+    if (!trimmedUpiId) {
+      setValidationError('Please enter a UPI ID');
+      return;
+    }
+    
+    if (!trimmedUpiId.includes('@')) {
+      setValidationError('Please enter a valid UPI ID (e.g., username@bankname)');
+      return;
+    }
+
+    if (!userId) {
+      setValidationError('User ID is missing. Please try again.');
+      return;
+    }
+
+    setValidationError(null);
+    setValidationSuccess(null);
+    setValidatingUpi(true);
+
+    try {
+      const response = await validateVpa(trimmedUpiId, userId);
+
+      if (response.data) {
+        if (response.data.isVPAValid === 1) {
+          setValidationSuccess('UPI ID is valid! Adding...');
+          setValidatedVpa(trimmedUpiId);
+          
+          await onAddCustomUpiId(trimmedUpiId, trimmedUpiId);
+          
+          setCustomUpiId('');
+          setIsAddUpiExpanded(false);
+          setValidationSuccess(null);
+          setValidatedVpa(null);
+        } else {
+          const errorMsg = response.data.message || 
+                          response.data.error || 
+                          'Invalid UPI ID. Please check and try again.';
+          setValidationError(errorMsg);
+        }
+      } else {
+        setValidationError('Unable to validate UPI ID. Please try again.');
+      }
+    } catch (error: any) {
+      console.error('Error validating UPI:', error);
+      
+      if (error.response) {
+        const status = error.response.status;
+        const errorData = error.response.data;
+        
+        if (status === 400) {
+          setValidationError(errorData?.message || 'Invalid UPI ID format');
+        } else if (status === 404) {
+          setValidationError('UPI ID not found. Please check and try again.');
+        } else if (status === 500) {
+          setValidationError('Server error. Please try again later.');
+        } else {
+          setValidationError(errorData?.message || 'Validation failed. Please try again.');
+        }
+      } else if (error.request) {
+        setValidationError('Network error. Please check your connection.');
+      } else {
+        setValidationError('An error occurred. Please try again.');
+      }
+    } finally {
+      setValidatingUpi(false);
+    }
+  };
+
+  const handleUpiInputChange = (text: string) => {
+    setCustomUpiId(text);
+    if (validationError || validationSuccess) {
+      setValidationError(null);
+      setValidationSuccess(null);
+      setValidatedVpa(null);
+    }
+  };
+
+  const handleSelectUPIApp = (app: UPIPaymentApp) => {
+    // Determine VPA based on app type
+    let vpa = '';
+    let paymentMethodType = 'APP';
+    
+    if (app.customUPIID) {
+      // Custom UPI ID (manually added)
+      vpa = app.customUPIID;
+      paymentMethodType = 'VPA';
+    } else if (app.vpa) {
+      // App has predefined VPA
+      vpa = app.vpa;
+      paymentMethodType = 'VPA';
+    } else {
+      // For apps without specific VPA, we use app ID as identifier
+      vpa = app.id;
+      paymentMethodType = 'APP';
+    }
+    
+    onSelectPaymentMethod('upi', app, vpa, paymentMethodType);
   };
 
   const renderUPISection = () => {
@@ -236,14 +366,15 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
 
     const customUpiApps = savedUpiIds.map(upi => ({
       id: upi.id,
-      name: upi.name,
+      name: upi.name || upi.upiId,
       packageName: '',
       scheme: '',
       iosScheme: '',
       priority: 999,
       installed: false,
       icon: null,
-      customUPIID: upi.upiId
+      customUPIID: upi.upiId,
+      vpa: upi.upiId // Set VPA for custom UPI IDs
     }));
 
     const displayApps = [...(paymentMethods?.upi?.apps || []), ...customUpiApps];
@@ -266,7 +397,7 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
                 styles.upiAppCard,
                 selectedUpiApp?.id === app.id && styles.upiAppCardSelected
               ]}
-              onPress={() => onSelectPaymentMethod('upi', app)}
+              onPress={() => handleSelectUPIApp(app)}
               activeOpacity={0.8}
             >
               <View style={styles.upiAppIconContainer}>
@@ -283,6 +414,12 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
               
               <View style={styles.upiAppInfo}>
                 <Text style={styles.upiAppName}>{app.name}</Text>
+                {app.customUPIID && (
+                  <Text style={styles.upiAppCategory}>{app.customUPIID}</Text>
+                )}
+                {app.vpa && !app.customUPIID && (
+                  <Text style={styles.upiAppVpaText}>VPA: {app.vpa}</Text>
+                )}
               </View>
               
               {selectedUpiApp?.id === app.id && (
@@ -290,32 +427,120 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
                   <Icon name="checkmark-circle" size={moderateScale(24)} color="#E65C00" />
                 </View>
               )}
+              
+              {app.customUPIID && (
+                <TouchableOpacity 
+                  style={styles.deleteUpiButton}
+                  onPress={() => onDeleteCustomUpiId(app.id)}
+                >
+                  <Icon name="close-circle" size={moderateScale(20)} color="#FF4444" />
+                </TouchableOpacity>
+              )}
             </TouchableOpacity>
           ))}
         </View>
         
-        <View style={styles.manualUpiContainer}>
-          <TextInput
-            style={styles.manualUpiInput}
-            placeholder="Enter UPI ID (e.g., name@okhdfcbank)"
-            placeholderTextColor="#999"
-            value={customUpiId}
-            onChangeText={setCustomUpiId}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          {customUpiId.length > 0 && (
-            <TouchableOpacity 
-              style={styles.manualUpiPayButton}
-              onPress={() => {
-                onAddCustomUpiId(customUpiId);
-                setCustomUpiId('');
-              }}
-            >
-              <Text style={styles.manualUpiPayText}>Save</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        {!isAddUpiExpanded ? (
+          <TouchableOpacity 
+            style={styles.addUpiButton}
+            onPress={() => setIsAddUpiExpanded(true)}
+            activeOpacity={0.7}
+          >
+            <Icon name="add-circle-outline" size={moderateScale(22)} color="#E65C00" />
+            <Text style={styles.addUpiButtonText}>Add New UPI ID</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.expandedUpiContainer}>
+            <View style={styles.manualUpiContainer}>
+              <TextInput
+                style={styles.manualUpiInput}
+                placeholder="Enter UPI ID (e.g., name@okhdfcbank)"
+                placeholderTextColor="#999"
+                value={customUpiId}
+                onChangeText={handleUpiInputChange}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus={true}
+                editable={!validatingUpi && !isSavingUpi}
+              />
+              {customUpiId.length > 0 && !validatingUpi && !isSavingUpi && (
+                <TouchableOpacity 
+                  style={styles.clearUpiInputButton}
+                  onPress={() => {
+                    setCustomUpiId('');
+                    setValidationError(null);
+                    setValidationSuccess(null);
+                    setValidatedVpa(null);
+                  }}
+                >
+                  <Icon name="close-circle" size={moderateScale(18)} color="#999" />
+                </TouchableOpacity>
+              )}
+              {(validatingUpi || isSavingUpi) && (
+                <ActivityIndicator size="small" color="#E65C00" style={styles.loadingIndicator} />
+              )}
+            </View>
+
+            {validationSuccess && (
+              <View style={styles.validationSuccessContainer}>
+                <Icon name="checkmark-circle" size={moderateScale(16)} color="#4CAF50" />
+                <Text style={styles.validationSuccessText}>{validationSuccess}</Text>
+              </View>
+            )}
+
+            {validationError && (
+              <View style={styles.validationErrorContainer}>
+                <Icon name="alert-circle" size={moderateScale(16)} color="#FF4444" />
+                <Text style={styles.validationErrorText}>{validationError}</Text>
+              </View>
+            )}
+            
+            <View style={styles.expandedUpiActions}>
+              <TouchableOpacity 
+                style={styles.cancelUpiButton}
+                onPress={() => {
+                  setIsAddUpiExpanded(false);
+                  setCustomUpiId('');
+                  setValidationError(null);
+                  setValidationSuccess(null);
+                  setValidatedVpa(null);
+                }}
+                disabled={validatingUpi || isSavingUpi}
+              >
+                <Text style={styles.cancelUpiButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[
+                  styles.saveUpiButton,
+                  (!customUpiId.trim() || !customUpiId.includes('@') || validatingUpi || isSavingUpi) && styles.saveUpiButtonDisabled
+                ]}
+                onPress={handleValidateAndAddUpi}
+                disabled={!customUpiId.trim() || !customUpiId.includes('@') || validatingUpi || isSavingUpi}
+              >
+                {validatingUpi ? (
+                  <>
+                    <ActivityIndicator size="small" color="#FFF" />
+                    <Text style={styles.saveUpiButtonText}> Validating...</Text>
+                  </>
+                ) : isSavingUpi ? (
+                  <>
+                    <ActivityIndicator size="small" color="#FFF" />
+                    <Text style={styles.saveUpiButtonText}> Adding...</Text>
+                  </>
+                ) : (
+                  <Text style={styles.saveUpiButtonText}>Add UPI ID</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+            
+            {customUpiId.length > 0 && !customUpiId.includes('@') && !validationError && (
+              <Text style={styles.hintText}>
+                Tip: UPI ID should contain '@' (e.g., username@bankname)
+              </Text>
+            )}
+          </View>
+        )}
       </View>
     );
   };
@@ -729,8 +954,38 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: verticalScale(2),
   },
+  upiAppVpaText: {
+    fontSize: FONT.XS,
+    color: '#E65C00',
+    marginTop: verticalScale(2),
+  },
   selectedIndicator: {
     marginLeft: scale(8),
+  },
+  deleteUpiButton: {
+    marginLeft: scale(8),
+    padding: scale(4),
+  },
+  addUpiButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: verticalScale(12),
+    marginTop: verticalScale(12),
+    backgroundColor: '#fff8f0',
+    borderRadius: moderateScale(12),
+    borderWidth: 1.5,
+    borderColor: '#E65C00',
+    borderStyle: 'dashed',
+  },
+  addUpiButtonText: {
+    fontSize: FONT.BASE,
+    fontWeight: '600',
+    color: '#E65C00',
+    marginLeft: scale(8),
+  },
+  expandedUpiContainer: {
+    marginTop: verticalScale(12),
   },
   manualUpiContainer: {
     flexDirection: 'row',
@@ -738,11 +993,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f8f8',
     borderRadius: moderateScale(12),
     paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(4),
-    marginTop: verticalScale(12),
-    marginBottom: verticalScale(8),
     borderWidth: 1,
-    borderColor: '#f0f0f0',
+    borderColor: '#E65C00',
   },
   manualUpiInput: {
     flex: 1,
@@ -750,17 +1002,77 @@ const styles = StyleSheet.create({
     color: '#333',
     paddingVertical: verticalScale(10),
   },
-  manualUpiPayButton: {
-    backgroundColor: '#E65C00',
-    paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(6),
-    borderRadius: moderateScale(8),
+  clearUpiInputButton: {
+    padding: scale(4),
+  },
+  loadingIndicator: {
     marginLeft: scale(8),
   },
-  manualUpiPayText: {
-    color: '#fff',
+  validationSuccessContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: verticalScale(8),
+    paddingHorizontal: scale(4),
+  },
+  validationSuccessText: {
+    fontSize: FONT.XS,
+    color: '#4CAF50',
+    marginLeft: scale(6),
+    flex: 1,
+  },
+  validationErrorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: verticalScale(8),
+    paddingHorizontal: scale(4),
+  },
+  validationErrorText: {
+    fontSize: FONT.XS,
+    color: '#FF4444',
+    marginLeft: scale(6),
+    flex: 1,
+  },
+  expandedUpiActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: verticalScale(12),
+    gap: scale(12),
+  },
+  cancelUpiButton: {
+    flex: 1,
+    paddingVertical: verticalScale(10),
+    borderRadius: moderateScale(8),
+    borderWidth: 1,
+    borderColor: '#ddd',
+    alignItems: 'center',
+  },
+  cancelUpiButtonText: {
     fontSize: FONT.SM,
     fontWeight: '600',
+    color: '#666',
+  },
+  saveUpiButton: {
+    flex: 1,
+    backgroundColor: '#E65C00',
+    paddingVertical: verticalScale(10),
+    borderRadius: moderateScale(8),
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  saveUpiButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  saveUpiButtonText: {
+    fontSize: FONT.SM,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  hintText: {
+    fontSize: FONT.XS,
+    color: '#999',
+    marginTop: verticalScale(6),
+    marginLeft: scale(4),
   },
   walletAppsList: {
     gap: verticalScale(10),

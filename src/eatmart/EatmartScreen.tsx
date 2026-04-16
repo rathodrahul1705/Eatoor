@@ -8,7 +8,6 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
-  Linking,
   StatusBar,
   Dimensions,
   AppState,
@@ -22,14 +21,11 @@ import {
   Modal,
   ScrollView,
   Pressable,
-  KeyboardAvoidingView
 } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import Icon2 from 'react-native-vector-icons/MaterialCommunityIcons';
-import * as Animatable from 'react-native-animatable';
 import Geolocation from '@react-native-community/geolocation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { HomeStackParamList, HomeTabParamList } from '../types/navigation';
@@ -37,7 +33,6 @@ import { getUserAddress } from '../api/address';
 import { getEatmartHomeData } from '../api/eatmart';
 import { AuthContext } from '../context/AuthContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import LinearGradient from 'react-native-linear-gradient';
 
 Icon.loadFont();
 
@@ -70,58 +65,58 @@ const eatmart_fontScale = (size: number) => {
   return Math.round(scaledSize);
 };
 
-// Modern Minimalist Color Palette
+// Modern Color Palette - Swiggy Instamart Inspired
 const EATMART_COLORS = {
-  primary: '#FF6B35',
-  primaryLight: '#FF8A5C',
-  primaryDark: '#E55A2B',
-  secondary: '#2D3436',
-  secondaryLight: '#636E72',
-  secondaryDark: '#1E272E',
-  success: '#00B894',
-  successLight: '#55EFC4',
-  warning: '#FDCB6E',
-  danger: '#FF7675',
+  primary: '#FF5200',
+  primaryLight: '#FF6B2C',
+  primaryDark: '#E64A00',
+  secondary: '#2C2C2C',
+  secondaryLight: '#4A4A4A',
+  secondaryDark: '#1A1A1A',
+  success: '#60B246',
+  successLight: '#7ED95A',
+  warning: '#FFB800',
+  danger: '#FF4757',
   background: '#FFFFFF',
   card: '#FFFFFF',
   cardAlt: '#F8F9FA',
   text: {
-    primary: '#2D3436',
-    secondary: '#636E72',
-    tertiary: '#B2BEC3',
+    primary: '#1A1A1A',
+    secondary: '#666666',
+    tertiary: '#999999',
     light: '#FFFFFF',
     inverse: '#FFFFFF',
   },
   border: {
-    light: '#F1F2F6',
-    default: '#DFE6E9',
-    dark: '#CED6E0',
+    light: '#EEEEEE',
+    default: '#E0E0E0',
+    dark: '#CCCCCC',
   },
-  grayBg: '#F8F9FA',
-  grayLight: '#FDFDFD',
-  grayDark: '#E9ECEF',
+  grayBg: '#F5F5F5',
+  grayLight: '#FAFAFA',
+  grayDark: '#E8E8E8',
   overlay: 'rgba(0,0,0,0.5)',
   white: '#FFFFFF',
   black: '#000000',
-  rating: '#00B894',
-  veg: '#00B894',
-  nonVeg: '#FF7675',
+  rating: '#60B246',
+  veg: '#60B246',
+  nonVeg: '#FF4757',
 };
 
 const EATMART_TYPOGRAPHY = {
-  h1: { fontSize: eatmart_fontScale(34), lineHeight: eatmart_fontScale(42), fontWeight: '700' as const, letterSpacing: -0.5 },
-  h2: { fontSize: eatmart_fontScale(28), lineHeight: eatmart_fontScale(36), fontWeight: '700' as const, letterSpacing: -0.3 },
-  h3: { fontSize: eatmart_fontScale(24), lineHeight: eatmart_fontScale(32), fontWeight: '600' as const },
-  h4: { fontSize: eatmart_fontScale(20), lineHeight: eatmart_fontScale(28), fontWeight: '600' as const },
-  body1: { fontSize: eatmart_fontScale(16), lineHeight: eatmart_fontScale(24), fontWeight: '400' as const },
-  body2: { fontSize: eatmart_fontScale(14), lineHeight: eatmart_fontScale(20), fontWeight: '400' as const },
-  caption: { fontSize: eatmart_fontScale(12), lineHeight: eatmart_fontScale(16), fontWeight: '400' as const },
-  button: { fontSize: eatmart_fontScale(15), lineHeight: eatmart_fontScale(20), fontWeight: '600' as const, letterSpacing: 0.3 },
+  h1: { fontSize: eatmart_fontScale(32), lineHeight: eatmart_fontScale(40), fontWeight: '700' as const, letterSpacing: -0.5 },
+  h2: { fontSize: eatmart_fontScale(26), lineHeight: eatmart_fontScale(34), fontWeight: '700' as const, letterSpacing: -0.3 },
+  h3: { fontSize: eatmart_fontScale(22), lineHeight: eatmart_fontScale(30), fontWeight: '600' as const },
+  h4: { fontSize: eatmart_fontScale(18), lineHeight: eatmart_fontScale(26), fontWeight: '600' as const },
+  body1: { fontSize: eatmart_fontScale(15), lineHeight: eatmart_fontScale(23), fontWeight: '400' as const },
+  body2: { fontSize: eatmart_fontScale(13), lineHeight: eatmart_fontScale(19), fontWeight: '400' as const },
+  caption: { fontSize: eatmart_fontScale(11), lineHeight: eatmart_fontScale(15), fontWeight: '400' as const },
+  button: { fontSize: eatmart_fontScale(14), lineHeight: eatmart_fontScale(20), fontWeight: '600' as const, letterSpacing: 0.3 },
 };
 
-const EATMART_HEADER_HEIGHT = Platform.OS === 'ios' ? eatmart_verticalScale(160) : eatmart_verticalScale(150);
-const EATMART_MIN_HEADER_HEIGHT = Platform.OS === 'ios' ? eatmart_verticalScale(70) : eatmart_verticalScale(65);
-const BANNER_HEIGHT = eatmart_verticalScale(200);
+const EATMART_HEADER_HEIGHT = Platform.OS === 'ios' ? eatmart_verticalScale(180) : eatmart_verticalScale(170);
+const EATMART_MIN_HEADER_HEIGHT = Platform.OS === 'ios' ? eatmart_verticalScale(80) : eatmart_verticalScale(75);
+const BANNER_HEIGHT = eatmart_verticalScale(180);
 
 const EATMART_STORAGE_KEYS = {
   ADDRESS_ID: 'AddressId',
@@ -455,18 +450,27 @@ const CartBottomBar: React.FC = () => {
   const { isGuest } = useContext(AuthContext);
   
   const slideAnim = useRef(new Animated.Value(100)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
   
   const totalItems = cart.getTotalItems();
   const totalPrice = cart.getTotalPrice();
   
   useEffect(() => {
     if (totalItems > 0) {
-      Animated.spring(slideAnim, {
-        toValue: 0,
-        friction: 8,
-        tension: 65,
-        useNativeDriver: true,
-      }).start();
+      Animated.parallel([
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          friction: 8,
+          tension: 65,
+          useNativeDriver: true,
+        }).start(),
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          friction: 6,
+          tension: 50,
+          useNativeDriver: true,
+        }).start(),
+      ]);
     } else {
       Animated.timing(slideAnim, {
         toValue: 100,
@@ -491,8 +495,8 @@ const CartBottomBar: React.FC = () => {
       style={[
         eatmart_styles.eatm_screen_cartBottomBar,
         {
-          transform: [{ translateY: slideAnim }],
-          bottom: insets.bottom + eatmart_verticalScale(20),
+          transform: [{ translateY: slideAnim }, { scale: scaleAnim }],
+          bottom: insets.bottom + eatmart_verticalScale(25),
           marginHorizontal: eatmart_scale(16)
         }
       ]}
@@ -502,28 +506,25 @@ const CartBottomBar: React.FC = () => {
         onPress={handleCartPress}
         style={eatmart_styles.eatm_screen_cartBarTouchable}
       >
-        <LinearGradient
-          colors={[EATMART_COLORS.primary, EATMART_COLORS.primaryDark]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={eatmart_styles.eatm_screen_cartBarGradient}
-        >
+        <View style={[eatmart_styles.eatm_screen_cartBarGradient, { backgroundColor: EATMART_COLORS.grayBg }]}>
           <View style={eatmart_styles.eatm_screen_cartBarContent}>
             <View style={eatmart_styles.eatm_screen_cartBarLeft}>
               <View style={eatmart_styles.eatm_screen_cartIconContainer}>
-                <Icon name="cart-outline" size={eatmart_scale(22)} color={EATMART_COLORS.white} />
+                <Icon name="cart-outline" size={eatmart_scale(20)} color={EATMART_COLORS.secondary} />
+                <View style={eatmart_styles.eatm_screen_cartBadge}>
+                  <Text style={eatmart_styles.eatm_screen_cartBadgeText}>{totalItems}</Text>
+                </View>
               </View>
               <View style={eatmart_styles.eatm_screen_cartBarInfo}>
-                <Text style={eatmart_styles.eatm_screen_cartBarItems}>{totalItems} Items</Text>
                 <Text style={eatmart_styles.eatm_screen_cartBarTotal}>₹{totalPrice.toFixed(0)}</Text>
               </View>
             </View>
             <View style={eatmart_styles.eatm_screen_cartBarRight}>
-              <Text style={eatmart_styles.eatm_screen_cartBarViewText}>VIEW CART</Text>
-              <Icon name="arrow-forward" size={eatmart_scale(16)} color={EATMART_COLORS.white} />
+              <Text style={eatmart_styles.eatm_screen_cartBarViewText}>Proceed</Text>
+              <Icon name="arrow-forward" size={eatmart_scale(16)} color={EATMART_COLORS.secondary} />
             </View>
           </View>
-        </LinearGradient>
+        </View>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -538,28 +539,30 @@ interface SearchBarProps {
 
 const SearchBar: React.FC<SearchBarProps> = ({
   onPress,
-  placeholder = "Search 'atta', 'sugar' & more"
+  placeholder = "Search for groceries & essentials"
 }) => {
   return (
-    <TouchableOpacity
-      activeOpacity={0.7}
+    <Pressable
       onPress={onPress}
-      style={eatmart_styles.eatm_screen_searchContainer}
+      style={({ pressed }) => [
+        eatmart_styles.eatm_screen_searchContainer,
+        pressed && { opacity: 0.9 }
+      ]}
     >
       <View style={eatmart_styles.eatm_screen_searchContent}>
-        <Icon name="search-outline" size={eatmart_scale(20)} color={EATMART_COLORS.text.secondary} />
+        <Icon name="search-outline" size={eatmart_scale(18)} color={EATMART_COLORS.text.secondary} />
         <Text style={eatmart_styles.eatm_screen_searchPlaceholder} numberOfLines={1}>
           {placeholder}
         </Text>
         <View style={eatmart_styles.eatm_screen_searchMicButton}>
-          <Icon name="mic-outline" size={eatmart_scale(20)} color={EATMART_COLORS.text.secondary} />
+          <Icon name="mic-outline" size={eatmart_scale(18)} color={EATMART_COLORS.text.secondary} />
         </View>
       </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 };
 
-// ============== MODERN CATEGORY ICON ==============
+// ============== MODERN CATEGORY ICON - SWIGGY STYLE ==============
 
 interface CategoryIconProps {
   category: GroceryCategory;
@@ -571,7 +574,7 @@ const CategoryIcon: React.FC<CategoryIconProps> = ({ category, onPress }) => {
   
   const handlePressIn = () => {
     Animated.spring(scaleValue, {
-      toValue: 0.94,
+      toValue: 0.92,
       friction: 6,
       tension: 300,
       useNativeDriver: true,
@@ -628,12 +631,9 @@ const OfferBanner: React.FC<OfferBannerProps> = ({ item, index }) => {
         style={eatmart_styles.eatm_screen_offerBannerImage}
         resizeMode="cover"
       />
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.6)']}
-        style={eatmart_styles.eatm_screen_offerOverlay}
-      >
+      <View style={eatmart_styles.eatm_screen_offerOverlay}>
         <Text style={eatmart_styles.eatm_screen_offerText}>{item.name}</Text>
-      </LinearGradient>
+      </View>
     </TouchableOpacity>
   );
 };
@@ -712,7 +712,13 @@ const BannerCarousel: React.FC<BannerProps> = ({ banners }) => {
     
     const scale = scrollX.interpolate({
       inputRange,
-      outputRange: [0.98, 1, 0.98],
+      outputRange: [0.96, 1, 0.96],
+      extrapolate: 'clamp',
+    });
+    
+    const opacity = scrollX.interpolate({
+      inputRange,
+      outputRange: [0.8, 1, 0.8],
       extrapolate: 'clamp',
     });
     
@@ -722,6 +728,7 @@ const BannerCarousel: React.FC<BannerProps> = ({ banners }) => {
         {
           width: BANNER_WIDTH,
           transform: [{ scale }],
+          opacity,
         }
       ]}>
         <TouchableOpacity
@@ -734,22 +741,45 @@ const BannerCarousel: React.FC<BannerProps> = ({ banners }) => {
             style={eatmart_styles.eatm_screen_bannerImage}
             resizeMode="cover"
           />
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.7)']}
-            style={eatmart_styles.eatm_screen_bannerGradient}
-          >
-            <View style={eatmart_styles.eatm_screen_bannerTextContainer}>
-              <Text style={eatmart_styles.eatm_screen_bannerTitle} numberOfLines={1}>
-                {item.name}
-              </Text>
-              <View style={eatmart_styles.eatm_screen_bannerButton}>
-                <Text style={eatmart_styles.eatm_screen_bannerButtonText}>Shop Now</Text>
-                <Icon name="arrow-forward" size={eatmart_scale(14)} color={EATMART_COLORS.white} />
-              </View>
-            </View>
-          </LinearGradient>
         </TouchableOpacity>
       </Animated.View>
+    );
+  };
+
+  const renderDot = (index: number) => {
+    const opacity = scrollX.interpolate({
+      inputRange: [
+        (index - 1) * BANNER_WIDTH,
+        index * BANNER_WIDTH,
+        (index + 1) * BANNER_WIDTH,
+      ],
+      outputRange: [0.4, 1, 0.4],
+      extrapolate: 'clamp',
+    });
+    
+    const scale = scrollX.interpolate({
+      inputRange: [
+        (index - 1) * BANNER_WIDTH,
+        index * BANNER_WIDTH,
+        (index + 1) * BANNER_WIDTH,
+      ],
+      outputRange: [0.8, 1.2, 0.8],
+      extrapolate: 'clamp',
+    });
+    
+    return (
+      <Animated.View
+        key={index}
+        style={[
+          eatmart_styles.eatm_screen_bannerDot,
+          {
+            opacity,
+            transform: [{ scale }],
+            width: activeIndex === index ? eatmart_scale(24) : eatmart_scale(6),
+            backgroundColor: activeIndex === index ? EATMART_COLORS.primary : EATMART_COLORS.border.default,
+          }
+        ]}
+      />
     );
   };
 
@@ -799,7 +829,7 @@ const ProductCard = ({
     
     Animated.sequence([
       Animated.timing(scaleValue, {
-        toValue: 1.08,
+        toValue: 1.1,
         duration: 80,
         useNativeDriver: true,
       }),
@@ -811,19 +841,21 @@ const ProductCard = ({
     ]).start();
   };
 
-  const finalPrice = item.discount_price || item.price;
-  const originalPrice = item.price;
+  const finalPrice = parseFloat(item.discount_price || item.price);
+  const originalPrice = parseFloat(item.price);
   const discountPercentage = item.discount_price ?
-    Math.round((1 - parseFloat(item.discount_price) / parseFloat(item.price)) * 100) : 0;
+    Math.round((1 - finalPrice / originalPrice) * 100) : 0;
 
   const displayUnit = item.pack_size || item.unit;
   const weightText = item.weight_value ? `${item.weight_value}${item.weight_unit || 'g'}` : displayUnit;
 
   return (
-    <TouchableOpacity
-      style={eatmart_styles.eatm_screen_productCard}
+    <Pressable
+      style={({ pressed }) => [
+        eatmart_styles.eatm_screen_productCard,
+        pressed && { opacity: 0.95 }
+      ]}
       onPress={() => onPress(item)}
-      activeOpacity={0.95}
     >
       <View style={eatmart_styles.eatm_screen_productImageContainer}>
         <Image
@@ -833,13 +865,13 @@ const ProductCard = ({
         />
         
         {discountPercentage > 0 && (
-          <View style={eatmart_styles.eatm_screen_productDiscountBadge}>
+          <View style={[eatmart_styles.eatm_screen_productDiscountBadge, { backgroundColor: EATMART_COLORS.primary }]}>
             <Text style={eatmart_styles.eatm_screen_productDiscountText}>{discountPercentage}% OFF</Text>
           </View>
         )}
         
         {item.express_delivery && (
-          <View style={eatmart_styles.eatm_screen_productExpressBadge}>
+          <View style={[eatmart_styles.eatm_screen_productExpressBadge, { backgroundColor: EATMART_COLORS.success }]}>
             <Icon name="flash" size={eatmart_scale(10)} color={EATMART_COLORS.white} />
             <Text style={eatmart_styles.eatm_screen_productExpressText}>Express</Text>
           </View>
@@ -863,16 +895,16 @@ const ProductCard = ({
         
         {item.rating && (
           <View style={eatmart_styles.eatm_screen_productRating}>
-            <Text style={eatmart_styles.eatm_screen_productRatingText}>{item.rating}</Text>
             <Icon name="star" size={eatmart_scale(10)} color={EATMART_COLORS.white} />
+            <Text style={eatmart_styles.eatm_screen_productRatingText}>{item.rating}</Text>
           </View>
         )}
         
         <View style={eatmart_styles.eatm_screen_productFooter}>
           <View>
-            <Text style={eatmart_styles.eatm_screen_productPrice}>₹{finalPrice}</Text>
+            <Text style={eatmart_styles.eatm_screen_productPrice}>₹{finalPrice.toFixed(0)}</Text>
             {item.discount_price && (
-              <Text style={eatmart_styles.eatm_screen_productOriginalPrice}>₹{originalPrice}</Text>
+              <Text style={eatmart_styles.eatm_screen_productOriginalPrice}>₹{originalPrice.toFixed(0)}</Text>
             )}
           </View>
           
@@ -915,7 +947,7 @@ const ProductCard = ({
           )}
         </View>
       </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 };
 
@@ -940,11 +972,6 @@ const SectionHeader: React.FC<SectionHeaderProps> = ({
         <Text style={eatmart_styles.eatm_screen_sectionTitle}>{title}</Text>
         {subtitle && <Text style={eatmart_styles.eatm_screen_sectionSubtitle}>{subtitle}</Text>}
       </View>
-      {showViewAll && onViewAll && (
-        <TouchableOpacity onPress={onViewAll} activeOpacity={0.7}>
-          <Text style={eatmart_styles.eatm_screen_sectionViewAll}>See All</Text>
-        </TouchableOpacity>
-      )}
     </View>
   );
 };
@@ -1100,12 +1127,12 @@ const SearchModal = React.memo(({
       <SafeAreaView style={[eatmart_styles.eatm_screen_searchModal, { paddingTop: insets.top }]}>
         <View style={eatmart_styles.eatm_screen_searchModalHeader}>
           <TouchableOpacity onPress={onClose} style={eatmart_styles.eatm_screen_searchModalBack}>
-            <Icon name="arrow-back" size={eatmart_scale(24)} color={EATMART_COLORS.text.primary} />
+            <Icon name="arrow-back" size={eatmart_scale(22)} color={EATMART_COLORS.text.primary} />
           </TouchableOpacity>
           
           <View style={eatmart_styles.eatm_screen_searchModalInputWrapper}>
             <View style={eatmart_styles.eatm_screen_searchModalInputContainer}>
-              <Icon name="search-outline" size={eatmart_scale(20)} color={EATMART_COLORS.text.secondary} />
+              <Icon name="search-outline" size={eatmart_scale(18)} color={EATMART_COLORS.text.secondary} />
               <TextInput
                 ref={inputRef}
                 style={eatmart_styles.eatm_screen_searchModalInput}
@@ -1119,7 +1146,7 @@ const SearchModal = React.memo(({
               />
               {searchText.length > 0 && (
                 <TouchableOpacity onPress={clearSearch} style={eatmart_styles.eatm_screen_searchModalClear}>
-                  <Icon name="close-circle" size={eatmart_scale(20)} color={EATMART_COLORS.text.tertiary} />
+                  <Icon name="close-circle" size={eatmart_scale(18)} color={EATMART_COLORS.text.tertiary} />
                 </TouchableOpacity>
               )}
             </View>
@@ -1135,9 +1162,9 @@ const SearchModal = React.memo(({
               {recentSearches.length > 0 && (
                 <View style={eatmart_styles.eatm_screen_searchSection}>
                   <View style={eatmart_styles.eatm_screen_searchSectionHeader}>
-                    <Text style={eatmart_styles.eatm_screen_searchSectionTitle}>RECENT SEARCHES</Text>
+                    <Text style={eatmart_styles.eatm_screen_searchSectionTitle}>Recent Searches</Text>
                     <TouchableOpacity onPress={() => setRecentSearches([])}>
-                      <Text style={eatmart_styles.eatm_screen_searchSectionClear}>Clear all</Text>
+                      <Text style={eatmart_styles.eatm_screen_searchSectionClear}>Clear All</Text>
                     </TouchableOpacity>
                   </View>
                   <View style={eatmart_styles.eatm_screen_recentList}>
@@ -1147,7 +1174,7 @@ const SearchModal = React.memo(({
                           style={eatmart_styles.eatm_screen_recentContent}
                           onPress={() => setSearchText(search)}
                         >
-                          <Icon name="time-outline" size={eatmart_scale(18)} color={EATMART_COLORS.text.secondary} />
+                          <Icon name="time-outline" size={eatmart_scale(16)} color={EATMART_COLORS.text.secondary} />
                           <Text style={eatmart_styles.eatm_screen_recentText} numberOfLines={1}>
                             {search}
                           </Text>
@@ -1156,7 +1183,7 @@ const SearchModal = React.memo(({
                           onPress={() => removeRecentSearch(search)}
                           style={eatmart_styles.eatm_screen_recentRemove}
                         >
-                          <Icon name="close" size={eatmart_scale(16)} color={EATMART_COLORS.text.tertiary} />
+                          <Icon name="close" size={eatmart_scale(14)} color={EATMART_COLORS.text.tertiary} />
                         </TouchableOpacity>
                       </View>
                     ))}
@@ -1165,7 +1192,7 @@ const SearchModal = React.memo(({
               )}
 
               <View style={eatmart_styles.eatm_screen_searchSection}>
-                <Text style={eatmart_styles.eatm_screen_searchSectionTitle}>POPULAR CATEGORIES</Text>
+                <Text style={eatmart_styles.eatm_screen_searchSectionTitle}>Popular Categories</Text>
                 <View style={eatmart_styles.eatm_screen_popularGrid}>
                   {categories.slice(0, 8).map((cat) => (
                     <TouchableOpacity 
@@ -1208,7 +1235,7 @@ const SearchModal = React.memo(({
                           {item.item_count} items
                         </Text>
                       </View>
-                      <Icon name="chevron-forward" size={eatmart_scale(18)} color={EATMART_COLORS.text.tertiary} />
+                      <Icon name="chevron-forward" size={eatmart_scale(16)} color={EATMART_COLORS.text.tertiary} />
                     </TouchableOpacity>
                   )}
                   showsVerticalScrollIndicator={false}
@@ -1216,7 +1243,7 @@ const SearchModal = React.memo(({
                 />
               ) : (
                 <View style={eatmart_styles.eatm_screen_searchNoResults}>
-                  <Icon name="search-outline" size={eatmart_scale(56)} color={EATMART_COLORS.text.tertiary} />
+                  <Icon name="search-outline" size={eatmart_scale(48)} color={EATMART_COLORS.text.tertiary} />
                   <Text style={eatmart_styles.eatm_screen_searchNoResultsTitle}>No results found</Text>
                   <Text style={eatmart_styles.eatm_screen_searchNoResultsText}>
                     Try searching with different keywords
@@ -1251,11 +1278,20 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate }: AddressHeaderPro
 
   const [appState, setAppState] = useState(AppState.currentState);
 
-  const truncateAddress = (address: string, maxWords: number = 2) => {
+  const truncateAddress = (address: string, maxWords: number = 3) => {
     if (!address) return '';
     const words = address.split(' ');
     if (words.length <= maxWords) return address;
     return words.slice(0, maxWords).join(' ') + '...';
+  };
+
+  const getHomeTypeIcon = (homeType: string) => {
+    switch(homeType?.toLowerCase()) {
+      case 'home': return 'home-outline';
+      case 'office': return 'business-outline';
+      case 'other': return 'location-outline';
+      default: return 'location-outline';
+    }
   };
 
   const saveAddressDetails = useCallback(async (addressData: {
@@ -1478,7 +1514,10 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate }: AddressHeaderPro
 
   const displayAddress = location.loading
     ? 'Fetching location...'
-    : location.error || truncateAddress(location.address, 2);
+    : location.error || truncateAddress(location.address, 3);
+    
+  const homeTypeIcon = getHomeTypeIcon(location.homeType);
+  const homeTypeDisplay = location.homeType || 'Home';
 
   return (
     <TouchableOpacity
@@ -1486,15 +1525,11 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate }: AddressHeaderPro
       activeOpacity={0.7}
       style={eatmart_styles.eatm_screen_addressContainer}
     >
-      <View style={eatmart_styles.eatm_screen_addressIcon}>
-        <Icon name="location" size={eatmart_scale(14)} color={EATMART_COLORS.primary} />
-      </View>
-      <View style={eatmart_styles.eatm_screen_addressTextContainer}>
-        <Text style={eatmart_styles.eatm_screen_addressText} numberOfLines={1}>
-          {displayAddress}
-        </Text>
-      </View>
-      <Icon name="chevron-down" size={eatmart_scale(14)} color={EATMART_COLORS.text.secondary} />
+      <Icon name={homeTypeIcon} size={eatmart_scale(14)} color={EATMART_COLORS.primary} />
+      <Text style={eatmart_styles.eatm_screen_addressText} numberOfLines={1}>
+        {homeTypeDisplay}: {displayAddress}
+      </Text>
+      <Icon name="chevron-down" size={eatmart_scale(12)} color={EATMART_COLORS.text.secondary} />
     </TouchableOpacity>
   );
 });
@@ -1527,11 +1562,11 @@ const SimilarItemsList: React.FC<SimilarItemsListProps> = ({ items, onItemPress 
         </Text>
         <View style={eatmart_styles.eatm_screen_similarItemPriceContainer}>
           <Text style={eatmart_styles.eatm_screen_similarItemPrice}>
-            ₹{item.discount_price || item.price}
+            ₹{parseFloat(item.discount_price || item.price).toFixed(0)}
           </Text>
           {item.discount_price && (
             <Text style={eatmart_styles.eatm_screen_similarItemOriginalPrice}>
-              ₹{item.price}
+              ₹{parseFloat(item.price).toFixed(0)}
             </Text>
           )}
         </View>
@@ -1622,10 +1657,10 @@ const ItemDetails: React.FC<ItemDetailsProps> = ({
     }
   };
 
-  const finalPrice = item.discount_price || item.price;
-  const originalPrice = item.price;
+  const finalPrice = parseFloat(item.discount_price || item.price);
+  const originalPrice = parseFloat(item.price);
   const discountPercentage = item.discount_price ? 
-    Math.round((1 - parseFloat(item.discount_price) / parseFloat(item.price)) * 100) : 0;
+    Math.round((1 - finalPrice / originalPrice) * 100) : 0;
 
   const headerOpacity = scrollY.interpolate({
     inputRange: [0, 100],
@@ -1655,7 +1690,7 @@ const ItemDetails: React.FC<ItemDetailsProps> = ({
                 style={eatmart_styles.eatm_screen_itemDetailHeaderButton}
                 activeOpacity={0.7}
               >
-                <Icon name="close" size={eatmart_scale(22)} color={EATMART_COLORS.text.primary} />
+                <Icon name="close" size={eatmart_scale(20)} color={EATMART_COLORS.text.primary} />
               </TouchableOpacity>
             </Animated.View>
 
@@ -1677,26 +1712,16 @@ const ItemDetails: React.FC<ItemDetailsProps> = ({
                 />
                 
                 {discountPercentage > 0 && (
-                  <LinearGradient
-                    colors={[EATMART_COLORS.primary, EATMART_COLORS.primaryDark]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={eatmart_styles.eatm_screen_itemDetailDiscountBadge}
-                  >
+                  <View style={[eatmart_styles.eatm_screen_itemDetailDiscountBadge, { backgroundColor: EATMART_COLORS.primary }]}>
                     <Text style={eatmart_styles.eatm_screen_itemDetailDiscountText}>{discountPercentage}% OFF</Text>
-                  </LinearGradient>
+                  </View>
                 )}
 
                 {item.express_delivery && (
-                  <LinearGradient
-                    colors={[EATMART_COLORS.success, EATMART_COLORS.successLight]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={eatmart_styles.eatm_screen_itemDetailExpressBadge}
-                  >
+                  <View style={[eatmart_styles.eatm_screen_itemDetailExpressBadge, { backgroundColor: EATMART_COLORS.success }]}>
                     <Icon name="flash" size={eatmart_scale(12)} color={EATMART_COLORS.white} />
                     <Text style={eatmart_styles.eatm_screen_itemDetailExpressText}>Express</Text>
-                  </LinearGradient>
+                  </View>
                 )}
               </View>
 
@@ -1712,25 +1737,25 @@ const ItemDetails: React.FC<ItemDetailsProps> = ({
                 {item.rating && (
                   <View style={eatmart_styles.eatm_screen_itemDetailRatingContainer}>
                     <View style={eatmart_styles.eatm_screen_itemDetailRating}>
+                      <Icon name="star" size={eatmart_scale(10)} color={EATMART_COLORS.white} />
                       <Text style={eatmart_styles.eatm_screen_itemDetailRatingText}>{item.rating}</Text>
-                      <Icon name="star" size={eatmart_scale(12)} color={EATMART_COLORS.white} />
                     </View>
                     {item.reviews && (
                       <Text style={eatmart_styles.eatm_screen_itemDetailReviews}>
-                        ({item.reviews} reviews)
+                        {item.reviews} ratings
                       </Text>
                     )}
                   </View>
                 )}
 
                 <View style={eatmart_styles.eatm_screen_itemDetailPriceSection}>
-                  <Text style={eatmart_styles.eatm_screen_itemDetailCurrentPrice}>₹{finalPrice}</Text>
+                  <Text style={eatmart_styles.eatm_screen_itemDetailCurrentPrice}>₹{finalPrice.toFixed(0)}</Text>
                   {item.discount_price && (
                     <>
-                      <Text style={eatmart_styles.eatm_screen_itemDetailOriginalPrice}>₹{originalPrice}</Text>
+                      <Text style={eatmart_styles.eatm_screen_itemDetailOriginalPrice}>₹{originalPrice.toFixed(0)}</Text>
                       <View style={eatmart_styles.eatm_screen_itemDetailSavedBadge}>
                         <Text style={eatmart_styles.eatm_screen_itemDetailSavedPrice}>
-                          Save ₹{parseInt(originalPrice) - parseInt(finalPrice)}
+                          Save ₹{(originalPrice - finalPrice).toFixed(0)}
                         </Text>
                       </View>
                     </>
@@ -1739,7 +1764,7 @@ const ItemDetails: React.FC<ItemDetailsProps> = ({
 
                 {!item.in_stock && (
                   <View style={eatmart_styles.eatm_screen_itemDetailOutOfStock}>
-                    <Icon name="alert-circle-outline" size={eatmart_scale(20)} color={EATMART_COLORS.danger} />
+                    <Icon name="alert-circle-outline" size={eatmart_scale(18)} color={EATMART_COLORS.danger} />
                     <Text style={eatmart_styles.eatm_screen_itemDetailOutOfStockText}>Out of Stock</Text>
                   </View>
                 )}
@@ -1773,9 +1798,6 @@ const ItemDetails: React.FC<ItemDetailsProps> = ({
                 <View style={eatmart_styles.eatm_screen_itemDetailSection}>
                   <View style={eatmart_styles.eatm_screen_itemDetailSectionHeader}>
                     <Text style={eatmart_styles.eatm_screen_itemDetailSectionTitle}>You might also like</Text>
-                    <TouchableOpacity>
-                      <Text style={eatmart_styles.eatm_screen_itemDetailSectionViewAll}>See All</Text>
-                    </TouchableOpacity>
                   </View>
                   
                   <SimilarItemsList 
@@ -1796,8 +1818,8 @@ const ItemDetails: React.FC<ItemDetailsProps> = ({
                     onPress={handleAddToCart}
                     activeOpacity={0.9}
                   >
-                    <Text style={eatmart_styles.eatm_screen_itemDetailAddButtonText}>ADD ITEM</Text>
-                    <Text style={eatmart_styles.eatm_screen_itemDetailAddButtonPrice}>₹{finalPrice}</Text>
+                    <Text style={eatmart_styles.eatm_screen_itemDetailAddButtonText}>Add Item</Text>
+                    <Text style={eatmart_styles.eatm_screen_itemDetailAddButtonPrice}>₹{finalPrice.toFixed(0)}</Text>
                   </TouchableOpacity>
                 ) : (
                   <View style={eatmart_styles.eatm_screen_itemDetailQuantityContainer}>
@@ -1845,7 +1867,7 @@ const CategoryDetails: React.FC<CategoryDetailsProps> = ({ category, items, onIt
     let filtered = [...items];
     
     if (selectedFilter === 'under ₹99') {
-      filtered = filtered.filter(item => parseInt(item.discount_price || item.price) < 99);
+      filtered = filtered.filter(item => parseFloat(item.discount_price || item.price) < 99);
     } else if (selectedFilter === 'best seller') {
       filtered = filtered.filter(item => (item.reviews || 0) > 200);
     } else if (selectedFilter === 'new') {
@@ -2040,7 +2062,7 @@ const EatmartScreenComponent: React.FC = () => {
   }, []);
   
   const headerHeight = scrollY.interpolate({
-    inputRange: [0, BANNER_HEIGHT + eatmart_verticalScale(100)],
+    inputRange: [0, BANNER_HEIGHT + eatmart_verticalScale(80)],
     outputRange: [EATMART_HEADER_HEIGHT + BANNER_HEIGHT, EATMART_MIN_HEADER_HEIGHT],
     extrapolate: 'clamp',
   });
@@ -2055,16 +2077,13 @@ const EatmartScreenComponent: React.FC = () => {
     return (
       <View style={eatmart_styles.eatm_screen_loadingContainer}>
         <StatusBar barStyle="dark-content" backgroundColor={EATMART_COLORS.white} />
-        <LinearGradient
-          colors={[EATMART_COLORS.white, EATMART_COLORS.grayBg]}
-          style={eatmart_styles.eatm_screen_loadingGradient}
-        >
+        <View style={eatmart_styles.eatm_screen_loadingGradient}>
           <View style={eatmart_styles.eatm_screen_loadingIcon}>
-            <Icon2 name="food" size={eatmart_scale(40)} color={EATMART_COLORS.white} />
+            <Icon name="fast-food" size={eatmart_scale(32)} color={EATMART_COLORS.white} />
           </View>
           <Text style={eatmart_styles.eatm_screen_loadingTitle}>Eatmart</Text>
           <Text style={eatmart_styles.eatm_screen_loadingText}>Grocery in minutes...</Text>
-        </LinearGradient>
+        </View>
       </View>
     );
   }
@@ -2072,11 +2091,8 @@ const EatmartScreenComponent: React.FC = () => {
   if (!homeData) {
     return (
       <View style={eatmart_styles.eatm_screen_errorContainer}>
-        <LinearGradient
-          colors={[EATMART_COLORS.white, EATMART_COLORS.grayBg]}
-          style={eatmart_styles.eatm_screen_errorGradient}
-        >
-          <Icon name="alert-circle" size={eatmart_scale(64)} color={EATMART_COLORS.text.tertiary} />
+        <View style={eatmart_styles.eatm_screen_errorGradient}>
+          <Icon name="alert-circle" size={eatmart_scale(48)} color={EATMART_COLORS.text.tertiary} />
           <Text style={eatmart_styles.eatm_screen_errorTitle}>Something went wrong</Text>
           <Text style={eatmart_styles.eatm_screen_errorText}>Unable to load stores</Text>
           <TouchableOpacity
@@ -2086,7 +2102,7 @@ const EatmartScreenComponent: React.FC = () => {
           >
             <Text style={eatmart_styles.eatm_screen_errorButtonText}>Try Again</Text>
           </TouchableOpacity>
-        </LinearGradient>
+        </View>
       </View>
     );
   }
@@ -2111,12 +2127,14 @@ const EatmartScreenComponent: React.FC = () => {
               onAddressUpdate={handleAddressUpdate}
             />
             
-            <TouchableOpacity
-              style={eatmart_styles.eatm_screen_profileButton}
-              onPress={handleProfilePress}
-            >
-              <Icon name="person-outline" size={eatmart_scale(20)} color={EATMART_COLORS.text.primary} />
-            </TouchableOpacity>
+            <View style={eatmart_styles.eatm_screen_headerActions}>
+              <TouchableOpacity
+                style={eatmart_styles.eatm_screen_iconButton}
+                onPress={handleProfilePress}
+              >
+                <Icon name="person-outline" size={eatmart_scale(18)} color={EATMART_COLORS.text.primary} />
+              </TouchableOpacity>
+            </View>
           </View>
           
           <SearchBar onPress={handleSearchPress} />
@@ -2149,18 +2167,22 @@ const EatmartScreenComponent: React.FC = () => {
           }
         ]}>
           <View style={eatmart_styles.eatm_screen_compactHeaderContent}>
+            <AddressHeader
+              isGuest={isGuest}
+              onAddressUpdate={handleAddressUpdate}
+            />
             <TouchableOpacity
               style={eatmart_styles.eatm_screen_compactSearchButton}
               onPress={handleSearchPress}
             >
-              <Icon name="search-outline" size={eatmart_scale(18)} color={EATMART_COLORS.text.secondary} />
-              <Text style={eatmart_styles.eatm_screen_compactSearchText}>Search 'atta', 'sugar' & more</Text>
+              <Icon name="search-outline" size={eatmart_scale(16)} color={EATMART_COLORS.text.secondary} />
+              <Text style={eatmart_styles.eatm_screen_compactSearchText}>Search</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={eatmart_styles.eatm_screen_compactProfileButton}
               onPress={handleProfilePress}
             >
-              <Icon name="person-outline" size={eatmart_scale(18)} color={EATMART_COLORS.text.primary} />
+              <Icon name="person-outline" size={eatmart_scale(16)} color={EATMART_COLORS.text.primary} />
             </TouchableOpacity>
           </View>
         </Animated.View>
@@ -2174,7 +2196,6 @@ const EatmartScreenComponent: React.FC = () => {
             eatmart_styles.eatm_screen_scrollContent,
             {
               paddingTop: EATMART_HEADER_HEIGHT + BANNER_HEIGHT + eatmart_verticalScale(16),
-              paddingBottom: eatmart_verticalScale(80)
             }
           ]}
           showsVerticalScrollIndicator={false}
@@ -2187,7 +2208,7 @@ const EatmartScreenComponent: React.FC = () => {
               onPress={handleCloseCategoryDetails}
               activeOpacity={0.8}
             >
-              <Icon name="arrow-back" size={eatmart_scale(20)} color={EATMART_COLORS.primary} />
+              <Icon name="arrow-back" size={eatmart_scale(18)} color={EATMART_COLORS.primary} />
               <Text style={eatmart_styles.eatm_screen_backButtonText}>Back</Text>
             </TouchableOpacity>
           </View>
@@ -2199,14 +2220,13 @@ const EatmartScreenComponent: React.FC = () => {
           />
         </ScrollView>
       ) : (
-        <ScrollView
+        <Animated.ScrollView
           ref={scrollViewRef}
           style={eatmart_styles.eatm_screen_scrollView}
           contentContainerStyle={[
             eatmart_styles.eatm_screen_scrollContent,
             {
-              paddingTop: EATMART_HEADER_HEIGHT + BANNER_HEIGHT + eatmart_verticalScale(16),
-              paddingBottom: eatmart_verticalScale(80)
+              paddingTop: EATMART_HEADER_HEIGHT + BANNER_HEIGHT,
             }
           ]}
           showsVerticalScrollIndicator={false}
@@ -2221,8 +2241,25 @@ const EatmartScreenComponent: React.FC = () => {
               progressViewOffset={EATMART_HEADER_HEIGHT + BANNER_HEIGHT}
             />
           }
-        >
-          {/* Modern Categories Section */}
+        > 
+          {/* Top Offers Banner - Reduced margin top to remove extra space */}
+          {homeData.topOffers && homeData.topOffers.length > 0 && (
+            <View style={eatmart_styles.eatm_screen_offersSection}>
+              <SectionHeader title="Top Offers" showViewAll={false} />
+              <FlatList
+                data={homeData.topOffers.slice(0, 5)}
+                renderItem={({ item, index }) => (
+                  <OfferBanner item={item} index={index} />
+                )}
+                keyExtractor={(item) => item.id}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={eatmart_styles.eatm_screen_offersListContent}
+              />
+            </View>
+          )}
+
+                    {/* Modern Categories Section - Swiggy Style */}
           <View style={eatmart_styles.eatm_screen_categorySection}>
             <FlatList
               data={homeData.categories}
@@ -2240,22 +2277,6 @@ const EatmartScreenComponent: React.FC = () => {
             />
           </View>
           
-          {/* Top Offers Banner */}
-          {homeData.topOffers && homeData.topOffers.length > 0 && (
-            <View style={eatmart_styles.eatm_screen_offersSection}>
-              <SectionHeader title="Top Offers" showViewAll={false} />
-              <FlatList
-                data={homeData.topOffers.slice(0, 5)}
-                renderItem={({ item, index }) => (
-                  <OfferBanner item={item} index={index} />
-                )}
-                keyExtractor={(item) => item.id}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={eatmart_styles.eatm_screen_offersListContent}
-              />
-            </View>
-          )}
           
           {/* For You Section */}
           {homeData.forYou && homeData.forYou.length > 0 && (
@@ -2286,7 +2307,7 @@ const EatmartScreenComponent: React.FC = () => {
           )}
           
           <View style={{ height: eatmart_verticalScale(20) }} />
-        </ScrollView>
+        </Animated.ScrollView>
       )}
       
       <CartBottomBar />
@@ -2327,7 +2348,7 @@ const InstamartStackNavigator = () => {
   );
 };
 
-// ============== MODERN STYLES ==============
+// ============== MODERN STYLES - SWIGGY INSPIRED ==============
 
 const eatmart_styles = StyleSheet.create({
   eatm_screen_rootContainer: {
@@ -2345,9 +2366,9 @@ const eatmart_styles = StyleSheet.create({
     alignItems: 'center',
   },
   eatm_screen_loadingIcon: {
-    width: eatmart_scale(80),
-    height: eatmart_scale(80),
-    borderRadius: eatmart_scale(40),
+    width: eatmart_scale(70),
+    height: eatmart_scale(70),
+    borderRadius: eatmart_scale(35),
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: EATMART_COLORS.primary,
@@ -2360,12 +2381,12 @@ const eatmart_styles = StyleSheet.create({
   eatm_screen_loadingTitle: {
     ...EATMART_TYPOGRAPHY.h2,
     color: EATMART_COLORS.text.primary,
-    marginTop: eatmart_verticalScale(20),
+    marginTop: eatmart_verticalScale(16),
   },
   eatm_screen_loadingText: {
     ...EATMART_TYPOGRAPHY.body2,
     color: EATMART_COLORS.text.secondary,
-    marginTop: eatmart_verticalScale(8),
+    marginTop: eatmart_verticalScale(4),
   },
 
   eatm_screen_errorContainer: {
@@ -2405,7 +2426,7 @@ const eatmart_styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    borderRadius: eatmart_scale(16),
+    borderRadius: eatmart_scale(14),
     overflow: 'hidden',
     shadowColor: EATMART_COLORS.black,
     shadowOffset: { width: 0, height: 4 },
@@ -2419,29 +2440,48 @@ const eatmart_styles = StyleSheet.create({
   },
   eatm_screen_cartBarGradient: {
     width: '100%',
-    paddingVertical: eatmart_verticalScale(14),
+    paddingVertical: eatmart_verticalScale(12),
   },
   eatm_screen_cartBarContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: eatmart_scale(20),
+    paddingHorizontal: eatmart_scale(16),
   },
   eatm_screen_cartBarLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: eatmart_scale(12),
+    gap: eatmart_scale(10),
   },
   eatm_screen_cartIconContainer: {
-    width: eatmart_scale(40),
-    height: eatmart_scale(40),
-    borderRadius: eatmart_scale(20),
+    width: eatmart_scale(36),
+    height: eatmart_scale(36),
+    borderRadius: eatmart_scale(18),
     backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
+  },
+  eatm_screen_cartBadge: {
+    position: 'absolute',
+    top: -eatmart_scale(4),
+    right: -eatmart_scale(4),
+    minWidth: eatmart_scale(16),
+    height: eatmart_scale(16),
+    borderRadius: eatmart_scale(8),
+    backgroundColor: EATMART_COLORS.warning,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: eatmart_scale(4),
+  },
+  eatm_screen_cartBadgeText: {
+    ...EATMART_TYPOGRAPHY.caption,
+    color: EATMART_COLORS.white,
+    fontSize: eatmart_fontScale(9),
+    fontWeight: '600',
   },
   eatm_screen_cartBarInfo: {
-    marginLeft: eatmart_scale(4),
+    marginLeft: eatmart_scale(2),
   },
   eatm_screen_cartBarItems: {
     ...EATMART_TYPOGRAPHY.caption,
@@ -2450,17 +2490,18 @@ const eatmart_styles = StyleSheet.create({
   },
   eatm_screen_cartBarTotal: {
     ...EATMART_TYPOGRAPHY.body1,
-    color: EATMART_COLORS.white,
+    color: EATMART_COLORS.secondary,
     fontWeight: '700',
+    fontSize: eatmart_fontScale(16),
   },
   eatm_screen_cartBarRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: eatmart_scale(8),
+    gap: eatmart_scale(6),
   },
   eatm_screen_cartBarViewText: {
     ...EATMART_TYPOGRAPHY.caption,
-    color: EATMART_COLORS.white,
+    color: EATMART_COLORS.secondary,
     fontWeight: '600',
     fontSize: eatmart_fontScale(12),
   },
@@ -2482,18 +2523,23 @@ const eatmart_styles = StyleSheet.create({
   },
   eatm_screen_headerContent: {
     paddingHorizontal: eatmart_scale(16),
-    paddingTop: Platform.OS === 'ios' ? eatmart_verticalScale(8) : eatmart_verticalScale(4),
+    paddingTop: Platform.OS === 'ios' ? eatmart_verticalScale(4) : eatmart_verticalScale(2),
   },
   eatm_screen_topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: eatmart_verticalScale(12),
+    marginBottom: eatmart_verticalScale(10),
   },
-  eatm_screen_profileButton: {
-    width: eatmart_scale(40),
-    height: eatmart_scale(40),
-    borderRadius: eatmart_scale(20),
+  eatm_screen_headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: eatmart_scale(8),
+  },
+  eatm_screen_iconButton: {
+    width: eatmart_scale(34),
+    height: eatmart_scale(34),
+    borderRadius: eatmart_scale(17),
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: EATMART_COLORS.grayBg,
@@ -2515,17 +2561,17 @@ const eatmart_styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: eatmart_scale(16),
     height: EATMART_MIN_HEADER_HEIGHT,
-    gap: eatmart_scale(12),
+    gap: eatmart_scale(10),
   },
   eatm_screen_compactSearchButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: EATMART_COLORS.grayBg,
-    paddingHorizontal: eatmart_scale(14),
-    paddingVertical: eatmart_verticalScale(10),
-    borderRadius: eatmart_scale(12),
-    gap: eatmart_scale(10),
+    paddingHorizontal: eatmart_scale(12),
+    paddingVertical: eatmart_verticalScale(8),
+    borderRadius: eatmart_scale(10),
+    gap: eatmart_scale(8),
   },
   eatm_screen_compactSearchText: {
     ...EATMART_TYPOGRAPHY.body2,
@@ -2533,9 +2579,9 @@ const eatmart_styles = StyleSheet.create({
     fontSize: eatmart_fontScale(13),
   },
   eatm_screen_compactProfileButton: {
-    width: eatmart_scale(40),
-    height: eatmart_scale(40),
-    borderRadius: eatmart_scale(20),
+    width: eatmart_scale(34),
+    height: eatmart_scale(34),
+    borderRadius: eatmart_scale(17),
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: EATMART_COLORS.grayBg,
@@ -2544,129 +2590,80 @@ const eatmart_styles = StyleSheet.create({
   eatm_screen_addressContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-    gap: eatmart_scale(8),
+    gap: eatmart_scale(6),
     backgroundColor: EATMART_COLORS.grayBg,
-    paddingHorizontal: eatmart_scale(12),
-    paddingVertical: eatmart_verticalScale(8),
-    borderRadius: eatmart_scale(30),
-    marginRight: eatmart_scale(12),
-  },
-  eatm_screen_addressIcon: {
-    width: eatmart_scale(24),
-    height: eatmart_scale(24),
-    borderRadius: eatmart_scale(12),
-    backgroundColor: 'rgba(255,107,53,0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  eatm_screen_addressTextContainer: {
-    flex: 1,
+    paddingHorizontal: eatmart_scale(10),
+    paddingVertical: eatmart_verticalScale(6),
+    borderRadius: eatmart_scale(20),
+    maxWidth: '70%',
   },
   eatm_screen_addressText: {
     ...EATMART_TYPOGRAPHY.body2,
     color: EATMART_COLORS.text.primary,
     fontWeight: '500',
-    fontSize: eatmart_fontScale(13),
+    fontSize: eatmart_fontScale(12),
+    maxWidth: eatmart_scale(180),
   },
 
   eatm_screen_searchContainer: {
-    marginBottom: eatmart_verticalScale(12),
+    marginBottom: eatmart_verticalScale(10),
   },
   eatm_screen_searchContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: eatmart_scale(16),
-    paddingVertical: Platform.OS === 'ios' ? eatmart_verticalScale(12) : eatmart_verticalScale(10),
-    gap: eatmart_scale(10),
+    paddingHorizontal: eatmart_scale(14),
+    paddingVertical: Platform.OS === 'ios' ? eatmart_verticalScale(10) : eatmart_verticalScale(8),
+    gap: eatmart_scale(8),
     backgroundColor: EATMART_COLORS.grayBg,
-    borderRadius: eatmart_scale(14),
+    borderRadius: eatmart_scale(12),
   },
   eatm_screen_searchPlaceholder: {
     ...EATMART_TYPOGRAPHY.body2,
     color: EATMART_COLORS.text.secondary,
     flex: 1,
-    fontSize: eatmart_fontScale(14),
+    fontSize: eatmart_fontScale(13),
   },
   eatm_screen_searchMicButton: {
-    padding: eatmart_scale(4),
+    padding: eatmart_scale(2),
   },
 
   eatm_screen_bannerSection: {
-    marginTop: eatmart_verticalScale(8),
+    marginTop: eatmart_verticalScale(6),
   },
   eatm_screen_bannerContainer: {
     height: BANNER_HEIGHT,
     overflow: 'hidden',
+    paddingHorizontal: eatmart_scale(16),
   },
   eatm_screen_bannerTouchable: {
     width: '100%',
     height: '100%',
+    borderRadius: eatmart_scale(16),
+    overflow: 'hidden',
   },
   eatm_screen_bannerImage: {
     width: '100%',
     height: '100%',
   },
-  eatm_screen_bannerGradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: eatmart_verticalScale(80),
-    justifyContent: 'flex-end',
-    padding: eatmart_scale(16),
-  },
-  eatm_screen_bannerTextContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  eatm_screen_bannerTitle: {
-    ...EATMART_TYPOGRAPHY.body1,
-    color: EATMART_COLORS.white,
-    fontWeight: '700',
-    flex: 1,
-    fontSize: eatmart_fontScale(16),
-    textShadowColor: 'rgba(0,0,0,0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  eatm_screen_bannerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    paddingHorizontal: eatmart_scale(12),
-    paddingVertical: eatmart_verticalScale(6),
-    borderRadius: eatmart_scale(20),
-    gap: eatmart_scale(4),
-  },
-  eatm_screen_bannerButtonText: {
-    ...EATMART_TYPOGRAPHY.caption,
-    color: EATMART_COLORS.white,
-    fontWeight: '600',
-    fontSize: eatmart_fontScale(12),
-  },
   eatm_screen_bannerPagination: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: eatmart_verticalScale(12),
-    gap: eatmart_scale(8),
+    marginTop: eatmart_verticalScale(8),
+    gap: eatmart_scale(6),
   },
   eatm_screen_bannerDot: {
-    height: eatmart_scale(6),
-    borderRadius: eatmart_scale(3),
-    transition: 'all 0.3s ease',
+    height: eatmart_scale(4),
+    borderRadius: eatmart_scale(2),
   },
-
   eatm_screen_categorySection: {
-    marginBottom: eatmart_verticalScale(24),
+    marginBottom: eatmart_verticalScale(30),
   },
   eatm_screen_categoryListContent: {
     paddingHorizontal: eatmart_scale(16),
-    gap: eatmart_scale(20),
+    gap: eatmart_scale(16),
   },
   eatm_screen_categoryIconContainer: {
-    width: eatmart_scale(70),
+    width: eatmart_scale(65),
     alignItems: 'center',
   },
   eatm_screen_categoryIconTouchable: {
@@ -2674,43 +2671,44 @@ const eatmart_styles = StyleSheet.create({
     width: '100%',
   },
   eatm_screen_categoryIconWrapper: {
-    width: eatmart_scale(60),
-    height: eatmart_scale(60),
-    borderRadius: eatmart_scale(30),
+    width: eatmart_scale(55),
+    height: eatmart_scale(55),
+    borderRadius: eatmart_scale(27.5),
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: eatmart_verticalScale(6),
-    backgroundColor: EATMART_COLORS.grayBg,
+    marginBottom: eatmart_verticalScale(4),
     shadowColor: EATMART_COLORS.black,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 2,
+    backgroundColor: EATMART_COLORS.white,
   },
   eatm_screen_categoryIconEmoji: {
-    fontSize: eatmart_fontScale(30),
+    fontSize: eatmart_fontScale(28),
   },
   eatm_screen_categoryIconText: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.text.primary,
     fontWeight: '500',
     textAlign: 'center',
-    fontSize: eatmart_fontScale(12),
+    fontSize: eatmart_fontScale(11),
   },
 
   eatm_screen_offersSection: {
-    marginBottom: eatmart_verticalScale(24),
+    marginBottom: eatmart_verticalScale(4),
+    marginTop: eatmart_verticalScale(4),
   },
   eatm_screen_offersListContent: {
     paddingHorizontal: eatmart_scale(16),
-    gap: eatmart_scale(12),
+    gap: eatmart_scale(10),
   },
   eatm_screen_offerBannerContainer: {
-    width: eatmart_scale(280),
-    height: eatmart_verticalScale(130),
-    borderRadius: eatmart_scale(16),
+    width: eatmart_scale(260),
+    height: eatmart_verticalScale(120),
+    borderRadius: eatmart_scale(14),
     overflow: 'hidden',
-    marginRight: eatmart_scale(12),
+    marginRight: eatmart_scale(10),
     position: 'relative',
   },
   eatm_screen_offerBannerImage: {
@@ -2722,20 +2720,22 @@ const eatmart_styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: eatmart_scale(12),
-    paddingVertical: eatmart_verticalScale(8),
+    paddingHorizontal: eatmart_scale(10),
+    paddingVertical: eatmart_verticalScale(6),
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   eatm_screen_offerText: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.white,
     fontWeight: '600',
+    fontSize: eatmart_fontScale(12),
   },
 
   eatm_screen_productCard: {
-    width: (screenWidth - eatmart_scale(48)) / 2,
-    borderRadius: eatmart_scale(16),
+    width: (screenWidth - eatmart_scale(44)) / 2,
+    borderRadius: eatmart_scale(14),
     overflow: 'hidden',
-    marginBottom: eatmart_verticalScale(16),
+    marginBottom: eatmart_verticalScale(14),
     backgroundColor: EATMART_COLORS.white,
     shadowColor: EATMART_COLORS.black,
     shadowOffset: { width: 0, height: 2 },
@@ -2754,30 +2754,28 @@ const eatmart_styles = StyleSheet.create({
   },
   eatm_screen_productDiscountBadge: {
     position: 'absolute',
-    top: eatmart_scale(8),
-    left: eatmart_scale(8),
-    backgroundColor: EATMART_COLORS.primary,
-    paddingHorizontal: eatmart_scale(8),
-    paddingVertical: eatmart_verticalScale(4),
-    borderRadius: eatmart_scale(6),
+    top: eatmart_scale(6),
+    left: eatmart_scale(6),
+    paddingHorizontal: eatmart_scale(6),
+    paddingVertical: eatmart_verticalScale(3),
+    borderRadius: eatmart_scale(5),
     zIndex: 1,
   },
   eatm_screen_productDiscountText: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.white,
     fontWeight: '600',
-    fontSize: eatmart_fontScale(10),
+    fontSize: eatmart_fontScale(9),
   },
   eatm_screen_productExpressBadge: {
     position: 'absolute',
-    top: eatmart_scale(8),
-    right: eatmart_scale(8),
+    top: eatmart_scale(6),
+    right: eatmart_scale(6),
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: EATMART_COLORS.success,
-    paddingHorizontal: eatmart_scale(6),
-    paddingVertical: eatmart_verticalScale(3),
-    borderRadius: eatmart_scale(6),
+    paddingHorizontal: eatmart_scale(5),
+    paddingVertical: eatmart_verticalScale(2),
+    borderRadius: eatmart_scale(5),
     gap: eatmart_scale(2),
     zIndex: 1,
   },
@@ -2785,7 +2783,7 @@ const eatmart_styles = StyleSheet.create({
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.white,
     fontWeight: '600',
-    fontSize: eatmart_fontScale(9),
+    fontSize: eatmart_fontScale(8),
   },
   eatm_screen_productOutOfStock: {
     position: 'absolute',
@@ -2802,31 +2800,33 @@ const eatmart_styles = StyleSheet.create({
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.danger,
     fontWeight: '600',
-    fontSize: eatmart_fontScale(11),
+    fontSize: eatmart_fontScale(10),
   },
   eatm_screen_productInfo: {
-    padding: eatmart_scale(12),
+    padding: eatmart_scale(10),
   },
   eatm_screen_productName: {
     ...EATMART_TYPOGRAPHY.body2,
     color: EATMART_COLORS.text.primary,
     fontWeight: '500',
     marginBottom: eatmart_verticalScale(2),
-    lineHeight: eatmart_fontScale(18),
+    lineHeight: eatmart_fontScale(17),
+    fontSize: eatmart_fontScale(13),
   },
   eatm_screen_productWeight: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.text.tertiary,
-    marginBottom: eatmart_verticalScale(6),
+    marginBottom: eatmart_verticalScale(4),
+    fontSize: eatmart_fontScale(10),
   },
   eatm_screen_productRating: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    paddingHorizontal: eatmart_scale(6),
+    paddingHorizontal: eatmart_scale(5),
     paddingVertical: eatmart_verticalScale(2),
     borderRadius: eatmart_scale(4),
-    marginBottom: eatmart_verticalScale(8),
+    marginBottom: eatmart_verticalScale(6),
     gap: eatmart_scale(2),
     backgroundColor: EATMART_COLORS.rating,
   },
@@ -2834,7 +2834,7 @@ const eatmart_styles = StyleSheet.create({
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.white,
     fontWeight: '600',
-    fontSize: eatmart_fontScale(10),
+    fontSize: eatmart_fontScale(9),
   },
   eatm_screen_productFooter: {
     flexDirection: 'row',
@@ -2845,44 +2845,48 @@ const eatmart_styles = StyleSheet.create({
     ...EATMART_TYPOGRAPHY.body1,
     color: EATMART_COLORS.text.primary,
     fontWeight: '700',
+    fontSize: eatmart_fontScale(14),
   },
   eatm_screen_productOriginalPrice: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.text.tertiary,
     textDecorationLine: 'line-through',
+    fontSize: eatmart_fontScale(10),
   },
   eatm_screen_addButton: {
-    paddingHorizontal: eatmart_scale(14),
-    paddingVertical: eatmart_verticalScale(6),
+    paddingHorizontal: eatmart_scale(12),
+    paddingVertical: eatmart_verticalScale(5),
     backgroundColor: EATMART_COLORS.primary,
-    borderRadius: eatmart_scale(8),
+    borderRadius: eatmart_scale(6),
   },
   eatm_screen_addButtonText: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.white,
     fontWeight: '600',
-    fontSize: eatmart_fontScale(11),
+    fontSize: eatmart_fontScale(10),
   },
   eatm_screen_quantityControl: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: EATMART_COLORS.primary,
-    borderRadius: eatmart_scale(8),
+    borderRadius: eatmart_scale(6),
   },
   eatm_screen_quantityButton: {
-    paddingHorizontal: eatmart_scale(10),
-    paddingVertical: eatmart_verticalScale(4),
+    paddingHorizontal: eatmart_scale(8),
+    paddingVertical: eatmart_verticalScale(3),
   },
   eatm_screen_quantityButtonText: {
     ...EATMART_TYPOGRAPHY.body1,
     color: EATMART_COLORS.white,
     fontWeight: '600',
+    fontSize: eatmart_fontScale(14),
   },
   eatm_screen_quantityText: {
     ...EATMART_TYPOGRAPHY.body2,
     color: EATMART_COLORS.white,
     fontWeight: '600',
-    paddingHorizontal: eatmart_scale(8),
+    paddingHorizontal: eatmart_scale(6),
+    fontSize: eatmart_fontScale(13),
   },
 
   eatm_screen_sectionHeader: {
@@ -2890,31 +2894,34 @@ const eatmart_styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: eatmart_scale(16),
-    marginBottom: eatmart_verticalScale(16),
+    marginBottom: eatmart_verticalScale(14),
   },
   eatm_screen_sectionTitle: {
     ...EATMART_TYPOGRAPHY.h4,
     color: EATMART_COLORS.text.primary,
     fontWeight: '700',
+    fontSize: eatmart_fontScale(18),
   },
   eatm_screen_sectionSubtitle: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.text.secondary,
-    marginTop: eatmart_verticalScale(2),
+    marginTop: eatmart_verticalScale(1),
+    fontSize: eatmart_fontScale(11),
   },
   eatm_screen_sectionViewAll: {
     ...EATMART_TYPOGRAPHY.body2,
     color: EATMART_COLORS.primary,
     fontWeight: '600',
+    fontSize: eatmart_fontScale(12),
   },
 
   eatm_screen_productGridSection: {
-    marginBottom: eatmart_verticalScale(24),
+    marginBottom: eatmart_verticalScale(20),
   },
   eatm_screen_gridRow: {
     justifyContent: 'space-between',
     paddingHorizontal: eatmart_scale(16),
-    marginBottom: eatmart_verticalScale(12),
+    marginBottom: eatmart_verticalScale(10),
   },
 
   eatm_screen_searchModal: {
@@ -2925,13 +2932,13 @@ const eatmart_styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: eatmart_scale(16),
-    paddingVertical: eatmart_verticalScale(12),
+    paddingVertical: eatmart_verticalScale(10),
     borderBottomWidth: 1,
     borderBottomColor: EATMART_COLORS.border.light,
   },
   eatm_screen_searchModalBack: {
-    marginRight: eatmart_scale(12),
-    padding: eatmart_scale(4),
+    marginRight: eatmart_scale(10),
+    padding: eatmart_scale(2),
   },
   eatm_screen_searchModalInputWrapper: {
     flex: 1,
@@ -2940,20 +2947,20 @@ const eatmart_styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: EATMART_COLORS.grayBg,
-    borderRadius: eatmart_scale(12),
-    paddingHorizontal: eatmart_scale(14),
-    paddingVertical: Platform.OS === 'ios' ? eatmart_verticalScale(12) : eatmart_verticalScale(8),
+    borderRadius: eatmart_scale(10),
+    paddingHorizontal: eatmart_scale(12),
+    paddingVertical: Platform.OS === 'ios' ? eatmart_verticalScale(10) : eatmart_verticalScale(6),
   },
   eatm_screen_searchModalInput: {
     flex: 1,
     ...EATMART_TYPOGRAPHY.body2,
     color: EATMART_COLORS.text.primary,
     padding: 0,
-    marginLeft: eatmart_scale(10),
-    fontSize: eatmart_fontScale(16),
+    marginLeft: eatmart_scale(8),
+    fontSize: eatmart_fontScale(15),
   },
   eatm_screen_searchModalClear: {
-    padding: eatmart_scale(4),
+    padding: eatmart_scale(2),
   },
   eatm_screen_searchModalContent: {
     flex: 1,
@@ -2962,37 +2969,38 @@ const eatmart_styles = StyleSheet.create({
     paddingBottom: eatmart_verticalScale(20),
   },
   eatm_screen_searchSection: {
-    paddingTop: eatmart_verticalScale(20),
+    paddingTop: eatmart_verticalScale(16),
     paddingHorizontal: eatmart_scale(16),
   },
   eatm_screen_searchSectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: eatmart_verticalScale(12),
+    marginBottom: eatmart_verticalScale(10),
   },
   eatm_screen_searchSectionTitle: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.text.secondary,
     fontWeight: '600',
-    fontSize: eatmart_fontScale(11),
+    fontSize: eatmart_fontScale(10),
+    letterSpacing: 0.5,
   },
   eatm_screen_searchSectionClear: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.primary,
     fontWeight: '500',
-    fontSize: eatmart_fontScale(11),
+    fontSize: eatmart_fontScale(10),
   },
   eatm_screen_recentList: {
-    borderRadius: eatmart_scale(12),
+    borderRadius: eatmart_scale(10),
     overflow: 'hidden',
   },
   eatm_screen_recentItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: eatmart_verticalScale(12),
-    paddingHorizontal: eatmart_scale(12),
+    paddingVertical: eatmart_verticalScale(10),
+    paddingHorizontal: eatmart_scale(10),
     borderBottomWidth: 1,
     borderBottomColor: EATMART_COLORS.border.light,
   },
@@ -3000,44 +3008,46 @@ const eatmart_styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: eatmart_scale(12),
+    gap: eatmart_scale(10),
   },
   eatm_screen_recentText: {
     ...EATMART_TYPOGRAPHY.body2,
     color: EATMART_COLORS.text.primary,
     flex: 1,
+    fontSize: eatmart_fontScale(13),
   },
   eatm_screen_recentRemove: {
-    padding: eatmart_scale(4),
+    padding: eatmart_scale(2),
   },
   eatm_screen_popularGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginHorizontal: -eatmart_scale(4),
-    marginTop: eatmart_verticalScale(8),
+    marginTop: eatmart_verticalScale(6),
   },
   eatm_screen_popularItem: {
     width: '25%',
     paddingHorizontal: eatmart_scale(4),
-    marginBottom: eatmart_verticalScale(12),
+    marginBottom: eatmart_verticalScale(10),
   },
   eatm_screen_popularIcon: {
     width: '100%',
     aspectRatio: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: eatmart_verticalScale(6),
+    marginBottom: eatmart_verticalScale(4),
     backgroundColor: EATMART_COLORS.grayBg,
-    borderRadius: eatmart_scale(16),
+    borderRadius: eatmart_scale(14),
   },
   eatm_screen_popularEmoji: {
-    fontSize: eatmart_fontScale(34),
+    fontSize: eatmart_fontScale(30),
   },
   eatm_screen_popularName: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.text.primary,
     fontWeight: '500',
     textAlign: 'center',
+    fontSize: eatmart_fontScale(10),
   },
   eatm_screen_searchResults: {
     flex: 1,
@@ -3053,21 +3063,21 @@ const eatmart_styles = StyleSheet.create({
   eatm_screen_searchResultItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: eatmart_verticalScale(12),
+    paddingVertical: eatmart_verticalScale(10),
     borderBottomWidth: 1,
     borderBottomColor: EATMART_COLORS.border.light,
   },
   eatm_screen_searchResultIcon: {
-    width: eatmart_scale(50),
-    height: eatmart_scale(50),
-    borderRadius: eatmart_scale(25),
+    width: eatmart_scale(45),
+    height: eatmart_scale(45),
+    borderRadius: eatmart_scale(22.5),
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: eatmart_scale(14),
+    marginRight: eatmart_scale(12),
     backgroundColor: EATMART_COLORS.grayBg,
   },
   eatm_screen_searchResultEmoji: {
-    fontSize: eatmart_fontScale(34),
+    fontSize: eatmart_fontScale(30),
   },
   eatm_screen_searchResultInfo: {
     flex: 1,
@@ -3076,26 +3086,30 @@ const eatmart_styles = StyleSheet.create({
     ...EATMART_TYPOGRAPHY.body2,
     color: EATMART_COLORS.text.primary,
     fontWeight: '500',
-    marginBottom: eatmart_verticalScale(2),
+    marginBottom: eatmart_verticalScale(1),
+    fontSize: eatmart_fontScale(14),
   },
   eatm_screen_searchResultCount: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.text.secondary,
+    fontSize: eatmart_fontScale(11),
   },
   eatm_screen_searchNoResults: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: eatmart_verticalScale(80),
+    paddingVertical: eatmart_verticalScale(60),
   },
   eatm_screen_searchNoResultsTitle: {
     ...EATMART_TYPOGRAPHY.h4,
     color: EATMART_COLORS.text.primary,
-    marginTop: eatmart_verticalScale(16),
+    marginTop: eatmart_verticalScale(12),
+    fontSize: eatmart_fontScale(18),
   },
   eatm_screen_searchNoResultsText: {
     ...EATMART_TYPOGRAPHY.body2,
     color: EATMART_COLORS.text.secondary,
-    marginTop: eatmart_verticalScale(4),
+    marginTop: eatmart_verticalScale(2),
+    fontSize: eatmart_fontScale(13),
   },
 
   eatm_screen_scrollView: {
@@ -3103,22 +3117,23 @@ const eatmart_styles = StyleSheet.create({
     backgroundColor: EATMART_COLORS.background,
   },
   eatm_screen_scrollContent: {
-    paddingBottom: eatmart_verticalScale(100),
+    paddingBottom: eatmart_verticalScale(90),
   },
 
   eatm_screen_categoryDetailsBackButton: {
     paddingHorizontal: eatmart_scale(16),
-    marginBottom: eatmart_verticalScale(16),
+    marginBottom: eatmart_verticalScale(12),
   },
   eatm_screen_backButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: eatmart_scale(6),
+    gap: eatmart_scale(4),
   },
   eatm_screen_backButtonText: {
     ...EATMART_TYPOGRAPHY.body2,
     color: EATMART_COLORS.primary,
     fontWeight: '600',
+    fontSize: eatmart_fontScale(13),
   },
 
   eatm_screen_categoryDetailsContainer: {
@@ -3128,19 +3143,19 @@ const eatmart_styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: eatmart_scale(16),
-    marginBottom: eatmart_verticalScale(20),
+    marginBottom: eatmart_verticalScale(16),
   },
   eatm_screen_categoryHeaderIcon: {
-    width: eatmart_scale(70),
-    height: eatmart_scale(70),
-    borderRadius: eatmart_scale(35),
+    width: eatmart_scale(60),
+    height: eatmart_scale(60),
+    borderRadius: eatmart_scale(30),
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: eatmart_scale(18),
+    marginRight: eatmart_scale(14),
     backgroundColor: EATMART_COLORS.grayBg,
   },
   eatm_screen_categoryHeaderEmoji: {
-    fontSize: eatmart_fontScale(44),
+    fontSize: eatmart_fontScale(38),
   },
   eatm_screen_categoryHeaderInfo: {
     flex: 1,
@@ -3149,23 +3164,25 @@ const eatmart_styles = StyleSheet.create({
     ...EATMART_TYPOGRAPHY.h3,
     color: EATMART_COLORS.text.primary,
     fontWeight: '700',
-    marginBottom: eatmart_verticalScale(2),
+    marginBottom: eatmart_verticalScale(1),
+    fontSize: eatmart_fontScale(22),
   },
   eatm_screen_categoryHeaderSubtitle: {
     ...EATMART_TYPOGRAPHY.body2,
     color: EATMART_COLORS.text.secondary,
+    fontSize: eatmart_fontScale(12),
   },
   eatm_screen_filterContainer: {
     paddingHorizontal: eatmart_scale(16),
-    marginBottom: eatmart_verticalScale(20),
+    marginBottom: eatmart_verticalScale(16),
   },
   eatm_screen_filtersScrollContent: {
-    gap: eatmart_scale(10),
+    gap: eatmart_scale(8),
   },
   eatm_screen_filterChip: {
-    paddingHorizontal: eatmart_scale(18),
-    paddingVertical: eatmart_verticalScale(8),
-    borderRadius: eatmart_scale(30),
+    paddingHorizontal: eatmart_scale(14),
+    paddingVertical: eatmart_verticalScale(6),
+    borderRadius: eatmart_scale(20),
     borderWidth: 1,
     borderColor: EATMART_COLORS.border.default,
     backgroundColor: EATMART_COLORS.white,
@@ -3178,6 +3195,7 @@ const eatmart_styles = StyleSheet.create({
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.text.secondary,
     fontWeight: '500',
+    fontSize: eatmart_fontScale(11),
   },
   eatm_screen_filterChipTextActive: {
     color: EATMART_COLORS.white,
@@ -3185,7 +3203,7 @@ const eatmart_styles = StyleSheet.create({
   eatm_screen_categoryGridRow: {
     justifyContent: 'space-between',
     paddingHorizontal: eatmart_scale(16),
-    marginBottom: eatmart_verticalScale(12),
+    marginBottom: eatmart_verticalScale(10),
   },
   eatm_screen_categoryGridContent: {
     paddingBottom: eatmart_verticalScale(20),
@@ -3193,56 +3211,56 @@ const eatmart_styles = StyleSheet.create({
 
   eatm_screen_similarItemsContainer: {
     paddingHorizontal: eatmart_scale(16),
-    gap: eatmart_scale(12),
+    gap: eatmart_scale(10),
   },
   eatm_screen_similarItemCard: {
-    width: eatmart_scale(130),
-    borderRadius: eatmart_scale(12),
+    width: eatmart_scale(120),
+    borderRadius: eatmart_scale(10),
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: EATMART_COLORS.border.light,
     backgroundColor: EATMART_COLORS.white,
-    marginRight: eatmart_scale(12),
+    marginRight: eatmart_scale(10),
   },
   eatm_screen_similarItemImage: {
     width: '100%',
-    height: eatmart_scale(130),
+    height: eatmart_scale(120),
     backgroundColor: EATMART_COLORS.grayBg,
   },
   eatm_screen_similarItemInfo: {
-    padding: eatmart_scale(10),
+    padding: eatmart_scale(8),
   },
   eatm_screen_similarItemName: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.text.primary,
     fontWeight: '500',
-    fontSize: eatmart_fontScale(11),
-    marginBottom: eatmart_verticalScale(2),
-    lineHeight: eatmart_fontScale(14),
+    fontSize: eatmart_fontScale(10),
+    marginBottom: eatmart_verticalScale(1),
+    lineHeight: eatmart_fontScale(13),
   },
   eatm_screen_similarItemWeight: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.text.tertiary,
-    fontSize: eatmart_fontScale(10),
-    marginBottom: eatmart_verticalScale(4),
+    fontSize: eatmart_fontScale(9),
+    marginBottom: eatmart_verticalScale(3),
   },
   eatm_screen_similarItemPriceContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: eatmart_scale(6),
+    gap: eatmart_scale(4),
     flexWrap: 'wrap',
   },
   eatm_screen_similarItemPrice: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.text.primary,
     fontWeight: '700',
-    fontSize: eatmart_fontScale(12),
+    fontSize: eatmart_fontScale(11),
   },
   eatm_screen_similarItemOriginalPrice: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.text.tertiary,
     textDecorationLine: 'line-through',
-    fontSize: eatmart_fontScale(10),
+    fontSize: eatmart_fontScale(9),
   },
 
   eatm_screen_itemDetailModalOverlay: {
@@ -3251,8 +3269,8 @@ const eatmart_styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   eatm_screen_itemDetailModalContainer: {
-    borderTopLeftRadius: eatmart_scale(24),
-    borderTopRightRadius: eatmart_scale(24),
+    borderTopLeftRadius: eatmart_scale(20),
+    borderTopRightRadius: eatmart_scale(20),
     overflow: 'hidden',
     height: screenHeight * 0.9,
     backgroundColor: EATMART_COLORS.white,
@@ -3269,13 +3287,13 @@ const eatmart_styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: eatmart_scale(16),
-    paddingVertical: eatmart_verticalScale(12),
+    paddingVertical: eatmart_verticalScale(10),
     zIndex: 10,
   },
   eatm_screen_itemDetailHeaderButton: {
-    width: eatmart_scale(44),
-    height: eatmart_scale(44),
-    borderRadius: eatmart_scale(22),
+    width: eatmart_scale(40),
+    height: eatmart_scale(40),
+    borderRadius: eatmart_scale(20),
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: EATMART_COLORS.white,
@@ -3298,134 +3316,137 @@ const eatmart_styles = StyleSheet.create({
   },
   eatm_screen_itemDetailDiscountBadge: {
     position: 'absolute',
-    top: eatmart_verticalScale(16),
-    left: eatmart_scale(16),
-    paddingHorizontal: eatmart_scale(12),
-    paddingVertical: eatmart_verticalScale(6),
-    borderRadius: eatmart_scale(8),
+    top: eatmart_verticalScale(12),
+    left: eatmart_scale(12),
+    paddingHorizontal: eatmart_scale(10),
+    paddingVertical: eatmart_verticalScale(4),
+    borderRadius: eatmart_scale(6),
     zIndex: 5,
   },
   eatm_screen_itemDetailDiscountText: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.white,
     fontWeight: '700',
-    fontSize: eatmart_fontScale(13),
+    fontSize: eatmart_fontScale(12),
   },
   eatm_screen_itemDetailExpressBadge: {
     position: 'absolute',
-    top: eatmart_verticalScale(16),
-    right: eatmart_scale(16),
+    top: eatmart_verticalScale(12),
+    right: eatmart_scale(12),
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: eatmart_scale(10),
-    paddingVertical: eatmart_verticalScale(6),
-    borderRadius: eatmart_scale(8),
-    gap: eatmart_scale(4),
+    paddingHorizontal: eatmart_scale(8),
+    paddingVertical: eatmart_verticalScale(4),
+    borderRadius: eatmart_scale(6),
+    gap: eatmart_scale(3),
     zIndex: 5,
   },
   eatm_screen_itemDetailExpressText: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.white,
     fontWeight: '600',
-    fontSize: eatmart_fontScale(11),
+    fontSize: eatmart_fontScale(10),
   },
   eatm_screen_itemDetailInfoSection: {
-    padding: eatmart_scale(20),
+    padding: eatmart_scale(16),
     borderBottomWidth: 1,
     borderBottomColor: EATMART_COLORS.border.light,
   },
   eatm_screen_itemDetailBrand: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.text.secondary,
-    marginBottom: eatmart_verticalScale(4),
-    fontSize: eatmart_fontScale(12),
+    marginBottom: eatmart_verticalScale(2),
+    fontSize: eatmart_fontScale(11),
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   eatm_screen_itemDetailName: {
     ...EATMART_TYPOGRAPHY.h3,
     color: EATMART_COLORS.text.primary,
-    marginBottom: eatmart_verticalScale(4),
+    marginBottom: eatmart_verticalScale(2),
     fontWeight: '700',
-    fontSize: eatmart_fontScale(24),
+    fontSize: eatmart_fontScale(22),
   },
   eatm_screen_itemDetailWeight: {
     ...EATMART_TYPOGRAPHY.body2,
     color: EATMART_COLORS.text.secondary,
-    marginBottom: eatmart_verticalScale(8),
+    marginBottom: eatmart_verticalScale(6),
+    fontSize: eatmart_fontScale(12),
   },
   eatm_screen_itemDetailRatingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: eatmart_verticalScale(12),
-    gap: eatmart_scale(8),
+    marginBottom: eatmart_verticalScale(10),
+    gap: eatmart_scale(6),
   },
   eatm_screen_itemDetailRating: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: eatmart_scale(8),
-    paddingVertical: eatmart_verticalScale(3),
-    borderRadius: eatmart_scale(6),
-    gap: eatmart_scale(4),
+    paddingHorizontal: eatmart_scale(6),
+    paddingVertical: eatmart_verticalScale(2),
+    borderRadius: eatmart_scale(4),
+    gap: eatmart_scale(2),
     backgroundColor: EATMART_COLORS.rating,
   },
   eatm_screen_itemDetailRatingText: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.white,
     fontWeight: '600',
-    fontSize: eatmart_fontScale(12),
+    fontSize: eatmart_fontScale(10),
   },
   eatm_screen_itemDetailReviews: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.text.secondary,
-    fontSize: eatmart_fontScale(12),
+    fontSize: eatmart_fontScale(11),
   },
   eatm_screen_itemDetailPriceSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: eatmart_scale(10),
-    marginBottom: eatmart_verticalScale(12),
+    gap: eatmart_scale(8),
+    marginBottom: eatmart_verticalScale(10),
   },
   eatm_screen_itemDetailCurrentPrice: {
     ...EATMART_TYPOGRAPHY.h3,
     color: EATMART_COLORS.text.primary,
     fontWeight: '700',
-    fontSize: eatmart_fontScale(24),
+    fontSize: eatmart_fontScale(22),
   },
   eatm_screen_itemDetailOriginalPrice: {
     ...EATMART_TYPOGRAPHY.body1,
     color: EATMART_COLORS.text.tertiary,
     textDecorationLine: 'line-through',
+    fontSize: eatmart_fontScale(14),
   },
   eatm_screen_itemDetailSavedBadge: {
-    paddingHorizontal: eatmart_scale(8),
-    paddingVertical: eatmart_verticalScale(3),
-    borderRadius: eatmart_scale(6),
+    paddingHorizontal: eatmart_scale(6),
+    paddingVertical: eatmart_verticalScale(2),
+    borderRadius: eatmart_scale(4),
     backgroundColor: '#FFF5E6',
   },
   eatm_screen_itemDetailSavedPrice: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.success,
     fontWeight: '600',
-    fontSize: eatmart_fontScale(11),
+    fontSize: eatmart_fontScale(10),
   },
   eatm_screen_itemDetailOutOfStock: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: eatmart_scale(8),
-    paddingVertical: eatmart_verticalScale(12),
-    borderRadius: eatmart_scale(12),
-    marginTop: eatmart_verticalScale(8),
+    gap: eatmart_scale(6),
+    paddingVertical: eatmart_verticalScale(10),
+    borderRadius: eatmart_scale(10),
+    marginTop: eatmart_verticalScale(6),
     backgroundColor: EATMART_COLORS.grayBg,
   },
   eatm_screen_itemDetailOutOfStockText: {
     ...EATMART_TYPOGRAPHY.body2,
     color: EATMART_COLORS.danger,
     fontWeight: '600',
+    fontSize: eatmart_fontScale(12),
   },
   eatm_screen_itemDetailSection: {
-    padding: eatmart_scale(20),
+    padding: eatmart_scale(16),
     borderBottomWidth: 1,
     borderBottomColor: EATMART_COLORS.border.light,
   },
@@ -3433,35 +3454,37 @@ const eatmart_styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: eatmart_verticalScale(16),
+    marginBottom: eatmart_verticalScale(12),
   },
   eatm_screen_itemDetailSectionTitle: {
     ...EATMART_TYPOGRAPHY.h4,
     color: EATMART_COLORS.text.primary,
     fontWeight: '700',
+    fontSize: eatmart_fontScale(16),
   },
   eatm_screen_itemDetailSectionViewAll: {
     ...EATMART_TYPOGRAPHY.body2,
     color: EATMART_COLORS.primary,
     fontWeight: '600',
+    fontSize: eatmart_fontScale(12),
   },
   eatm_screen_itemDetailDescription: {
-    marginBottom: eatmart_verticalScale(16),
+    marginBottom: eatmart_verticalScale(12),
   },
   eatm_screen_itemDetailDescriptionText: {
     ...EATMART_TYPOGRAPHY.body2,
     color: EATMART_COLORS.text.secondary,
-    lineHeight: eatmart_fontScale(22),
-    fontSize: eatmart_fontScale(14),
+    lineHeight: eatmart_fontScale(20),
+    fontSize: eatmart_fontScale(13),
   },
   eatm_screen_itemDetailReadMore: {
-    marginTop: eatmart_verticalScale(6),
+    marginTop: eatmart_verticalScale(4),
   },
   eatm_screen_itemDetailReadMoreText: {
     ...EATMART_TYPOGRAPHY.caption,
     color: EATMART_COLORS.primary,
     fontWeight: '600',
-    fontSize: eatmart_fontScale(12),
+    fontSize: eatmart_fontScale(11),
   },
   eatm_screen_itemDetailBottomBar: {
     position: 'absolute',
@@ -3470,9 +3493,9 @@ const eatmart_styles = StyleSheet.create({
     right: 0,
     borderTopWidth: 1,
     borderTopColor: EATMART_COLORS.border.light,
-    paddingHorizontal: eatmart_scale(20),
-    paddingTop: eatmart_verticalScale(12),
-    paddingBottom: eatmart_verticalScale(16),
+    paddingHorizontal: eatmart_scale(16),
+    paddingTop: eatmart_verticalScale(10),
+    paddingBottom: eatmart_verticalScale(12),
     backgroundColor: EATMART_COLORS.white,
     shadowColor: EATMART_COLORS.black,
     shadowOffset: { width: 0, height: -2 },
@@ -3484,21 +3507,21 @@ const eatmart_styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: eatmart_scale(20),
-    paddingVertical: eatmart_verticalScale(14),
-    borderRadius: eatmart_scale(12),
+    paddingHorizontal: eatmart_scale(16),
+    paddingVertical: eatmart_verticalScale(12),
+    borderRadius: eatmart_scale(10),
     backgroundColor: EATMART_COLORS.primary,
   },
   eatm_screen_itemDetailAddButtonText: {
     ...EATMART_TYPOGRAPHY.button,
     color: EATMART_COLORS.white,
-    fontSize: eatmart_fontScale(14),
+    fontSize: eatmart_fontScale(13),
     fontWeight: '600',
   },
   eatm_screen_itemDetailAddButtonPrice: {
     ...EATMART_TYPOGRAPHY.button,
     color: EATMART_COLORS.white,
-    fontSize: eatmart_fontScale(14),
+    fontSize: eatmart_fontScale(13),
     fontWeight: '600',
   },
   eatm_screen_itemDetailQuantityContainer: {
@@ -3507,13 +3530,13 @@ const eatmart_styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: EATMART_COLORS.primary,
-    borderRadius: eatmart_scale(12),
-    padding: eatmart_scale(4),
+    borderRadius: eatmart_scale(10),
+    padding: eatmart_scale(2),
     backgroundColor: EATMART_COLORS.white,
   },
   eatm_screen_itemDetailQuantityButton: {
-    width: eatmart_scale(48),
-    height: eatmart_scale(48),
+    width: eatmart_scale(42),
+    height: eatmart_scale(42),
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -3521,19 +3544,19 @@ const eatmart_styles = StyleSheet.create({
     ...EATMART_TYPOGRAPHY.h3,
     color: EATMART_COLORS.primary,
     fontWeight: '600',
-    fontSize: eatmart_fontScale(20),
+    fontSize: eatmart_fontScale(18),
   },
   eatm_screen_itemDetailQuantityText: {
     ...EATMART_TYPOGRAPHY.h3,
     color: EATMART_COLORS.text.primary,
     fontWeight: '600',
-    minWidth: eatmart_scale(50),
+    minWidth: eatmart_scale(45),
     textAlign: 'center',
-    fontSize: eatmart_fontScale(18),
+    fontSize: eatmart_fontScale(16),
   },
 
   eatm_screen_forYouSection: {
-    marginBottom: eatmart_verticalScale(24),
+    marginBottom: eatmart_verticalScale(20),
   },
 });
 

@@ -64,7 +64,6 @@ interface Order {
 const PastOrdersScreen = () => {
   const navigation = useNavigation();
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState('all');
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -130,18 +129,65 @@ const PastOrdersScreen = () => {
     }
   };
 
+  // Enhanced search function that searches across multiple fields
+  const searchOrders = (query: string) => {
+    if (!query.trim()) return orders;
+    
+    const lowerQuery = query.toLowerCase().trim();
+    
+    return orders.filter(order => {
+      // Search by restaurant name
+      const restaurantName = order.delivery_address?.restaurant_name?.toLowerCase() || '';
+      if (restaurantName.includes(lowerQuery)) return true;
+      
+      // Search by order number
+      const orderNumber = order.order_number?.toLowerCase() || '';
+      if (orderNumber.includes(lowerQuery)) return true;
+      
+      // Search by status
+      const status = order.status?.toLowerCase() || '';
+      if (status.includes(lowerQuery)) return true;
+      
+      // Search by date (formatted)
+      const formattedDate = formatDate(order.placed_on).toLowerCase();
+      if (formattedDate.includes(lowerQuery)) return true;
+      
+      // Search by price
+      const totalPrice = order.total?.toString() || '';
+      if (totalPrice.includes(lowerQuery)) return true;
+      
+      // Search through all items
+      if (order.items && order.items.length > 0) {
+        const hasMatchingItem = order.items.some(item => {
+          const itemName = item.item_name?.toLowerCase() || '';
+          const itemQuantity = item.quantity?.toString() || '';
+          const itemPrice = item.unit_price?.toString() || '';
+          
+          return itemName.includes(lowerQuery) || 
+                 itemQuantity.includes(lowerQuery) || 
+                 itemPrice.includes(lowerQuery);
+        });
+        if (hasMatchingItem) return true;
+      }
+      
+      // Search by delivery address fields
+      const address = order.delivery_address?.address?.toLowerCase() || '';
+      const landmark = order.delivery_address?.landmark?.toLowerCase() || '';
+      const fullName = order.delivery_address?.full_name?.toLowerCase() || '';
+      const phoneNumber = order.delivery_address?.phone_number?.toLowerCase() || '';
+      
+      if (address.includes(lowerQuery) || 
+          landmark.includes(lowerQuery) || 
+          fullName.includes(lowerQuery) || 
+          phoneNumber.includes(lowerQuery)) {
+        return true;
+      }
+      
+      return false;
+    });
+  };
 
-  // Filter orders based on search and status
-  const filteredOrders = orders.filter(order => {
-    const matchesSearch = order.delivery_address?.restaurant_name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                         order.items?.some(item => item.item_name?.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    const matchesFilter = activeFilter === 'all' || 
-                         (activeFilter === 'delivered' && order.status === 'Delivered') ||
-                         (activeFilter === 'pending' && (order.status === 'Pending' || order.status === 'On the way'));
-    
-    return matchesSearch && matchesFilter;
-  });
+  const filteredOrders = searchOrders(searchQuery);
 
   const savePastKitchenDetails = useCallback(async (details: PastKitchenDetails) => {
     try {
@@ -153,7 +199,6 @@ const PastOrdersScreen = () => {
 
   const handleReorder = async (order: Order) => {
     try {
-
       setReordering(order.order_number);
       const newPastKitchenDetails = {
         id: order.restaurant_id,
@@ -264,12 +309,16 @@ const PastOrdersScreen = () => {
             styles.statusBadge,
             item.status === 'Delivered' ? styles.deliveredBadge : styles.onthewayBadge
           ]}>
-            <Text style={styles.statusText}>{item.status || 'Pending'}</Text>
+            <Text style={styles.statusText}>
+              {item?.status?.trim().toLowerCase() === 'in progress'
+                ? 'Payment Failed'
+                : (item.status || 'Pending')}
+            </Text>
           </View>
         </View>
 
         <View style={styles.actionButtons}>
-          {item.status !== 'Delivered' && item.status !== 'Cancelled' && item.status !== 'Refunded' ? (
+          {item.status !== 'Delivered' && item.status !== 'Cancelled' && item.status !== 'Refunded' && item.status !== 'In Progress' ? (
             <TouchableOpacity 
               style={styles.trackButton}
               onPress={() => handleTrackOrder(item)}
@@ -349,10 +398,12 @@ const PastOrdersScreen = () => {
         <Icon name="search" size={20} color="#888" style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search by kitchen or dish..."
+          placeholder="Search by kitchen, dish, order number, status, date, price, or address..."
           placeholderTextColor="#888"
           value={searchQuery}
           onChangeText={setSearchQuery}
+          autoCapitalize="none"
+          autoCorrect={false}
         />
         {searchQuery.length > 0 && (
           <TouchableOpacity onPress={() => setSearchQuery('')}>
@@ -361,26 +412,14 @@ const PastOrdersScreen = () => {
         )}
       </View>
 
-      <View style={styles.filterContainer}>
-        <TouchableOpacity 
-          style={[styles.filterTab, activeFilter === 'all' && styles.activeFilterTab]}
-          onPress={() => setActiveFilter('all')}
-        >
-          <Text style={[styles.filterText, activeFilter === 'all' && styles.activeFilterText]}>All Orders</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.filterTab, activeFilter === 'delivered' && styles.activeFilterTab]}
-          onPress={() => setActiveFilter('delivered')}
-        >
-          <Text style={[styles.filterText, activeFilter === 'delivered' && styles.activeFilterText]}>Delivered</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.filterTab, activeFilter === 'pending' && styles.activeFilterTab]}
-          onPress={() => setActiveFilter('pending')}
-        >
-          <Text style={[styles.filterText, activeFilter === 'pending' && styles.activeFilterText]}>Pending</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Search results info */}
+      {searchQuery.length > 0 && (
+        <View style={styles.searchResultsInfo}>
+          <Text style={styles.searchResultsText}>
+            Found {filteredOrders.length} order{filteredOrders.length !== 1 ? 's' : ''} for "{searchQuery}"
+          </Text>
+        </View>
+      )}
 
       <FlatList
         data={filteredOrders}
@@ -399,8 +438,22 @@ const PastOrdersScreen = () => {
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Icon name="fast-food-outline" size={60} color="#ddd" />
-            <Text style={styles.emptyText}>No orders found</Text>
-            <Text style={styles.emptySubtext}>Try adjusting your search or filters</Text>
+            <Text style={styles.emptyText}>
+              {searchQuery.length > 0 ? 'No matching orders found' : 'No orders found'}
+            </Text>
+            <Text style={styles.emptySubtext}>
+              {searchQuery.length > 0 
+                ? 'Try a different search term or clear the search' 
+                : 'Your order history will appear here'}
+            </Text>
+            {searchQuery.length > 0 && (
+              <TouchableOpacity 
+                style={styles.clearSearchButton}
+                onPress={() => setSearchQuery('')}
+              >
+                <Text style={styles.clearSearchText}>Clear Search</Text>
+              </TouchableOpacity>
+            )}
           </View>
         }
       />
@@ -445,31 +498,31 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   searchInput: {
+    padding:10,
     flex: 1,
     fontSize: 14,
     color: '#333',
   },
-  filterContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginHorizontal: 16,
-    marginBottom: 16,
-  },
-  filterTab: {
-    paddingVertical: 8,
+  searchResultsInfo: {
     paddingHorizontal: 16,
-    borderRadius: 20,
+    paddingBottom: 8,
   },
-  activeFilterTab: {
-    backgroundColor: '#E65C00',
-  },
-  filterText: {
-    fontSize: 14,
+  searchResultsText: {
+    fontSize: 12,
     color: '#666',
-    fontWeight: '500',
+    fontStyle: 'italic',
   },
-  activeFilterText: {
-    color: '#fff',
+  clearSearchButton: {
+    marginTop: 16,
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  clearSearchText: {
+    color: '#E65C00',
+    fontWeight: '600',
+    fontSize: 14,
   },
   loadingContainer: {
     flex: 1,
@@ -510,6 +563,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+    marginTop: 50,
   },
   emptyText: {
     fontSize: 18,
@@ -521,6 +575,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#999',
     marginTop: 8,
+    textAlign: 'center',
   },
   listContainer: {
     paddingHorizontal: 16,
