@@ -1,6 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Permissions -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.INTERNET" />
@@ -8,180 +9,133 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-    
-    <!-- CRITICAL: Add this permission for better app detection on Android 11+ -->
+
+    <!-- ⚠️ Play Store sensitive -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
 
-    <!-- ENHANCED QUERIES SECTION for UPI Apps -->
+    <!-- ================= QUERIES ================= -->
     <queries>
-        <!-- UPI Scheme - Allows detecting any app that handles upi:// scheme -->
+
+        <!-- UPI Intent -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="upi" />
             <category android:name="android.intent.category.BROWSABLE" />
             <category android:name="android.intent.category.DEFAULT" />
         </intent>
-        
-        <!-- Specific UPI Apps Package Names - CORRECTED -->
-        <package android:name="com.google.android.apps.nbu.paisa" /> <!-- Google Pay - CORRECTED -->
-        <package android:name="com.phonepe.app" /> <!-- PhonePe -->
-        <package android:name="net.one97.paytm" /> <!-- Paytm -->
-        <package android:name="in.org.npci.upiapp" /> <!-- BHIM UPI -->
-        <package android:name="in.amazon.mShop.android.shopping" /> <!-- Amazon Pay - CORRECTED -->
-        <package android:name="com.whatsapp" /> <!-- WhatsApp Pay -->
-        <package android:name="com.cred.club" /> <!-- CRED Pay -->
-        <package android:name="com.bajaj.finserv" /> <!-- Bajaj Pay -->
-        <package android:name="com.myairtelapp" /> <!-- Airtel Payments Bank -->
-        <package android:name="com.freecharge.android" /> <!-- Freecharge -->
-        <package android:name="com.mobikwik_new" /> <!-- MobiKwik -->
-        <package android:name="com.olacabs.olamoney" /> <!-- Ola Money -->
-        <package android:name="com.ybl" /> <!-- YES BANK Pay -->
-        <package android:name="com.sbi.SBIBuddy" /> <!-- SBI Pay -->
-        <package android:name="com.hdfcbank.hdfcpayzapp" /> <!-- HDFC PayZapp -->
-        <package android:name="com.icici.bhim" /> <!-- ICICI iMobile Pay -->
-        <package android:name="com.axis.mobile" /> <!-- Axis Bank -->
-        <package android:name="com.kotak.app" /> <!-- Kotak Bank -->
-        
-        <!-- App-specific URL Schemes for UPI Apps -->
+
+        <!-- Popular UPI Apps -->
+        <package android:name="com.google.android.apps.nbu.paisa" />
+        <package android:name="com.google.android.apps.nbu.paisa.user" />
+        <package android:name="com.phonepe.app" />
+        <package android:name="net.one97.paytm" />
+        <package android:name="in.org.npci.upiapp" />
+        <package android:name="in.amazon.mShop.android.shopping" />
+        <package android:name="com.whatsapp" />
+        <package android:name="com.cred.club" />
+        <package android:name="com.bajaj.finserv" />
+        <package android:name="com.myairtelapp" />
+        <package android:name="com.freecharge.android" />
+        <package android:name="com.mobikwik_new" />
+        <package android:name="com.olacabs.olamoney" />
+        <package android:name="com.ybl" />
+        <package android:name="com.sbi.SBIBuddy" />
+        <package android:name="com.hdfcbank.hdfcpayzapp" />
+        <package android:name="com.icici.bhim" />
+        <package android:name="com.axis.mobile" />
+        <package android:name="com.kotak.app" />
+
+        <!-- Additional Bank / UPI Apps -->
+        <package android:name="com.upi.axispay"/>
+        <package android:name="com.fisglobal.bandhanupi.app"/>
+        <package android:name="com.bankofbaroda.upi"/>
+        <package android:name="com.canarabank.mobility"/>
+        <package android:name="com.citiuat"/>
+        <package android:name="com.dbs.in.digitalbank"/>
+        <package android:name="com.olive.dcb.upi"/>
+        <package android:name="com.finopaytech.bpayfino"/>
+        <package android:name="com.snapwork.hdfc"/>
+        <package android:name="com.mgs.hsbcupi"/>
+        <package android:name="com.csam.icici.bank.imobile"/>
+        <package android:name="com.icicibank.pockets"/>
+        <package android:name="com.euronet.iobupi"/>
+        <package android:name="com.mgs.induspsp"/>
+        <package android:name="com.fss.jnkpsp"/>
+        <package android:name="com.jio.myjio"/>
+        <package android:name="com.mycompany.kvb"/>
+        <package android:name="com.kvb.mobilebanking"/>
+        <package android:name="com.lcode.smartz"/>
+        <package android:name="com.msf.kbank.mobile"/>
+        <package android:name="com.upi.federalbank.org.lotza"/>
+        <package android:name="com.infrasofttech.mahaupi"/>
+        <package android:name="com.mipay.in.wallet"/>
+        <package android:name="com.onymy.paybee.prod"/>
+        <package android:name="com.Version1"/>
+        <package android:name="com.samsung.android.spay"/>
+        <package android:name="com.sbi.upi"/>
+        <package android:name="com.SIBMobile"/>
+        <package android:name="com.truecaller"/>
+        <package android:name="com.infrasoft.uboi"/>
+        <package android:name="com.lcode.ucoupi"/>
+        <package android:name="com.YesBank"/>
+        <package android:name="com.dreamplug.androidapp"/>
+        <package android:name="money.bullet"/>
+
+        <!-- UPI App Schemes -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="tez" />
             <category android:name="android.intent.category.BROWSABLE" />
             <category android:name="android.intent.category.DEFAULT" />
         </intent>
+
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="gpay" />
             <category android:name="android.intent.category.BROWSABLE" />
             <category android:name="android.intent.category.DEFAULT" />
         </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="googlepay" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <category android:name="android.intent.category.DEFAULT" />
-        </intent>
+
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="phonepe" />
             <category android:name="android.intent.category.BROWSABLE" />
             <category android:name="android.intent.category.DEFAULT" />
         </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="paytmmp" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <category android:name="android.intent.category.DEFAULT" />
-        </intent>
+
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="paytm" />
             <category android:name="android.intent.category.BROWSABLE" />
             <category android:name="android.intent.category.DEFAULT" />
         </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="amazonpay" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <category android:name="android.intent.category.DEFAULT" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="bhim" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <category android:name="android.intent.category.DEFAULT" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="bhimupi" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <category android:name="android.intent.category.DEFAULT" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="whatsapp" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <category android:name="android.intent.category.DEFAULT" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="cred" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <category android:name="android.intent.category.DEFAULT" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="bajajpay" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <category android:name="android.intent.category.DEFAULT" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="airtel" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <category android:name="android.intent.category.DEFAULT" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="freecharge" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <category android:name="android.intent.category.DEFAULT" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="mobikwik" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <category android:name="android.intent.category.DEFAULT" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="olamoney" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <category android:name="android.intent.category.DEFAULT" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="ybl" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <category android:name="android.intent.category.DEFAULT" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="sbibuddy" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <category android:name="android.intent.category.DEFAULT" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="payzapp" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <category android:name="android.intent.category.DEFAULT" />
-        </intent>
-        
-        <!-- Required for WebView and other intents -->
+
+        <!-- Web + SDK -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
             <category android:name="android.intent.category.BROWSABLE" />
             <category android:name="android.intent.category.DEFAULT" />
         </intent>
+
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="http" />
             <category android:name="android.intent.category.BROWSABLE" />
             <category android:name="android.intent.category.DEFAULT" />
         </intent>
-        
-        <!-- Required for Cashfree SDK -->
+
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="cashfree" />
             <category android:name="android.intent.category.BROWSABLE" />
             <category android:name="android.intent.category.DEFAULT" />
         </intent>
+
     </queries>
 
+    <!-- ================= APPLICATION ================= -->
     <application
         android:name=".MainApplication"
         android:label="@string/app_name"
@@ -201,12 +155,13 @@
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize"
             android:exported="true">
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            
-            <!-- IMPORTANT: Add intent filter for Cashfree payment callback -->
+
+            <!-- Payment Callback -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -216,75 +171,31 @@
                 <data android:scheme="cashfree" />
                 <data android:host="payment-result" />
             </intent-filter>
-            
-            <!-- Add intent filter for UPI deep linking -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="upi" />
-            </intent-filter>
-            
-            <!-- Add intent filter for custom scheme -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="eatoormoney" />
-            </intent-filter>
-            
-            <!-- Add intent filter for HTTP/HTTPS URLs -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" />
-                <data android:scheme="http" />
-                <data android:host="eatoor.com" />
-                <data android:pathPrefix="/payment" />
-            </intent-filter>
+
         </activity>
 
-        <!-- Cashfree SDK Activity -->
+        <!-- Cashfree -->
         <activity
             android:name="com.cashfree.pg.CFPaymentActivity"
-            android:configChanges="orientation|screenSize"
-            android:launchMode="singleTop"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="cashfree" />
-            </intent-filter>
-        </activity>
+            android:exported="true" />
 
-        <!-- Razorpay conflict resolution -->
+        <!-- Razorpay -->
         <activity
             android:name="com.razorpay.CheckoutActivity"
             android:exported="true"
             tools:replace="android:exported" />
 
-        <!-- OTP Autofill -->
-        <activity
-            android:name="com.facebook.react.common.otp.OtpRetrieverBroadcastReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="com.google.android.gms.auth.api.phone.SMS_RETRIEVED" />
-            </intent-filter>
-        </activity>
-
-        <!-- GOOGLE MAPS API KEY -->
+        <!-- Google Maps -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyBKOWlVTzhP7lRcNEHbT2SNz-W_bYx3v28" />
+            android:value="YOUR_API_KEY" />
 
-        <!-- ADMOB -->
-        <meta-data 
+        <!-- AdMob -->
+        <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-3940256099942544~3347511713" />
 
-        <!-- Cashfree Configuration -->
+        <!-- Cashfree Env -->
         <meta-data
             android:name="cashfree.environment"
             android:value="SANDBOX" />

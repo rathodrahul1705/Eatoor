@@ -49,6 +49,16 @@ target 'Eatoor' do
           config.build_settings['MACH_O_TYPE'] = 'mh_dylib'
         end
       end
+      
+      # FIX: Disable consteval for fmt to work with Xcode 26.4
+      if target.name == 'fmt'
+        target.build_configurations.each do |config|
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FMT_USE_CONSTEVAL=0'
+          # Also ensure C++ standard is set appropriately
+          config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+        end
+      end
     end
   end
 end
