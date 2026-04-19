@@ -22,9 +22,9 @@ import { getWalletBalance, debitWallet } from '../../../api/wallet';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getSessionId } from '../../../utlis/utils';
 import { AuthContext } from '../../../context/AuthContext';
-import { PaymentModal } from './PaymentModal';
+import { PaymentModal } from './utils/PaymentModal';
 import {
-  getAllPaymentMethods
+  getAllPaymentMethods,
 } from './utils/UPIPaymentService';
 import {
   initiateBackendPayment,
@@ -38,7 +38,8 @@ import {
   UPIPaymentApp, 
   WalletPaymentMethod, 
   NetbankingBank,
-  SelectedPaymentType 
+  SelectedPaymentType,
+  SavedUPI
 } from '../home/utils/PaymentMethodModal';
 
 const { width, height } = Dimensions.get('window');
@@ -167,6 +168,7 @@ const CartScreen = ({ route, navigation }: any) => {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodsResponse | null>(null);
   const [selectedPaymentType, setSelectedPaymentType] = useState<SelectedPaymentType>(null);
   const [selectedUpiApp, setSelectedUpiApp] = useState<UPIPaymentApp | null>(null);
+  const [selectedSavedUPI, setSelectedSavedUPI] = useState<SavedUPI | null>(null);
   const [selectedWalletApp, setSelectedWalletApp] = useState<WalletPaymentMethod | null>(null);
   const [selectedBank, setSelectedBank] = useState<NetbankingBank | null>(null);
   const [selectedCardType, setSelectedCardType] = useState<'credit_card' | 'debit_card' | null>(null);
@@ -177,6 +179,7 @@ const CartScreen = ({ route, navigation }: any) => {
   const [savedUpiIds, setSavedUpiIds] = useState<any[]>([]);
   const [showSavedUpiIds, setShowSavedUpiIds] = useState(false);
   const [checkingApps, setCheckingApps] = useState(true);
+  const [isSavingUpi, setIsSavingUpi] = useState(false);
   
   // New states for VPA and payment method type
   const [selectedUpiVpa, setSelectedUpiVpa] = useState<string>('');
@@ -207,10 +210,19 @@ const CartScreen = ({ route, navigation }: any) => {
   const kitchenId = pastKitchenDetails?.id;
 
   // Load payment methods from API
-  const loadPaymentMethods = async () => {
+  const loadPaymentMethods = useCallback(async () => {
+    if (!userId && !isGuest) {
+      console.log('Waiting for userId to load payment methods...');
+      return;
+    }
+    
     setCheckingApps(true);
-    try {
-      const response = await getAllPaymentMethods();      
+    try {      
+      const response = userId
+        ? await getAllPaymentMethods(userId)
+        : await getAllPaymentMethods();
+      
+      console.log('Payment methods loaded:', response);
       setPaymentMethods(response);
       
       if (response.upi?.isActive && response.upi.apps) {
@@ -220,7 +232,7 @@ const CartScreen = ({ route, navigation }: any) => {
         setInstalledUpiApps(installedApps);
         setAllUpiApps(allApps);
         
-        if (installedApps.length > 0 && !selectedUpiApp) {
+        if (installedApps.length > 0 && !selectedUpiApp && !selectedSavedUPI) {
           setSelectedUpiApp(installedApps[0]);
         }
       } else {
@@ -235,72 +247,7 @@ const CartScreen = ({ route, navigation }: any) => {
     } finally {
       setCheckingApps(false);
     }
-  };
-
-  const loadSavedUpiIds = async () => {
-    try {
-      const saved = await AsyncStorage.getItem('savedUpiIds');
-      if (saved) {
-        setSavedUpiIds(JSON.parse(saved));
-      }
-    } catch (error) {
-      console.error('Error loading saved UPI IDs:', error);
-    }
-  };
-
-  const saveUpiIdsToStorage = async (upiIds: any[]) => {
-    try {
-      await AsyncStorage.setItem('savedUpiIds', JSON.stringify(upiIds));
-    } catch (error) {
-      console.error('Error saving UPI IDs:', error);
-    }
-  };
-
-  const addCustomUpiId = (upiId: string, vpa?: string) => {
-    if (!upiId.trim()) {
-      Alert.alert('Error', 'Please enter a valid UPI ID');
-      return;
-    }
-
-    const upiRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
-    if (!upiRegex.test(upiId)) {
-      Alert.alert('Invalid UPI ID', 'Please enter a valid UPI ID (e.g., username@okhdfcbank)');
-      return;
-    }
-
-    const newUpiId = {
-      id: Date.now().toString(),
-      upiId: upiId,
-      name: upiId.split('@')[0],
-      isDefault: savedUpiIds.length === 0,
-      createdAt: new Date().toISOString(),
-      vpa: vpa || upiId
-    };
-
-    const updatedUpiIds = [...savedUpiIds, newUpiId];
-    setSavedUpiIds(updatedUpiIds);
-    saveUpiIdsToStorage(updatedUpiIds);
-    Alert.alert('Success', 'UPI ID added successfully');
-  };
-
-  const deleteCustomUpiId = (id: string) => {
-    Alert.alert(
-      'Delete UPI ID',
-      'Are you sure you want to delete this UPI ID?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            const updatedUpiIds = savedUpiIds.filter(upi => upi.id !== id);
-            setSavedUpiIds(updatedUpiIds);
-            saveUpiIdsToStorage(updatedUpiIds);
-          }
-        }
-      ]
-    );
-  };
+  }, [userId, sessionId, isGuest]);
 
   const initializeSession = useCallback(async () => {
     try {
@@ -312,7 +259,8 @@ const CartScreen = ({ route, navigation }: any) => {
       
       const userData = await AsyncStorage.getItem("user");
       if (userData) {
-        setUser(JSON.parse(userData));
+        const parsedUser = JSON.parse(userData);
+        setUser(parsedUser);
       }
       
       return session;
@@ -324,11 +272,17 @@ const CartScreen = ({ route, navigation }: any) => {
     }
   }, []);
   
+  // Initialize session and load user data
   useEffect(() => {
     initializeSession();
-    loadPaymentMethods();
-    loadSavedUpiIds();
   }, []);
+
+  // Load payment methods when userId becomes available
+  useEffect(() => {
+    if (userId || sessionId) {
+      loadPaymentMethods();
+    }
+  }, [userId, sessionId, loadPaymentMethods]);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -356,10 +310,10 @@ const CartScreen = ({ route, navigation }: any) => {
   }, []);
 
   useEffect(() => {
-    if ((kitchenId && userId) || sessionId) {
+    if ((kitchenId && userId) || (kitchenId && sessionId)) {
       fetchCartData();
     }
-  }, [userId, kitchenId, addressId]);
+  }, [userId, kitchenId, addressId, sessionId]);
 
   useEffect(() => {
     if (userId) {
@@ -515,7 +469,7 @@ const CartScreen = ({ route, navigation }: any) => {
     
     const totalAmount = safePrice(cartData.billing_details?.total);
     
-    if (useWallet && walletBalance) {
+    if (useWallet && walletBalance && walletBalance.balance > 0) {
       const walletAmount = safePrice(walletBalance.balance);
       const amountAfterWallet = totalAmount - walletAmount;
       return Math.max(amountAfterWallet, 0);
@@ -559,6 +513,7 @@ const CartScreen = ({ route, navigation }: any) => {
   const getPaymentMethodId = (): number => {
     switch (selectedPaymentType) {
       case 'upi':
+      case 'saved_upi':
         return PAYMENT_METHODS.UPI;
       case 'wallet':
         return PAYMENT_METHODS.EATOOR_MONEY;
@@ -579,6 +534,8 @@ const CartScreen = ({ route, navigation }: any) => {
     switch (selectedPaymentType) {
       case 'upi':
         return selectedUpiPaymentMethodType || 'APP';
+      case 'saved_upi':
+        return 'VPA';
       case 'wallet':
         return 'WALLET';
       case 'cod':
@@ -592,6 +549,16 @@ const CartScreen = ({ route, navigation }: any) => {
     }
   };
 
+  const getUpiVpaForPayment = (): string => {
+    if (selectedSavedUPI) {
+      return selectedSavedUPI.raw_vpa || selectedSavedUPI.vpa;
+    }
+    if (selectedUpiApp) {
+      return selectedUpiApp.customUPIID || selectedUpiApp.vpa || selectedUpiApp.id;
+    }
+    return selectedUpiVpa || customUpiId;
+  };
+
   const updatePaymentAndCreateOrder = async (
     transactionId: string | null,
     paymentId: string | null,
@@ -599,13 +566,14 @@ const CartScreen = ({ route, navigation }: any) => {
     isWalletOnly: boolean = false,
     isCOD: boolean = false
   ): Promise<any> => {
-    if (!cartData || !kitchenId || !addressId || !userId) {
+    if (!cartData || !kitchenId || !addressId) {
       throw new Error('Required data missing');
     }
 
     try {
       const walletUsage = useWallet ? calculateWalletUsage() : 0;
       const finalAmount = calculateFinalAmount();
+      const upiVpa = getUpiVpaForPayment();
       
       const payload = {
         user_id: userId,
@@ -630,8 +598,8 @@ const CartScreen = ({ route, navigation }: any) => {
         coupon_discount: 0,
         discount_amount: 0,
         delivery_offer_applied: cartData.delivery_offer_exist,
-        upi_id: selectedUpiApp?.id || selectedUpiApp?.vpa || selectedUpiVpa || customUpiId,
-        vpa: selectedUpiVpa || selectedUpiApp?.vpa || customUpiId,
+        upi_id: upiVpa,
+        vpa: upiVpa,
         payment_method_type: getPaymentMethodType(),
         payment_gateway: selectedPaymentType?.toUpperCase() || 'UPI',
         order_reference: currentOrderRef,
@@ -659,13 +627,14 @@ const CartScreen = ({ route, navigation }: any) => {
     orderNumber: string,
     paymentStatus: number
   ): Promise<any> => {
-    if (!cartData || !kitchenId || !addressId || !userId) {
+    if (!cartData || !kitchenId || !addressId) {
       throw new Error('Required data missing');
     }
 
     try {
       const walletUsage = useWallet ? calculateWalletUsage() : 0;
       const finalAmount = calculateFinalAmount();
+      const upiVpa = getUpiVpaForPayment();
       
       const payload = {
         user_id: userId,
@@ -690,8 +659,8 @@ const CartScreen = ({ route, navigation }: any) => {
         coupon_discount: 0,
         discount_amount: 0,
         delivery_offer_applied: cartData.delivery_offer_exist,
-        upi_id: selectedUpiApp?.id || selectedUpiApp?.vpa || selectedUpiVpa || customUpiId,
-        vpa: selectedUpiVpa || selectedUpiApp?.vpa || customUpiId,
+        upi_id: upiVpa,
+        vpa: upiVpa,
         payment_method_type: getPaymentMethodType(),
         payment_gateway: selectedPaymentType?.toUpperCase() || 'UPI',
         order_reference: currentOrderRef || transactionId,
@@ -735,7 +704,7 @@ const CartScreen = ({ route, navigation }: any) => {
     resetPaymentState();
     
     setTimeout(() => {
-      if (selectedPaymentType === 'upi') {
+      if (selectedPaymentType === 'upi' || selectedPaymentType === 'saved_upi') {
         initiateUPIPaymentFlow();
       } else if (selectedPaymentType === 'wallet') {
         handleWalletPayment();
@@ -755,7 +724,7 @@ const CartScreen = ({ route, navigation }: any) => {
   };
 
   const initiateUPIPaymentFlow = async () => {
-    if (!cartData || !userId || !kitchenId || !addressId) {
+    if (!cartData || !kitchenId || !addressId) {
       Alert.alert('Error', 'Required information missing');
       return;
     }
@@ -775,7 +744,7 @@ const CartScreen = ({ route, navigation }: any) => {
     if (paymentInProgressRef.current) return;
     
     const customerDetails = await getCustomerDetails();
-    if (!customerDetails?.contact_number) {
+    if (!customerDetails?.contact_number && !isGuest) {
       Alert.alert('Login Required', 'Please login to make payment');
       return;
     }
@@ -795,6 +764,7 @@ const CartScreen = ({ route, navigation }: any) => {
       const tax = safePrice(cartData.billing_details.tax);
       const deliveryFee = safePrice(cartData.billing_details.delivery_amount);
       const quantity = calculateTotalQuantity(cartData.cart_details);
+      const upiVpa = getUpiVpaForPayment();
       
       const orderData = {
         user_id: userId,
@@ -819,18 +789,17 @@ const CartScreen = ({ route, navigation }: any) => {
         delivery_offer_applied: cartData.delivery_offer_exist || false,
         payment_gateway: selectedPaymentType?.toUpperCase() || 'UPI',
         productinfo: `Order from ${cartData.restaurant_name}`,
-        firstname: customerDetails.full_name || 'Customer',
-        email: customerDetails.email || 'customer@example.com',
-        phone: customerDetails.contact_number,
-        upi_id: selectedUpiApp?.id || selectedUpiApp?.vpa || selectedUpiVpa || customUpiId,
-        vpa: selectedUpiVpa || selectedUpiApp?.vpa || customUpiId,
+        firstname: customerDetails?.full_name || (user?.name) || 'Customer',
+        email: customerDetails?.email || (user?.email) || 'customer@example.com',
+        phone: customerDetails?.contact_number || (user?.mobile),
+        upi_id: upiVpa,
+        vpa: upiVpa,
         payment_method_type: getPaymentMethodType(),
         bank_code: selectedBank?.code,
         card_type: selectedCardType
       };
       
       const paymentInit = await initiateBackendPayment(orderData);
-      
       
       setCurrentPaymentData(paymentInit);
       setCurrentTransactionId(paymentInit.txnid);
@@ -839,18 +808,18 @@ const CartScreen = ({ route, navigation }: any) => {
       setCreatedOrderNumber(paymentInit.order_number);
       setCreatedOrderTotal(paymentInit.order_total);
       
-      if(getPaymentMethodType() == "APP"){
+      // For APP based UPI payment (not saved UPI)
+      if (getPaymentMethodType() === "APP" && selectedUpiApp && !selectedSavedUPI) {
         const upiResult = await processUPIPayment(paymentInit, selectedUpiApp?.id);
-
         if (!upiResult.success) {
           throw new Error(upiResult.error || 'Failed to initiate payment app');
         }
-
       }
-            
+      
       setPaymentModalStatus('pending');
       setPollingAttempts(0);
       
+      // Start polling for payment status
       setTimeout(() => {
         if (!paymentInProgressRef.current) return;
         
@@ -911,8 +880,8 @@ const CartScreen = ({ route, navigation }: any) => {
             setIsPaymentInProgress(false);
           },
           {
-            interval: 3000,
-            maxAttempts: 2,
+            interval: 5000,
+            maxAttempts: 10,
             timeout: 120000,
             onPending: (pendingInfo) => {
               setPollingAttempts(pendingInfo.attempts);
@@ -992,7 +961,7 @@ const CartScreen = ({ route, navigation }: any) => {
   };
 
   const handleCODPayment = async () => {
-    if (!cartData || !userId || !kitchenId || !addressId) {
+    if (!cartData || !kitchenId || !addressId) {
       Alert.alert('Error', 'Required information missing');
       return;
     }
@@ -1060,7 +1029,8 @@ const CartScreen = ({ route, navigation }: any) => {
         handleCODPayment();
         break;
       case 'upi':
-        if (selectedUpiApp || customUpiId) {
+      case 'saved_upi':
+        if (selectedUpiApp || selectedSavedUPI || customUpiId) {
           initiateUPIPaymentFlow();
         } else {
           setShowPaymentSectionModal(true);
@@ -1078,9 +1048,17 @@ const CartScreen = ({ route, navigation }: any) => {
   const selectPaymentMethod = (type: SelectedPaymentType, data?: any, vpa?: string, paymentMethodType?: string) => {
     setSelectedPaymentType(type);
     
+    // Reset selection states
+    setSelectedUpiApp(null);
+    setSelectedSavedUPI(null);
+    setSelectedWalletApp(null);
+    setSelectedBank(null);
+    setSelectedCardType(null);
+    setSelectedUpiVpa('');
+    setSelectedUpiPaymentMethodType('');
+    
     if (type === 'upi' && data) {
       setSelectedUpiApp(data);
-      // Store VPA and payment method type
       if (vpa) {
         setSelectedUpiVpa(vpa);
       } else if (data.customUPIID) {
@@ -1090,8 +1068,14 @@ const CartScreen = ({ route, navigation }: any) => {
       } else {
         setSelectedUpiVpa(data.id);
       }
-      
       setSelectedUpiPaymentMethodType(paymentMethodType || (data.customUPIID ? 'VPA' : 'APP'));
+    }
+    
+    if (type === 'saved_upi' && data) {
+      setSelectedSavedUPI(data);
+      const vpaToUse = data.raw_vpa || data.vpa;
+      setSelectedUpiVpa(vpaToUse);
+      setSelectedUpiPaymentMethodType('SAVED_UPI');
     }
     
     if (type === 'wallet' && data) {
@@ -1146,7 +1130,7 @@ const CartScreen = ({ route, navigation }: any) => {
   };
 
   const handleClearCart = () => {
-    if (!cartData || !kitchenId || !userId) return;
+    if (!cartData || !kitchenId) return;
     
     const clearCartItems = async () => {
       try {
@@ -1296,6 +1280,14 @@ const CartScreen = ({ route, navigation }: any) => {
   };
 
   const handleWalletToggle = () => {
+    const walletBalanceAmount = walletBalance?.balance || 0;
+    
+    // Don't allow toggling if balance is zero
+    if (walletBalanceAmount <= 0) {
+      Alert.alert('Insufficient Balance', 'Your Eatoor Money balance is zero. Please add money to use this payment method.');
+      return;
+    }
+    
     const newUseWallet = !useWallet;
     setUseWallet(newUseWallet);
     
@@ -1305,7 +1297,6 @@ const CartScreen = ({ route, navigation }: any) => {
       
       if (isEatoorMoneyAvailable) {
         const eatoorWallet = paymentMethods?.wallets?.wallets?.find(w => w.id === 'eatoor_money');
-        
         setSelectedPaymentType('wallet');
         if (eatoorWallet) {
           setSelectedWalletApp(eatoorWallet);
@@ -1316,7 +1307,6 @@ const CartScreen = ({ route, navigation }: any) => {
 
   const renderEatoorMoneySection = () => {
     const balance = walletBalance?.balance || 0;
-
     const isWalletActive = paymentMethods?.wallets?.isActive && paymentMethods?.wallets?.wallets?.length > 0;
     
     if (!isWalletActive) return null;
@@ -1327,7 +1317,7 @@ const CartScreen = ({ route, navigation }: any) => {
           <TouchableOpacity 
             style={styles.cartscreen_page_checkboxContainer}
             onPress={handleWalletToggle}
-            disabled={isPaymentInProgress}
+            disabled={isPaymentInProgress || balance <= 0}
           >
             <View style={[
               styles.cartscreen_page_checkbox,
@@ -1383,6 +1373,12 @@ const CartScreen = ({ route, navigation }: any) => {
             title: selectedUpiApp?.name || 'UPI', 
             subtitle: vpaDisplay || `Pay using UPI${methodTypeDisplay}`, 
             icon: 'phone-portrait-outline' 
+          };
+        case 'saved_upi':
+          return {
+            title: selectedSavedUPI?.name || 'Saved UPI',
+            subtitle: `VPA: ${selectedSavedUPI?.vpa || selectedSavedUPI?.raw_vpa || ''}`,
+            icon: 'save-outline'
           };
         case 'wallet':
           return { 
@@ -1842,18 +1838,20 @@ const CartScreen = ({ route, navigation }: any) => {
         paymentMethods={paymentMethods}
         selectedPaymentType={selectedPaymentType}
         selectedUpiApp={selectedUpiApp}
+        selectedSavedUPI={selectedSavedUPI}
         selectedWalletApp={selectedWalletApp}
         selectedBank={selectedBank}
         selectedCardType={selectedCardType}
         savedUpiIds={savedUpiIds}
         checkingApps={checkingApps}
         onSelectPaymentMethod={selectPaymentMethod}
-        onAddCustomUpiId={addCustomUpiId}
-        onDeleteCustomUpiId={deleteCustomUpiId}
+        onSelectSavedUPI={(savedUPI) => selectPaymentMethod('saved_upi', savedUPI, savedUPI.raw_vpa || savedUPI.vpa, 'SAVED_UPI')}
         customUpiId={customUpiId}
         setCustomUpiId={setCustomUpiId}
         walletBalance={walletBalance?.balance}
         userId={userId}
+        isSavingUpi={isSavingUpi}
+        refreshPaymentMethods={loadPaymentMethods}
       />
       
       {isCartEmpty ? (

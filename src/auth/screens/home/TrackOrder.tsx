@@ -1119,8 +1119,13 @@ const TrackOrder = () => {
 
     const totalAmount = parseFloat(order.payment_details?.total || '0');
     
+    
     // For cancelled/refunded orders
     if (isOrderCancelled || isOrderRefunded) {
+
+      console.log("eatoor_wallet_used==",eatoor_wallet_used)
+      console.log("online_payment_used==",online_payment_used)
+
       if (eatoor_wallet_used) {
         return (
           <>
@@ -1451,6 +1456,66 @@ const TrackOrder = () => {
             <Icon name="time-outline" size={18} color="#FF9500" />
             <Text style={styles.pendingPaymentText}>
               ₹{parseFloat(cod_payment_pending?.toString() || '0').toFixed(2)} pending via Cash
+            </Text>
+          </View>
+        </>
+      );
+    }
+
+    // Case 5: Wallet + Online Payment
+    if (eatoor_wallet_used && online_payment_used && !cod_payment_used) {
+      return (
+        <>
+          <View style={styles.paymentMethodRow}>
+            <View style={[styles.paymentMethodIconContainer, { backgroundColor: 'rgba(156, 39, 176, 0.1)' }]}>
+              <Icon name="wallet-outline" size={20} color="#9C27B0" />
+            </View>
+            <View style={styles.paymentMethodInfo}>
+              <Text style={styles.paymentMethodName}>
+                {wallet_payment_method || 'Eatoor Money'}
+              </Text>
+              <Text style={styles.paymentMethodDescription}>
+                Wallet payment
+              </Text>
+            </View>
+            <Text style={[styles.paymentAmount, { color: '#9C27B0' }]}>
+              ₹{parseFloat(wallet_payment_amount.toString() || '0').toFixed(2)}
+            </Text>
+          </View>
+          
+          <View style={styles.paymentMethodRow}>
+            <View style={[styles.paymentMethodIconContainer, { backgroundColor: 'rgba(76, 175, 80, 0.1)' }]}>
+              <Icon name="card-outline" size={20} color="#4CAF50" />
+            </View>
+            <View style={styles.paymentMethodInfo}>
+              <Text style={styles.paymentMethodName}>
+                {online_payment_method || 'Online Payment'}
+              </Text>
+              <Text style={styles.paymentMethodDescription}>
+                Online payment
+                {online_transaction_id && (
+                  <Text style={styles.transactionIdText}>
+                    ID: {online_transaction_id}
+                  </Text>
+                )}
+              </Text>
+            </View>
+            <Text style={[styles.paymentAmount, { color: '#4CAF50' }]}>
+              ₹{parseFloat(online_payment_amount.toString() || '0').toFixed(2)}
+            </Text>
+          </View>
+          
+          <View style={styles.partialPaymentIndicator}>
+            <Icon name="checkmark-circle" size={18} color="#2ECC71" />
+            <Text style={styles.partialPaymentText}>
+              Total Paid: ₹{(parseFloat(wallet_payment_amount.toString() || '0') + parseFloat(online_payment_amount.toString() || '0')).toFixed(2)}
+            </Text>
+          </View>
+          
+          <View style={styles.paidIndicator}>
+            <Icon name="checkmark-circle" size={18} color="#2ECC71" />
+            <Text style={styles.paidText}>
+              Paid via Wallet & Online
             </Text>
           </View>
         </>

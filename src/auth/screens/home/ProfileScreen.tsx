@@ -22,7 +22,6 @@ import {
   I18nManager
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import LinearGradient from 'react-native-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getUserProfileDetails } from '../../../api/profile';
 import { AuthContext } from '../../../context/AuthContext';
@@ -86,7 +85,7 @@ const ProfileScreen = ({ navigation }) => {
   const scaleAnim = useState(new Animated.Value(0.9))[0];
   const modalSlideAnim = useState(new Animated.Value(SCREEN_HEIGHT))[0];
 
-  // Gradient colors
+  // Gradient colors (kept for reference but not used for gradients)
   const gradientColors = ['#FF6B35', '#FF512F', '#DD2476'];
 
   // Handle animations
@@ -535,12 +534,9 @@ const ProfileScreen = ({ navigation }) => {
               styles.consequenceCard,
               isTablet && styles.consequenceCardTablet
             ]}>
-              <LinearGradient
-                colors={['#FF6B35', '#FF512F']}
-                style={styles.consequenceIcon}
-              >
+              <View style={[styles.consequenceIcon, { backgroundColor: '#FF6B35' }]}>
                 <Icon name="cart-outline" size={scaleWidth(22)} color="#FFF" />
-              </LinearGradient>
+              </View>
               <Text style={styles.consequenceCardTitle}>Order History</Text>
               <Text style={styles.consequenceCardText}>
                 All past orders and receipts
@@ -551,12 +547,9 @@ const ProfileScreen = ({ navigation }) => {
               styles.consequenceCard,
               isTablet && styles.consequenceCardTablet
             ]}>
-              <LinearGradient
-                colors={['#DD2476', '#FF512F']}
-                style={styles.consequenceIcon}
-              >
+              <View style={[styles.consequenceIcon, { backgroundColor: '#DD2476' }]}>
                 <Icon name="heart-outline" size={scaleWidth(22)} color="#FFF" />
-              </LinearGradient>
+              </View>
               <Text style={styles.consequenceCardTitle}>Favorites</Text>
               <Text style={styles.consequenceCardText}>
                 All saved restaurants & items
@@ -567,12 +560,9 @@ const ProfileScreen = ({ navigation }) => {
               styles.consequenceCard,
               isTablet && styles.consequenceCardTablet
             ]}>
-              <LinearGradient
-                colors={['#8A2BE2', '#DD2476']}
-                style={styles.consequenceIcon}
-              >
+              <View style={[styles.consequenceIcon, { backgroundColor: '#8A2BE2' }]}>
                 <Icon name="wallet-outline" size={scaleWidth(22)} color="#FFF" />
-              </LinearGradient>
+              </View>
               <Text style={styles.consequenceCardTitle}>Eatoor Money</Text>
               <Text style={styles.consequenceCardText}>
                 Any remaining balance
@@ -583,12 +573,9 @@ const ProfileScreen = ({ navigation }) => {
               styles.consequenceCard,
               isTablet && styles.consequenceCardTablet
             ]}>
-              <LinearGradient
-                colors={['#4A90E2', '#8A2BE2']}
-                style={styles.consequenceIcon}
-              >
+              <View style={[styles.consequenceIcon, { backgroundColor: '#4A90E2' }]}>
                 <Icon name="star-outline" size={scaleWidth(22)} color="#FFF" />
-              </LinearGradient>
+              </View>
               <Text style={styles.consequenceCardTitle}>Reviews & Ratings</Text>
               <Text style={styles.consequenceCardText}>
                 All your contributions
@@ -654,12 +641,9 @@ const ProfileScreen = ({ navigation }) => {
           contentContainerStyle={styles.finalStepContentContainer}
         >
           <View style={styles.finalWarningContainer}>
-            <LinearGradient
-              colors={['#FF6B6B', '#FF4757']}
-              style={styles.finalWarningIcon}
-            >
+            <View style={[styles.finalWarningIcon, { backgroundColor: '#FF4757' }]}>
               <Icon name="alert-circle" size={scaleWidth(40)} color="#FFF" />
-            </LinearGradient>
+            </View>
             <Text style={styles.finalWarningTitle}>Final Warning</Text>
             <Text style={styles.finalWarningText}>
               You are about to permanently delete your account and all associated data.
@@ -774,14 +758,9 @@ const ProfileScreen = ({ navigation }) => {
         }
       ]}
     >
-      <LinearGradient
-        colors={[gradientColors[0], gradientColors[1]]}
-        style={styles.statIconContainer}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      >
+      <View style={[styles.statIconContainer, { backgroundColor: gradientColors[0] }]}>
         <Icon name={icon} size={getFontSize(isTablet ? 22 : 18)} color="#FFF" />
-      </LinearGradient>
+      </View>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </Animated.View>
@@ -806,14 +785,9 @@ const ProfileScreen = ({ navigation }) => {
       ]}
     >
       <TouchableOpacity onPress={onPress} style={styles.actionCardTouchable}>
-        <LinearGradient
-          colors={['#f8f9ff', '#ffffff']}
-          style={styles.actionIconContainer}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
+        <View style={[styles.actionIconContainer, { backgroundColor: '#f8f9ff' }]}>
           <Icon name={icon} size={getFontSize(isTablet ? 24 : 18)} color={gradientColors[0]} />
-        </LinearGradient>
+        </View>
         <View style={styles.actionTextContainer}>
           <Text style={styles.actionTitle}>{title}</Text>
           <Text style={styles.actionSubtitle}>{subtitle}</Text>
@@ -851,16 +825,13 @@ const ProfileScreen = ({ navigation }) => {
           style={styles.headerButton}
           hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
         >
-          <LinearGradient
-            colors={['#f8f9ff', '#e9ecef']}
-            style={styles.headerButtonGradient}
-          >
+          <View style={[styles.headerButtonGradient, { backgroundColor: '#f8f9ff' }]}>
             <Icon 
               name={isIOS ? "chevron-back" : "arrow-back"} 
               size={getFontSize(20)} 
               color="#333" 
             />
-          </LinearGradient>
+          </View>
         </TouchableOpacity>
         
         <Text style={styles.headerTitle}>Profile</Text>
@@ -870,12 +841,9 @@ const ProfileScreen = ({ navigation }) => {
           style={styles.headerButton}
           hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
         >
-          <LinearGradient
-            colors={['#f8f9ff', '#e9ecef']}
-            style={styles.headerButtonGradient}
-          >
+          <View style={[styles.headerButtonGradient, { backgroundColor: '#f8f9ff' }]}>
             <Icon name="ellipsis-vertical" size={getFontSize(20)} color="#333" />
-          </LinearGradient>
+          </View>
         </TouchableOpacity>
       </Animated.View>
 
@@ -913,19 +881,15 @@ const ProfileScreen = ({ navigation }) => {
           ]}
         >
           <View style={styles.avatarContainer}>
-            <LinearGradient
-              colors={gradientColors}
-              style={[
-                styles.avatarBorder,
-                {
-                  width: isTablet ? scaleWidth(100) : scaleWidth(80),
-                  height: isTablet ? scaleWidth(100) : scaleWidth(80),
-                  borderRadius: isTablet ? scaleWidth(50) : scaleWidth(40),
-                }
-              ]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
+            <View style={[
+              styles.avatarBorder,
+              {
+                width: isTablet ? scaleWidth(100) : scaleWidth(80),
+                height: isTablet ? scaleWidth(100) : scaleWidth(80),
+                borderRadius: isTablet ? scaleWidth(50) : scaleWidth(40),
+                backgroundColor: gradientColors[0],
+              }
+            ]}>
               {user.avatar && user.avatar !== 'https://randomuser.me/api/portraits/men/1.jpg' ? (
                 <Image 
                   source={{ uri: user.avatar }} 
@@ -950,7 +914,7 @@ const ProfileScreen = ({ navigation }) => {
                   />
                 </View>
               )}
-            </LinearGradient>
+            </View>
             <View style={styles.onlineIndicator} />
           </View>
           
@@ -986,21 +950,17 @@ const ProfileScreen = ({ navigation }) => {
           ]}
         >
           <View style={styles.eatoorMoneyHeader}>
-            <LinearGradient
-              colors={['#FF6B35', '#FF512F', '#DD2476']}
-              style={[
-                styles.eatoorMoneyIcon,
-                {
-                  width: scaleWidth(40),
-                  height: scaleWidth(40),
-                  borderRadius: scaleWidth(12),
-                }
-              ]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
+            <View style={[
+              styles.eatoorMoneyIcon,
+              {
+                width: scaleWidth(40),
+                height: scaleWidth(40),
+                borderRadius: scaleWidth(12),
+                backgroundColor: gradientColors[0],
+              }
+            ]}>
               <Icon name="wallet-outline" size={getFontSize(18)} color="#FFF" />
-            </LinearGradient>
+            </View>
             <View style={styles.eatoorMoneyTextContainer}>
               <Text style={styles.eatoorMoneyTitle}>Eatoor Money</Text>
             </View>
@@ -1126,21 +1086,15 @@ const ProfileScreen = ({ navigation }) => {
               }
             ]}
           >
-            <LinearGradient
-              colors={['#ffffff', '#f8f9ff']}
-              style={styles.modalGradient}
-            >
+            <View style={[styles.modalGradient, { backgroundColor: '#FFF' }]}>
               <TouchableOpacity 
                 style={styles.modalOption}
                 onPress={handleEditProfile}
               >
                 <View style={styles.modalOptionContent}>
-                  <LinearGradient
-                    colors={[gradientColors[0], gradientColors[1]]}
-                    style={styles.modalOptionIcon}
-                  >
+                  <View style={[styles.modalOptionIcon, { backgroundColor: gradientColors[0] }]}>
                     <Icon name="create-outline" size={scaleWidth(16)} color="#FFF" />
-                  </LinearGradient>
+                  </View>
                   <Text style={styles.modalOptionText}>Edit Profile</Text>
                 </View>
               </TouchableOpacity>
@@ -1152,12 +1106,9 @@ const ProfileScreen = ({ navigation }) => {
                 onPress={handleSettings}
               >
                 <View style={styles.modalOptionContent}>
-                  <LinearGradient
-                    colors={[gradientColors[0], gradientColors[1]]}
-                    style={styles.modalOptionIcon}
-                  >
+                  <View style={[styles.modalOptionIcon, { backgroundColor: gradientColors[0] }]}>
                     <Icon name="settings-outline" size={scaleWidth(16)} color="#FFF" />
-                  </LinearGradient>
+                  </View>
                   <Text style={styles.modalOptionText}>Settings</Text>
                 </View>
               </TouchableOpacity>
@@ -1175,7 +1126,7 @@ const ProfileScreen = ({ navigation }) => {
                   <Text style={[styles.modalOptionText, styles.logoutText]}>Logout</Text>
                 </View>
               </TouchableOpacity>
-            </LinearGradient>
+            </View>
           </Animated.View>
         </Pressable>
       </Modal>

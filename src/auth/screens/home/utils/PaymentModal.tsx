@@ -1,4 +1,3 @@
-// PaymentModal.tsx
 import React, { useEffect, useRef } from 'react';
 import {
   Modal,
@@ -16,7 +15,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 const { width, height } = Dimensions.get('window');
 
 type RootStackParamList = {
-  TrackOrder: { order: { order_number: string } };
+  TrackOrder: { order: { order_number: string; prev_location?: string } };
   // Add other screens here
 };
 
@@ -55,46 +54,60 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 }) => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const hasNavigated = useRef(false);
+  const autoDismissTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // Auto-navigate to TrackOrder when payment is successful
+  // Auto-dismiss success modal and navigate to TrackOrder after 3 seconds
   useEffect(() => {
     if (status === 'success' && orderNumber && !hasNavigated.current) {
       hasNavigated.current = true;
       
-      // Close modal first
-      if (onDismiss) {
-        onDismiss();
-      }
-      
-      // Navigate to TrackOrder screen after modal is closed
-      setTimeout(() => {
-        try {
-          navigation.navigate('TrackOrder', {
-            order: { 
-              order_number: orderNumber, 
-              prev_location: "HomeTabs" 
-            }
-          });
-        } catch (error) {
-          console.error('Navigation error:', error);
-          // Fallback to callback if navigation fails
-          if (onViewOrder) {
-            onViewOrder(orderNumber);
-          }
+      // Show success screen for 3 seconds before auto-dismiss and navigation
+      autoDismissTimer.current = setTimeout(() => {
+        // Close modal first
+        if (onDismiss) {
+          onDismiss();
         }
-      }, 300);
+        
+        // Navigate to TrackOrder screen after modal is closed
+        setTimeout(() => {
+          try {
+            navigation.navigate('TrackOrder', {
+              order: { 
+                order_number: orderNumber, 
+                prev_location: "HomeTabs" 
+              }
+            });
+          } catch (error) {
+            console.error('Navigation error:', error);
+            // Fallback to callback if navigation fails
+            if (onViewOrder) {
+              onViewOrder(orderNumber);
+            }
+          }
+        }, 300);
+      }, 3000); // 3 seconds delay
     }
     
-    // Reset navigation flag when modal becomes invisible or status changes
+    // Cleanup timer when modal becomes invisible or status changes
     if (!visible || status !== 'success') {
-      const timer = setTimeout(() => {
+      if (autoDismissTimer.current) {
+        clearTimeout(autoDismissTimer.current);
+        autoDismissTimer.current = null;
+      }
+      const resetTimer = setTimeout(() => {
         hasNavigated.current = false;
       }, 500);
-      return () => clearTimeout(timer);
+      return () => clearTimeout(resetTimer);
     }
   }, [status, orderNumber, navigation, onDismiss, visible, onViewOrder]);
 
   const handleViewOrder = () => {
+    // Clear auto-dismiss timer if user clicks manually
+    if (autoDismissTimer.current) {
+      clearTimeout(autoDismissTimer.current);
+      autoDismissTimer.current = null;
+    }
+    
     if (orderNumber) {
       if (onDismiss) {
         onDismiss();
@@ -103,7 +116,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       setTimeout(() => {
         try {
           navigation.navigate('TrackOrder', {
-            order: { order_number: orderNumber }
+            order: { order_number: orderNumber, prev_location: "HomeTabs" }
           });
         } catch (error) {
           console.error('Navigation error:', error);
@@ -115,7 +128,6 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     }
   };
 
-  
   const renderContent = () => {
     switch (status) {
       case 'processing':
@@ -123,6 +135,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           <View style={styles.contentContainer}>
             <ActivityIndicator size="large" color="#E55C18" />
             <Text style={styles.title}>Processing payment...</Text>
+            <Text style={styles.message}>Please wait while we process your payment</Text>
           </View>
         );
 
@@ -142,16 +155,31 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       case 'success':
         return (
           <View style={styles.contentContainer}>
-            <Icon name="checkmark-circle" size={72} color="#4CAF50" />
+            <View style={styles.successIconContainer}>
+              <Icon name="checkmark-circle" size={80} color="#4CAF50" />
+            </View>
             <Text style={styles.successTitle}>Payment Successful!</Text>
             <Text style={styles.message}>
               Your order has been placed successfully
+            </Text>
+            {/* <View style={styles.orderDetailsContainer}>
+              <Text style={styles.orderDetailsText}>
+                Order ID: {orderNumber || 'Processing...'}
+              </Text>
+              {orderTotal && (
+                <Text style={styles.orderAmountText}>
+                  Amount Paid: ₹{parseFloat(orderTotal).toFixed(2)}
+                </Text>
+              )}
+            </View> */}
+            <Text style={styles.autoRedirectText}>
+              Redirecting to order tracking in a moment...
             </Text>
             <TouchableOpacity
               style={styles.viewOrderButton}
               onPress={handleViewOrder}
             >
-              <Text style={styles.viewOrderButtonText}>Track Your Order</Text>
+              <Text style={styles.viewOrderButtonText}>Track Your Order Now</Text>
               <Icon name="arrow-forward" size={18} color="#FFFFFF" style={styles.buttonIcon} />
             </TouchableOpacity>
           </View>
@@ -186,7 +214,11 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={onDismiss}
+      onRequestClose={() => {
+        if (status !== 'processing' && status !== 'pending') {
+          onDismiss?.();
+        }
+      }}
     >
       <View style={styles.overlay}>
         <View style={styles.modalContainer}>
@@ -246,16 +278,16 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   successTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#000000',
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#4CAF50',
     marginTop: 16,
     marginBottom: 8,
   },
   failedTitle: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#000000',
+    color: '#E55C18',
     marginTop: 16,
     marginBottom: 8,
   },
@@ -346,5 +378,35 @@ const styles = StyleSheet.create({
   },
   buttonIcon: {
     marginLeft: 4,
+  },
+  successIconContainer: {
+    marginBottom: 8,
+  },
+  orderDetailsContainer: {
+    backgroundColor: '#F5F5F5',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 8,
+    marginBottom: 12,
+    width: '100%',
+    alignItems: 'center',
+  },
+  orderDetailsText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333333',
+    marginBottom: 4,
+  },
+  orderAmountText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#E55C18',
+  },
+  autoRedirectText: {
+    fontSize: 12,
+    color: '#999999',
+    textAlign: 'center',
+    marginTop: 12,
+    fontStyle: 'italic',
   },
 });

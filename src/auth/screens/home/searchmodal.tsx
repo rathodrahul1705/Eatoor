@@ -21,6 +21,7 @@ import {
 import Icon from 'react-native-vector-icons/Ionicons';
 import Modal from 'react-native-modal';
 import moment from 'moment';
+import LinearGradient from 'react-native-linear-gradient';
 
 const { width, height } = Dimensions.get('window');
 const isAndroid = Platform.OS === 'android';
@@ -90,18 +91,18 @@ const moderateScale = (size: number, factor = 0.5) => size + (scale(size) - size
 
 // Enhanced popular searches with better categories - Updated for grid layout
 const POPULAR_SEARCHES = [
-  { id: '1', name: "Biryani", category: "Indian", emoji: "🍛", color: COLORS.category1 },
-  { id: '2', name: "Pizza", category: "Italian", emoji: "🍕", color: COLORS.category2 },
-  { id: '3', name: "Burger", category: "Fast Food", emoji: "🍔", color: COLORS.category3 },
-  { id: '4', name: "Sushi", category: "Japanese", emoji: "🍣", color: COLORS.category4 },
-  { id: '5', name: "Tacos", category: "Mexican", emoji: "🌮", color: COLORS.category5 },
-  { id: '6', name: "Pasta", category: "Italian", emoji: "🍝", color: COLORS.category6 },
-  { id: '7', name: "Salad", category: "Healthy", emoji: "🥗", color: COLORS.category7 },
-  { id: '8', name: "Ice Cream", category: "Dessert", emoji: "🍦", color: COLORS.category8 },
-  { id: '9', name: "Coffee", category: "Beverage", emoji: "☕", color: COLORS.category9 },
-  { id: '10', name: "Smoothie", category: "Healthy", emoji: "🥤", color: COLORS.category10 },
-  { id: '11', name: "Ramen", category: "Japanese", emoji: "🍜", color: COLORS.category11 },
-  { id: '12', name: "Steak", category: "American", emoji: "🥩", color: COLORS.category12 },
+  { id: '1', name: "Biryani", category: "Indian", emoji: "🍛", color: COLORS.category1, gradient: ['#FF6B6B', '#FF8E53'] },
+  { id: '2', name: "Pizza", category: "Italian", emoji: "🍕", color: COLORS.category2, gradient: ['#4ECDC4', '#45B7D1'] },
+  { id: '3', name: "Burger", category: "Fast Food", emoji: "🍔", color: COLORS.category3, gradient: ['#45B7D1', '#96CEB4'] },
+  { id: '4', name: "Sushi", category: "Japanese", emoji: "🍣", color: COLORS.category4, gradient: ['#96CEB4', '#FFEAA7'] },
+  { id: '5', name: "Tacos", category: "Mexican", emoji: "🌮", color: COLORS.category5, gradient: ['#FFEAA7', '#DDA0DD'] },
+  { id: '6', name: "Pasta", category: "Italian", emoji: "🍝", color: COLORS.category6, gradient: ['#DDA0DD', '#98D8C8'] },
+  { id: '7', name: "Salad", category: "Healthy", emoji: "🥗", color: COLORS.category7, gradient: ['#98D8C8', '#F7DC6F'] },
+  { id: '8', name: "Ice Cream", category: "Dessert", emoji: "🍦", color: COLORS.category8, gradient: ['#F7DC6F', '#FFA726'] },
+  { id: '9', name: "Coffee", category: "Beverage", emoji: "☕", color: COLORS.category9, gradient: ['#FFA726', '#26C6DA'] },
+  { id: '10', name: "Smoothie", category: "Healthy", emoji: "🥤", color: COLORS.category10, gradient: ['#26C6DA', '#AB47BC'] },
+  { id: '11', name: "Ramen", category: "Japanese", emoji: "🍜", color: COLORS.category11, gradient: ['#AB47BC', '#66BB6A'] },
+  { id: '12', name: "Steak", category: "American", emoji: "🥩", color: COLORS.category12, gradient: ['#66BB6A', '#FF6B6B'] },
 ];
 
 // Types
@@ -357,9 +358,63 @@ const SearchModal: React.FC<SearchModalProps> = ({
     );
   };
 
-  // NEW: Grid layout for popular categories with sexy design
+  // IMPROVED: Modern Category Card with Gradient and Animation
+  const ModernCategoryCard = ({ item, onPress }: { item: any; onPress: () => void }) => {
+    const scaleAnim = useRef(new Animated.Value(1)).current;
+    
+    const handlePressIn = () => {
+      Animated.spring(scaleAnim, {
+        toValue: 0.97,
+        useNativeDriver: true,
+        speed: 50,
+      }).start();
+    };
+    
+    const handlePressOut = () => {
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        speed: 50,
+      }).start();
+    };
+
+    return (
+      <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+        <TouchableOpacity
+          style={styles.modernCategoryCard}
+          onPress={onPress}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          activeOpacity={0.9}
+        >
+          <LinearGradient
+            colors={item.gradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.modernCategoryGradient}
+          >
+            <View style={styles.modernCategoryEmojiContainer}>
+              <Text style={styles.modernCategoryEmoji}>{item.emoji}</Text>
+            </View>
+            <View style={styles.modernCategoryInfo}>
+              <Text style={styles.modernCategoryName} numberOfLines={1}>
+                {item.name}
+              </Text>
+              <Text style={styles.modernCategorySubtext} numberOfLines={1}>
+                {item.category}
+              </Text>
+            </View>
+            <View style={styles.modernCategoryArrow}>
+              <Icon name="chevron-forward" size={14} color="rgba(255,255,255,0.8)" />
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+
+  // IMPROVED: 3-Column Grid Layout with perfect alignment
   const PopularCategoriesGrid = () => {
-    // Split POPULAR_SEARCHES into chunks of 3 for grid layout
     const chunkArray = (array: any[], chunkSize: number) => {
       const chunks = [];
       for (let i = 0; i < array.length; i += chunkSize) {
@@ -375,26 +430,13 @@ const SearchModal: React.FC<SearchModalProps> = ({
         {categoryChunks.map((chunk, chunkIndex) => (
           <View key={`chunk-${chunkIndex}`} style={styles.searchModalCategoryRow}>
             {chunk.map((item) => (
-              <TouchableOpacity
+              <ModernCategoryCard
                 key={`popular-${item.id}`}
-                style={styles.searchModalPopularCategoryItem}
+                item={item}
                 onPress={() => handlePopularSearchPress(item)}
-                activeOpacity={0.8}
-              >
-                <View style={[styles.searchModalPopularCategoryEmojiContainer, { backgroundColor: `${item.color}15` }]}>
-                  <Text style={styles.searchModalPopularCategoryEmoji}>{item.emoji}</Text>
-                </View>
-                <View style={styles.searchModalPopularCategoryTextContainer}>
-                  <Text style={styles.searchModalPopularCategoryName} numberOfLines={1}>
-                    {item.name}
-                  </Text>
-                  <Text style={styles.searchModalPopularCategoryCategory} numberOfLines={1}>
-                    {item.category}
-                  </Text>
-                </View>
-              </TouchableOpacity>
+              />
             ))}
-            {/* Fill empty spaces in the last row if needed */}
+            {/* Fill empty spaces to maintain grid alignment */}
             {chunk.length < 3 && 
               Array.from({ length: 3 - chunk.length }).map((_, index) => (
                 <View key={`empty-${index}`} style={styles.searchModalEmptyCategoryItem} />
@@ -521,7 +563,10 @@ const SearchModal: React.FC<SearchModalProps> = ({
           style={styles.searchModalTrendingImage}
           defaultSource={{ uri: 'https://via.placeholder.com/160x120' }}
         >
-          <View style={styles.searchModalTrendingGradient} />
+          <LinearGradient
+            colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.7)']}
+            style={styles.searchModalTrendingGradient}
+          />
           <View style={styles.searchModalTrendingBadge}>
             <Icon name="trending-up" size={10} color="#fff" />
             <Text style={styles.searchModalTrendingBadgeText}>Trending</Text>
@@ -946,61 +991,71 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
 
-  // NEW: Grid layout for popular categories
+  // IMPROVED: Modern Category Grid with perfect alignment
   searchModalPopularCategoriesGrid: {
     marginBottom: scale(8),
   },
   searchModalCategoryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: scale(8),
+    marginBottom: scale(10),
+    width: '100%',
   },
-  searchModalPopularCategoryItem: {
+  modernCategoryCard: {
     flex: 1,
+    marginHorizontal: scale(3),
+    borderRadius: scale(14),
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  modernCategoryGradient: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.card,
-    borderRadius: scale(12),
-    paddingVertical: scale(10),
-    paddingHorizontal: scale(8),
-    marginHorizontal: scale(2),
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    elevation: 1,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    minHeight: scale(60),
+    paddingVertical: scale(12),
+    paddingHorizontal: scale(10),
+    minHeight: scale(70),
+  },
+  modernCategoryEmojiContainer: {
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(10),
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: scale(8),
+  },
+  modernCategoryEmoji: {
+    fontSize: moderateScale(18),
+  },
+  modernCategoryInfo: {
+    flex: 1,
+  },
+  modernCategoryName: {
+    fontSize: moderateScale(13),
+    fontFamily: FONTS.bold,
+    color: '#FFFFFF',
+    marginBottom: scale(2),
+  },
+  modernCategorySubtext: {
+    fontSize: moderateScale(10),
+    fontFamily: FONTS.regular,
+    color: 'rgba(255,255,255,0.9)',
+  },
+  modernCategoryArrow: {
+    width: scale(20),
+    height: scale(20),
+    borderRadius: scale(10),
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   searchModalEmptyCategoryItem: {
     flex: 1,
-    marginHorizontal: scale(2),
-  },
-  searchModalPopularCategoryEmojiContainer: {
-    width: scale(28),
-    height: scale(28),
-    borderRadius: scale(8),
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: scale(6),
-  },
-  searchModalPopularCategoryEmoji: {
-    fontSize: moderateScale(14),
-  },
-  searchModalPopularCategoryTextContainer: {
-    flex: 1,
-  },
-  searchModalPopularCategoryName: {
-    fontSize: moderateScale(12),
-    fontFamily: FONTS.semiBold,
-    color: COLORS.textDark,
-    marginBottom: scale(1),
-  },
-  searchModalPopularCategoryCategory: {
-    fontSize: moderateScale(10),
-    fontFamily: FONTS.regular,
-    color: COLORS.textLight,
+    marginHorizontal: scale(3),
   },
 
   // Recent Searches - More compact
@@ -1176,7 +1231,6 @@ const styles = StyleSheet.create({
   },
   searchModalTrendingGradient: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.3)',
   },
   searchModalTrendingBadge: {
     position: 'absolute',

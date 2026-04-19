@@ -101,6 +101,8 @@ const EATMART_COLORS = {
   rating: '#60B246',
   veg: '#60B246',
   nonVeg: '#FF4757',
+  categoryBg: '#FFFFFF',
+  categoryBorder: '#F0F0F0',
 };
 
 const EATMART_TYPOGRAPHY = {
@@ -506,11 +508,11 @@ const CartBottomBar: React.FC = () => {
         onPress={handleCartPress}
         style={eatmart_styles.eatm_screen_cartBarTouchable}
       >
-        <View style={[eatmart_styles.eatm_screen_cartBarGradient, { backgroundColor: EATMART_COLORS.grayBg }]}>
+        <View style={[eatmart_styles.eatm_screen_cartBarGradient, { backgroundColor: EATMART_COLORS.primary }]}>
           <View style={eatmart_styles.eatm_screen_cartBarContent}>
             <View style={eatmart_styles.eatm_screen_cartBarLeft}>
               <View style={eatmart_styles.eatm_screen_cartIconContainer}>
-                <Icon name="cart-outline" size={eatmart_scale(20)} color={EATMART_COLORS.secondary} />
+                <Icon name="cart-outline" size={eatmart_scale(20)} color={EATMART_COLORS.white} />
                 <View style={eatmart_styles.eatm_screen_cartBadge}>
                   <Text style={eatmart_styles.eatm_screen_cartBadgeText}>{totalItems}</Text>
                 </View>
@@ -520,8 +522,8 @@ const CartBottomBar: React.FC = () => {
               </View>
             </View>
             <View style={eatmart_styles.eatm_screen_cartBarRight}>
-              <Text style={eatmart_styles.eatm_screen_cartBarViewText}>Proceed</Text>
-              <Icon name="arrow-forward" size={eatmart_scale(16)} color={EATMART_COLORS.secondary} />
+              <Text style={eatmart_styles.eatm_screen_cartBarViewText}>View Cart</Text>
+              <Icon name="arrow-forward" size={eatmart_scale(16)} color={EATMART_COLORS.white} />
             </View>
           </View>
         </View>
@@ -562,7 +564,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
   );
 };
 
-// ============== MODERN CATEGORY ICON - SWIGGY STYLE ==============
+// ============== MODERN CATEGORY ICON - SWIGGY INSTAMART STYLE ==============
 
 interface CategoryIconProps {
   category: GroceryCategory;
@@ -571,8 +573,10 @@ interface CategoryIconProps {
 
 const CategoryIcon: React.FC<CategoryIconProps> = ({ category, onPress }) => {
   const scaleValue = useRef(new Animated.Value(1)).current;
+  const [isPressed, setIsPressed] = useState(false);
   
   const handlePressIn = () => {
+    setIsPressed(true);
     Animated.spring(scaleValue, {
       toValue: 0.92,
       friction: 6,
@@ -582,6 +586,7 @@ const CategoryIcon: React.FC<CategoryIconProps> = ({ category, onPress }) => {
   };
   
   const handlePressOut = () => {
+    setIsPressed(false);
     Animated.spring(scaleValue, {
       toValue: 1,
       friction: 4,
@@ -590,19 +595,35 @@ const CategoryIcon: React.FC<CategoryIconProps> = ({ category, onPress }) => {
     }).start();
   };
   
+  const handlePress = () => {
+    Alert.alert('Category', `${category.name} category clicked!`, [{ text: 'OK' }]);
+  };
+  
   return (
-    <Animated.View style={[eatmart_styles.eatm_screen_categoryIconContainer, { transform: [{ scale: scaleValue }] }]}>
+    <Animated.View style={[
+      eatmart_styles.eatm_screen_categoryIconContainer,
+      { transform: [{ scale: scaleValue }] }
+    ]}>
       <TouchableOpacity
         style={eatmart_styles.eatm_screen_categoryIconTouchable}
-        onPress={() => onPress(category.id, category.name)}
+        onPress={handlePress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         activeOpacity={0.85}
       >
-        <View style={eatmart_styles.eatm_screen_categoryIconWrapper}>
-          <Text style={eatmart_styles.eatm_screen_categoryIconEmoji}>{category.icon}</Text>
+        <View style={[
+          eatmart_styles.eatm_screen_categoryIconWrapper,
+          isPressed && eatmart_styles.eatm_screen_categoryIconWrapperPressed
+        ]}>
+          <View style={eatmart_styles.eatm_screen_categoryIconInner}>
+            <Text style={eatmart_styles.eatm_screen_categoryIconEmoji}>{category.icon}</Text>
+          </View>
+        
         </View>
-        <Text style={eatmart_styles.eatm_screen_categoryIconText} numberOfLines={1}>
+        <Text style={[
+          eatmart_styles.eatm_screen_categoryIconText,
+          isPressed && eatmart_styles.eatm_screen_categoryIconTextPressed
+        ]} numberOfLines={1}>
           {category.name}
         </Text>
       </TouchableOpacity>
@@ -800,6 +821,9 @@ const BannerCarousel: React.FC<BannerProps> = ({ banners }) => {
         decelerationRate="fast"
         getItemLayout={getItemLayout}
       />
+      <View style={eatmart_styles.eatm_screen_bannerPagination}>
+        {banners.map((_, index) => renderDot(index))}
+      </View>
     </View>
   );
 };
@@ -972,6 +996,11 @@ const SectionHeader: React.FC<SectionHeaderProps> = ({
         <Text style={eatmart_styles.eatm_screen_sectionTitle}>{title}</Text>
         {subtitle && <Text style={eatmart_styles.eatm_screen_sectionSubtitle}>{subtitle}</Text>}
       </View>
+      {showViewAll && onViewAll && (
+        <TouchableOpacity onPress={onViewAll}>
+          <Text style={eatmart_styles.eatm_screen_sectionViewAll}>View All</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 };
@@ -1814,7 +1843,7 @@ const ItemDetails: React.FC<ItemDetailsProps> = ({
               <View style={eatmart_styles.eatm_screen_itemDetailBottomBar}>
                 {quantity === 0 ? (
                   <TouchableOpacity 
-                    style={eatmart_styles.eatm_screen_itemDetailAddButton}
+                    style={[eatmart_styles.eatm_screen_itemDetailAddButton, { backgroundColor: EATMART_COLORS.primary }]}
                     onPress={handleAddToCart}
                     activeOpacity={0.9}
                   >
@@ -1997,16 +2026,8 @@ const EatmartScreenComponent: React.FC = () => {
   }, [refreshing, fetchGroceryStores, location]);
   
   const handleCategoryPress = useCallback((categoryId: number, categoryName: string) => {
-    if (!homeData) return;
-    
-    const category = homeData.categories.find(c => c.id === categoryId);
-    const items = homeData.featuredItems.filter(item => item.category_id === categoryId);
-    
-    if (category) {
-      setSelectedCategoryDetails({ category, items });
-      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-    }
-  }, [homeData]);
+    Alert.alert('Category', `${categoryName} category clicked!`, [{ text: 'OK' }]);
+  }, []);
   
   const handleCloseCategoryDetails = useCallback(() => {
     setSelectedCategoryDetails(null);
@@ -2078,7 +2099,7 @@ const EatmartScreenComponent: React.FC = () => {
       <View style={eatmart_styles.eatm_screen_loadingContainer}>
         <StatusBar barStyle="dark-content" backgroundColor={EATMART_COLORS.white} />
         <View style={eatmart_styles.eatm_screen_loadingGradient}>
-          <View style={eatmart_styles.eatm_screen_loadingIcon}>
+          <View style={[eatmart_styles.eatm_screen_loadingIcon, { backgroundColor: EATMART_COLORS.primary }]}>
             <Icon name="fast-food" size={eatmart_scale(32)} color={EATMART_COLORS.white} />
           </View>
           <Text style={eatmart_styles.eatm_screen_loadingTitle}>Eatmart</Text>
@@ -2172,13 +2193,6 @@ const EatmartScreenComponent: React.FC = () => {
               onAddressUpdate={handleAddressUpdate}
             />
             <TouchableOpacity
-              style={eatmart_styles.eatm_screen_compactSearchButton}
-              onPress={handleSearchPress}
-            >
-              <Icon name="search-outline" size={eatmart_scale(16)} color={EATMART_COLORS.text.secondary} />
-              <Text style={eatmart_styles.eatm_screen_compactSearchText}>Search</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
               style={eatmart_styles.eatm_screen_compactProfileButton}
               onPress={handleProfilePress}
             >
@@ -2242,7 +2256,7 @@ const EatmartScreenComponent: React.FC = () => {
             />
           }
         > 
-          {/* Top Offers Banner - Reduced margin top to remove extra space */}
+          {/* Top Offers Banner */}
           {homeData.topOffers && homeData.topOffers.length > 0 && (
             <View style={eatmart_styles.eatm_screen_offersSection}>
               <SectionHeader title="Top Offers" showViewAll={false} />
@@ -2259,7 +2273,7 @@ const EatmartScreenComponent: React.FC = () => {
             </View>
           )}
 
-                    {/* Modern Categories Section - Swiggy Style */}
+          {/* Modern Categories Section - No extra space at top */}
           <View style={eatmart_styles.eatm_screen_categorySection}>
             <FlatList
               data={homeData.categories}
@@ -2276,7 +2290,6 @@ const EatmartScreenComponent: React.FC = () => {
               contentContainerStyle={eatmart_styles.eatm_screen_categoryListContent}
             />
           </View>
-          
           
           {/* For You Section */}
           {homeData.forYou && homeData.forYou.length > 0 && (
@@ -2348,7 +2361,7 @@ const InstamartStackNavigator = () => {
   );
 };
 
-// ============== MODERN STYLES - SWIGGY INSPIRED ==============
+// ============== MODERN STYLES - SWIGGY INSTAMART INSPIRED ==============
 
 const eatmart_styles = StyleSheet.create({
   eatm_screen_rootContainer: {
@@ -2376,7 +2389,6 @@ const eatmart_styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
-    backgroundColor: EATMART_COLORS.primary,
   },
   eatm_screen_loadingTitle: {
     ...EATMART_TYPOGRAPHY.h2,
@@ -2483,14 +2495,9 @@ const eatmart_styles = StyleSheet.create({
   eatm_screen_cartBarInfo: {
     marginLeft: eatmart_scale(2),
   },
-  eatm_screen_cartBarItems: {
-    ...EATMART_TYPOGRAPHY.caption,
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: eatmart_fontScale(11),
-  },
   eatm_screen_cartBarTotal: {
     ...EATMART_TYPOGRAPHY.body1,
-    color: EATMART_COLORS.secondary,
+    color: EATMART_COLORS.white,
     fontWeight: '700',
     fontSize: eatmart_fontScale(16),
   },
@@ -2501,7 +2508,7 @@ const eatmart_styles = StyleSheet.create({
   },
   eatm_screen_cartBarViewText: {
     ...EATMART_TYPOGRAPHY.caption,
-    color: EATMART_COLORS.secondary,
+    color: EATMART_COLORS.white,
     fontWeight: '600',
     fontSize: eatmart_fontScale(12),
   },
@@ -2656,14 +2663,15 @@ const eatmart_styles = StyleSheet.create({
     borderRadius: eatmart_scale(2),
   },
   eatm_screen_categorySection: {
-    marginBottom: eatmart_verticalScale(30),
+    marginBottom: eatmart_verticalScale(24),
+    marginTop: 0,
   },
   eatm_screen_categoryListContent: {
     paddingHorizontal: eatmart_scale(16),
     gap: eatmart_scale(16),
   },
   eatm_screen_categoryIconContainer: {
-    width: eatmart_scale(65),
+    width: eatmart_scale(72),
     alignItems: 'center',
   },
   eatm_screen_categoryIconTouchable: {
@@ -2671,21 +2679,55 @@ const eatmart_styles = StyleSheet.create({
     width: '100%',
   },
   eatm_screen_categoryIconWrapper: {
-    width: eatmart_scale(55),
-    height: eatmart_scale(55),
-    borderRadius: eatmart_scale(27.5),
+    width: eatmart_scale(64),
+    height: eatmart_scale(64),
+    borderRadius: eatmart_scale(32),
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: eatmart_verticalScale(4),
+    marginBottom: eatmart_verticalScale(6),
     shadowColor: EATMART_COLORS.black,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
     backgroundColor: EATMART_COLORS.white,
+    borderWidth: 1,
+    borderColor: EATMART_COLORS.categoryBorder,
+    position: 'relative',
+  },
+  eatm_screen_categoryIconWrapperPressed: {
+    borderColor: EATMART_COLORS.primary,
+    shadowOpacity: 0.2,
+    backgroundColor: EATMART_COLORS.primaryLight + '10',
+  },
+  eatm_screen_categoryIconInner: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   eatm_screen_categoryIconEmoji: {
-    fontSize: eatmart_fontScale(28),
+    fontSize: eatmart_fontScale(32),
+  },
+  eatm_screen_categoryItemCount: {
+    position: 'absolute',
+    bottom: -eatmart_scale(4),
+    right: -eatmart_scale(4),
+    backgroundColor: EATMART_COLORS.primary,
+    borderRadius: eatmart_scale(10),
+    minWidth: eatmart_scale(18),
+    height: eatmart_scale(18),
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: eatmart_scale(4),
+    borderWidth: 2,
+    borderColor: EATMART_COLORS.white,
+  },
+  eatm_screen_categoryItemCountText: {
+    ...EATMART_TYPOGRAPHY.caption,
+    color: EATMART_COLORS.white,
+    fontSize: eatmart_fontScale(9),
+    fontWeight: '700',
   },
   eatm_screen_categoryIconText: {
     ...EATMART_TYPOGRAPHY.caption,
@@ -2693,10 +2735,15 @@ const eatmart_styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
     fontSize: eatmart_fontScale(11),
+    marginTop: eatmart_verticalScale(2),
+  },
+  eatm_screen_categoryIconTextPressed: {
+    color: EATMART_COLORS.primary,
+    fontWeight: '600',
   },
 
   eatm_screen_offersSection: {
-    marginBottom: eatmart_verticalScale(4),
+    marginBottom: eatmart_verticalScale(20),
     marginTop: eatmart_verticalScale(4),
   },
   eatm_screen_offersListContent: {
@@ -2894,7 +2941,7 @@ const eatmart_styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: eatmart_scale(16),
-    marginBottom: eatmart_verticalScale(14),
+    marginBottom: eatmart_verticalScale(12),
   },
   eatm_screen_sectionTitle: {
     ...EATMART_TYPOGRAPHY.h4,
@@ -3510,7 +3557,6 @@ const eatmart_styles = StyleSheet.create({
     paddingHorizontal: eatmart_scale(16),
     paddingVertical: eatmart_verticalScale(12),
     borderRadius: eatmart_scale(10),
-    backgroundColor: EATMART_COLORS.primary,
   },
   eatm_screen_itemDetailAddButtonText: {
     ...EATMART_TYPOGRAPHY.button,

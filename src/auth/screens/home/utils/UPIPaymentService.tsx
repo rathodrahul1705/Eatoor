@@ -79,6 +79,7 @@ export const DEFAULT_UPI_APPS = {
 // Payment method types
 export const PAYMENT_METHODS = {
   UPI: 'upi',
+  SAVED_UPI: 'saved_upi',
   WALLET: 'wallet',
   NETBANKING: 'netbanking',
   CARD: 'card',
@@ -86,16 +87,19 @@ export const PAYMENT_METHODS = {
 };
 
 let cachedPaymentMethods = null;
+let currentUserId = null;
 
 /**
  * Fetch payment methods from API
+ * @param {string|number} userId - User ID to fetch payment methods for
  * @returns {Promise<Object>} - Returns payment methods data
  */
-export const fetchPaymentMethods = async () => {
+export const fetchPaymentMethods = async (userId) => {
   try {
-    const response = await getPaymentMethods();
+    const response = await getPaymentMethods(userId);
     if (response?.status == 200 && response?.data) {
       cachedPaymentMethods = response.data;
+      currentUserId = userId;
       return response.data.data;
     }
     throw new Error('Invalid response from API');
@@ -106,12 +110,23 @@ export const fetchPaymentMethods = async () => {
 };
 
 /**
+ * Get saved UPIs from API response
+ * @returns {Array} - Returns array of saved UPIs from API
+ */
+export const getSavedUPIsFromAPI = () => {
+  if (cachedPaymentMethods?.data?.saved_upi) {
+    return cachedPaymentMethods.data.saved_upi;
+  }
+  return [];
+};
+
+/**
  * Get UPI apps from API response
  * @returns {Array} - Returns array of UPI apps from API
  */
 export const getUPIAppsFromAPI = () => {
-  if (cachedPaymentMethods.data?.upi_apps) {
-    return cachedPaymentMethods?.data?.upi_apps;
+  if (cachedPaymentMethods?.data?.upi_apps) {
+    return cachedPaymentMethods.data.upi_apps;
   }
   return [];
 };
@@ -122,7 +137,7 @@ export const getUPIAppsFromAPI = () => {
  */
 export const getWalletsFromAPI = () => {
   if (cachedPaymentMethods?.data?.wallets) {
-    return cachedPaymentMethods?.data?.wallets;
+    return cachedPaymentMethods.data.wallets;
   }
   return [];
 };
@@ -133,7 +148,7 @@ export const getWalletsFromAPI = () => {
  */
 export const getNetbankingFromAPI = () => {
   if (cachedPaymentMethods?.data?.netbanking) {
-    return cachedPaymentMethods?.data?.netbanking;
+    return cachedPaymentMethods.data.netbanking;
   }
   return null;
 };
@@ -144,7 +159,7 @@ export const getNetbankingFromAPI = () => {
  */
 export const getCardsFromAPI = () => {
   if (cachedPaymentMethods?.data?.cards) {
-    return cachedPaymentMethods?.data?.cards;
+    return cachedPaymentMethods.data.cards;
   }
   return null;
 };
@@ -154,10 +169,19 @@ export const getCardsFromAPI = () => {
  * @returns {Object} - Returns COD data
  */
 export const getCODFromAPI = () => {
-  if (cachedPaymentMethods?.cod) {
-    return cachedPaymentMethods.cod;
+  if (cachedPaymentMethods?.data?.cod) {
+    return cachedPaymentMethods.data.cod;
   }
   return null;
+};
+
+/**
+ * Get default saved UPI
+ * @returns {Object|null} - Returns default saved UPI or null
+ */
+export const getDefaultSavedUPI = () => {
+  const savedUPIs = getSavedUPIsFromAPI();
+  return savedUPIs.find(upi => upi.is_default === true) || savedUPIs[0] || null;
 };
 
 /**
@@ -167,6 +191,12 @@ export const getCODFromAPI = () => {
  */
 export const isAppInstalled = async (app) => {
   try {
+    // Skip checking for apps without package name
+    if (!app.packageName && Platform.OS === 'android') {
+      console.log(`${app.name} has no package name, skipping installation check`);
+      return false;
+    }
+    
     const url = Platform.OS === 'ios' ? app.iosScheme : app.scheme;
     const canOpen = await Linking.canOpenURL(url);
     return canOpen;
@@ -182,7 +212,9 @@ export const isAppInstalled = async (app) => {
  */
 export const getInstalledUPIApps = async () => {
   const apiApps = getUPIAppsFromAPI();
+  
   if (apiApps.length === 0) {
+    // Fallback to default apps if no API data
     const installedApps = [];
     for (const [key, app] of Object.entries(DEFAULT_UPI_APPS)) {
       const isInstalled = await isAppInstalled(app);
@@ -190,7 +222,8 @@ export const getInstalledUPIApps = async () => {
         installedApps.push({
           ...app,
           installed: true,
-          icon: app.icon || null
+          icon: app.icon || null,
+          method_id: 3
         });
       }
     }
@@ -212,6 +245,14 @@ export const getInstalledUPIApps = async () => {
   }
   
   return installedApps.sort((a, b) => a.priority - b.priority);
+};
+
+/**
+ * Get all saved UPIs with masked VPAs
+ * @returns {Array} - Returns array of saved UPIs
+ */
+export const getSavedUPIs = () => {
+  return getSavedUPIsFromAPI();
 };
 
 /**
@@ -275,6 +316,39 @@ export const openUPIApp = async (app, intentData, fallbackUrl = null) => {
 };
 
 /**
+ * Open UPI app with saved UPI VPA
+ * @param {Object} app - App configuration
+ * @param {Object} savedUPI - Saved UPI object
+ * @param {string} amount - Payment amount
+ * @param {string} orderId - Order ID
+ * @param {string} merchantName - Merchant name
+ * @param {string} note - Payment note
+ * @returns {Promise<boolean>} - Returns true if app opened successfully
+ */
+export const openUPIAppWithSavedVPA = async (app, savedUPI, amount, orderId, merchantName, note) => {
+  try {
+    if (!savedUPI || !savedUPI.raw_vpa) {
+      throw new Error("Invalid saved UPI data");
+    }
+
+    // Build UPI intent parameters
+    const params = new URLSearchParams();
+    params.append('pa', savedUPI.raw_vpa); // Payee VPA
+    params.append('pn', merchantName || savedUPI.name); // Payee name
+    params.append('am', amount); // Amount
+    params.append('cu', 'INR'); // Currency
+    params.append('tn', note || `Payment for order ${orderId}`); // Transaction note
+    
+    const intentData = params.toString();
+    
+    return await openUPIApp(app, intentData);
+  } catch (error) {
+    console.error(`Error opening ${app.name} with saved VPA:`, error);
+    return false;
+  }
+};
+
+/**
  * Generic function to initiate payment with any UPI app
  * @param {string} intentData - Intent URI data from payment gateway
  * @param {string} preferredAppId - Preferred app ID (optional)
@@ -326,6 +400,69 @@ export const initiateUPIPayment = async (intentData, preferredAppId = null, fall
 };
 
 /**
+ * Initiate payment with saved UPI
+ * @param {Object} savedUPI - Saved UPI object
+ * @param {string} amount - Payment amount
+ * @param {string} orderId - Order ID
+ * @param {string} merchantName - Merchant name
+ * @param {string} note - Payment note
+ * @param {string} preferredAppId - Preferred app ID (optional)
+ * @returns {Promise<Object>} - Returns result of payment initiation
+ */
+export const initiateSavedUPIPayment = async (savedUPI, amount, orderId, merchantName, note, preferredAppId = null) => {
+  try {
+    if (!savedUPI || !savedUPI.raw_vpa) {
+      return {
+        success: false,
+        error: "Invalid saved UPI information"
+      };
+    }
+
+    // Get all installed UPI apps
+    const installedApps = await getInstalledUPIApps();
+    
+    if (installedApps.length === 0) {
+      return {
+        success: false,
+        error: "No UPI payment apps found on your device. Please install Paytm, PhonePe, or Google Pay."
+      };
+    }
+
+    // If preferred app is specified and installed, use it
+    if (preferredAppId) {
+      const preferredApp = installedApps.find(app => app.id === preferredAppId);
+      
+      if (preferredApp) {
+        const opened = await openUPIAppWithSavedVPA(preferredApp, savedUPI, amount, orderId, merchantName, note);
+        return {
+          success: opened,
+          app: preferredApp,
+          savedUPI: savedUPI,
+          error: opened ? null : `Failed to open ${preferredApp.name}`
+        };
+      }
+    }
+    
+    // Otherwise, try the first installed app (highest priority)
+    const firstApp = installedApps[0];
+    const opened = await openUPIAppWithSavedVPA(firstApp, savedUPI, amount, orderId, merchantName, note);
+    
+    return {
+      success: opened,
+      app: firstApp,
+      savedUPI: savedUPI,
+      error: opened ? null : "Failed to open payment app"
+    };
+  } catch (error) {
+    console.error("Saved UPI Payment Error:", error);
+    return {
+      success: false,
+      error: error.message || "Failed to initiate payment with saved UPI"
+    };
+  }
+};
+
+/**
  * Show app selection dialog for multiple installed UPI apps
  * @param {Array} apps - List of installed apps
  * @param {Function} onSelect - Callback when app is selected
@@ -353,18 +490,32 @@ export const validateIntentData = (intentData) => {
 
 /**
  * Get all payment methods with their status
+ * @param {string|number} userId - User ID to fetch payment methods for
  * @returns {Promise<Object>} - Returns all payment methods with their data
  */
-export const getAllPaymentMethods = async () => {
+export const getAllPaymentMethods = async (userId) => {
+
   try {
 
-    const methods = await fetchPaymentMethods();
+    if (!userId && currentUserId) {
+      userId = currentUserId;
+    }
+    
+    const methods = await fetchPaymentMethods(userId);
     const installedUPIApps = await getInstalledUPIApps();
+    const savedUPIs = getSavedUPIsFromAPI();
+    const defaultSavedUPI = getDefaultSavedUPI();
       
     return {
       upi: {
         isActive: methods.upi_apps?.some(app => app.is_active) || false,
         apps: installedUPIApps,
+        allApps: methods.upi_apps || []
+      },
+      saved_upi: {
+        isActive: savedUPIs.length > 0,
+        list: savedUPIs,
+        default: defaultSavedUPI
       },
       wallets: {
         isActive: methods.wallets?.some(wallet => wallet.is_active) || false,
@@ -387,10 +538,45 @@ export const getAllPaymentMethods = async () => {
     console.error('Error getting payment methods:', error);
     return {
       upi: { isActive: false, apps: [], allApps: [] },
+      saved_upi: { isActive: false, list: [], default: null },
       wallets: { isActive: false, wallets: [] },
       netbanking: { isActive: false, data: null },
       cards: { isActive: false, data: null },
       cod: { isActive: false, data: null }
     };
   }
+};
+
+/**
+ * Clear cached payment methods
+ */
+export const clearPaymentMethodsCache = () => {
+  cachedPaymentMethods = null;
+  currentUserId = null;
+};
+
+// Export additional helper functions
+export default {
+  WALLET_APPS,
+  DEFAULT_UPI_APPS,
+  PAYMENT_METHODS,
+  fetchPaymentMethods,
+  getSavedUPIsFromAPI,
+  getUPIAppsFromAPI,
+  getWalletsFromAPI,
+  getNetbankingFromAPI,
+  getCardsFromAPI,
+  getCODFromAPI,
+  getDefaultSavedUPI,
+  getSavedUPIs,
+  isAppInstalled,
+  getInstalledUPIApps,
+  openUPIApp,
+  openUPIAppWithSavedVPA,
+  initiateUPIPayment,
+  initiateSavedUPIPayment,
+  showAppSelectionDialog,
+  validateIntentData,
+  getAllPaymentMethods,
+  clearPaymentMethodsCache
 };

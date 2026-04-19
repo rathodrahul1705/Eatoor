@@ -589,9 +589,9 @@ export const startPaymentPolling = (
   options: any = {}
 ) => {
   const {
-    interval = 3000,
+    interval = 5000,
     maxAttempts = 10,
-    timeout = 180000,
+    timeout = 120000,
     onPending = null
   } = options;
   

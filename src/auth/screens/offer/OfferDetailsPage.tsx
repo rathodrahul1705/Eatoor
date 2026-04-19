@@ -1033,9 +1033,9 @@ const OfferDetailsPage = () => {
           <Icon name="arrow-back" size={24} color="#FFF" />
         </TouchableOpacity>
         
-        {offerImage ? (
+        {/* {offerImage ? (
           <Image source={{ uri: offerImage }} style={styles.heroImage} />
-        ) : null}
+        ) : null} */}
         
         <View style={styles.heroContent}>
           <View style={styles.offerBadge}>

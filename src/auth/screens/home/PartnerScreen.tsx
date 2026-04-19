@@ -2833,14 +2833,10 @@ const PartnerScreen = ({ navigation, route }) => {
                     renderItem={({ item }) => (
                       <View style={styles.orderItem}>
                         <View style={styles.orderItemLeft}>
-                          <View style={styles.quantityBadge}>
-                            <Text style={styles.quantityText}>{item.quantity}</Text>
-                          </View>
-
                           <Text style={styles.orderItemName} numberOfLines={2}>
-                            {item.name}
+                           {item.quantity}  <Text>x</Text>  {item.name}
                             {item.buy_one_get_one_free && (
-                              <Text style={styles.bogoText}>  (B1G1)</Text>
+                              <Text style={styles.bogoText}> (B1G1)</Text>
                             )}
                           </Text>
                         </View>
@@ -4164,16 +4160,18 @@ const styles = StyleSheet.create({
   orderItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: scaleSize(10),
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    alignItems: 'center', // Vertically center all items
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    marginBottom: 8,
   },
   orderItemLeft: {
+    flex: 1, // Takes available space
     flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    minWidth: 0,
+    alignItems: 'center', // Vertically center quantity and name
+    marginRight: 12, // Space before price
   },
   quantityBadge: {
     width: scaleSize(28),
@@ -4191,15 +4189,17 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   quantityText: {
-    color: '#fff',
-    fontSize: scaleFont(12),
-    fontWeight: '800',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    width: 35, // Fixed width for quantity column
+    textAlign: 'left',
   },
   orderItemName: {
-    fontSize: scaleFont(15),
-    color: '#374151',
-    flex: 1,
-    lineHeight: scaleSize(20),
+    flex: 1, // Takes remaining space
+    fontSize: 15,
+    color: '#444',
+    lineHeight: 20,
   },
   orderItemPrice: {
     fontSize: scaleFont(15),
