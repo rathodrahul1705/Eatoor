@@ -529,7 +529,7 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
     if (displayApps.length === 0) {
       return (
         <View style={styles.upiSectionContainer}>
-          <Text style={styles.noAppsText}>No UPI apps available</Text>
+          <Text style={styles.noAppsText}>No UPI app found on your device</Text>
         </View>
       );
     }

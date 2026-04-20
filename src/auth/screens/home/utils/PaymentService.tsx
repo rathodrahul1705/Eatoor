@@ -546,7 +546,7 @@ export const processUPIPayment = async (paymentData: any, preferredApp: string |
     if (paymentData.acs_template) {
       fallbackUrl = decodeBase64(paymentData.acs_template);
     }
-    
+
     // Initiate UPI payment
     const result = await initiateUPIPayment(
       paymentData.intent_data,

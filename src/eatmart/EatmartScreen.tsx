@@ -498,7 +498,7 @@ const CartBottomBar: React.FC = () => {
         eatmart_styles.eatm_screen_cartBottomBar,
         {
           transform: [{ translateY: slideAnim }, { scale: scaleAnim }],
-          bottom: insets.bottom + eatmart_verticalScale(25),
+          bottom: insets.bottom + Platform.OS === 'ios' ? eatmart_verticalScale(25) : eatmart_verticalScale(60),
           marginHorizontal: eatmart_scale(16)
         }
       ]}
@@ -2664,7 +2664,7 @@ const eatmart_styles = StyleSheet.create({
   },
   eatm_screen_categorySection: {
     marginBottom: eatmart_verticalScale(24),
-    marginTop: 0,
+    marginTop: Platform.OS === 'ios' ? eatmart_verticalScale(0) : eatmart_verticalScale(10),
   },
   eatm_screen_categoryListContent: {
     paddingHorizontal: eatmart_scale(16),

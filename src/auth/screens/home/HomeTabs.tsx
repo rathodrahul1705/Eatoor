@@ -4385,7 +4385,7 @@ const styles = StyleSheet.create({
   active_order_card: {
     backgroundColor: '#F5F5F5',
     borderRadius: scale(12),
-    marginBottom: scale(8),
+    marginBottom: Platform.OS === 'ios' ? scale(8) : scale(0),
     overflow: 'hidden',
     ...Platform.select({
       ios: {
@@ -4648,7 +4648,7 @@ const styles = StyleSheet.create({
     right: scale(16),
     bottom: Platform.select({
       ios: verticalScale(90),
-      android: verticalScale(90),
+      android: verticalScale(80),
     }),
     borderRadius: scale(12),
     backgroundColor: '#F5F5F5',

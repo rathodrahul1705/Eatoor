@@ -217,6 +217,7 @@ export const getInstalledUPIApps = async () => {
     // Fallback to default apps if no API data
     const installedApps = [];
     for (const [key, app] of Object.entries(DEFAULT_UPI_APPS)) {
+      
       const isInstalled = await isAppInstalled(app);
       if (isInstalled) {
         installedApps.push({
@@ -256,25 +257,6 @@ export const getSavedUPIs = () => {
 };
 
 /**
- * Build UPI Intent URL for Android
- * @param {Object} app - App configuration
- * @param {string} intentData - Intent URI data from payment gateway
- * @param {string} fallbackUrl - Fallback URL if app not installed
- * @returns {string} - Complete intent URL
- */
-const buildAndroidIntentUrl = (app, intentData, fallbackUrl) => {
-  let intentUrl = `intent://pay?${intentData}`;
-  intentUrl += `#Intent;scheme=upi;package=${app.packageName};`;
-  
-  if (fallbackUrl) {
-    intentUrl += `S.browser_fallback_url=${encodeURIComponent(fallbackUrl)};`;
-  }
-  
-  intentUrl += "end";
-  return intentUrl;
-};
-
-/**
  * Open UPI app with payment intent
  * @param {Object} app - App configuration
  * @param {string} intentData - Intent URI data from payment gateway
@@ -294,7 +276,8 @@ export const openUPIApp = async (app, intentData, fallbackUrl = null) => {
       url = `${app.iosScheme}${intentData}`;
     } else {
       // Android uses intent URL
-      url = buildAndroidIntentUrl(app, intentData, fallbackUrl);
+      suffix = `${app.anroidScheme}#Intent;scheme=upi;package=${app.packageName};`
+      url = app.anroidScheme+intentData+suffix
     }
 
     console.log(`Opening ${app.name} with URL:`, url);
@@ -359,7 +342,7 @@ export const initiateUPIPayment = async (intentData, preferredAppId = null, fall
   try {
     // Get all installed UPI apps
     const installedApps = await getInstalledUPIApps();
-    
+        
     if (installedApps.length === 0) {
       return {
         success: false,
@@ -503,6 +486,7 @@ export const getAllPaymentMethods = async (userId) => {
     
     const methods = await fetchPaymentMethods(userId);
     const installedUPIApps = await getInstalledUPIApps();
+
     const savedUPIs = getSavedUPIsFromAPI();
     const defaultSavedUPI = getDefaultSavedUPI();
       
