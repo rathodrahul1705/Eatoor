@@ -13,6 +13,7 @@ import {
   Alert,
   Linking,
   RefreshControl,
+  Image, // <-- Added import
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
@@ -106,15 +107,16 @@ const mapUiFilterToApiFilter = (ui: string): SettlementFilter => {
 const formatCurrency = (amount: number): string =>
   `₹${amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-// ---------- Define DaySummary type (matches updated API) ----------
+// ---------- Define DaySummary type ----------
 interface DaySummary {
   date: string;
   total_orders: number;
-  gross_sales: number;               // subtotal
-  total_delivery_fee: number;       // added
-  tax: number;                      // added
-  commission: number;
-  net_pay: number;
+  item_gross_sale: number;
+  gross_sale: number;
+  total_delivery_fee: number;
+  tax: number;
+  eatoor_commission: number;
+  restaurant_net_pay: number;
   average_order_value: number;
 }
 
@@ -138,21 +140,24 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
   const [loadingTransactions, setLoadingTransactions] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Restaurant info now includes profile_image
   const [restaurantInfo, setRestaurantInfo] = useState<{
     name: string;
     address: string;
     phone: string;
     email: string;
+    profile_image?: string | null; // <-- Added
   } | null>(null);
 
-  // NEW: state for transaction totals (now includes delivery fee and tax)
+  // Updated transaction totals state
   const [transactionTotals, setTransactionTotals] = useState<{
     total_orders: number;
-    gross_sales: number;
+    item_gross_sale: number;
+    gross_sale: number;
     total_delivery_fee: number;
     total_tax: number;
-    commission: number;
-    net_pay: number;
+    eatoor_commission: number;
+    restaurant_net_pay: number;
   } | null>(null);
 
   // Pagination state
@@ -189,7 +194,14 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
       const res = await getSettlementDashboard(params);
       setDashboardRes(res.data);
       if (res.data?.data?.restaurant) {
-        setRestaurantInfo(res.data.data.restaurant);
+        const { id, name, address, phone, email, profile_image } = res.data.data.restaurant;
+        setRestaurantInfo({
+          name: name || 'Restaurant Name',
+          address: address || 'Address not available',
+          phone: phone || '',
+          email: email || '',
+          profile_image: profile_image || null,
+        });
       }
       setErrorMessage(null);
     } catch (e: any) {
@@ -221,20 +233,30 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
           params.end_date = toIsoDate(customRange.end);
         }
         const res = await getSettlementTransactions(params);
-        const items: DaySummary[] = res.data?.data?.items || [];
+        const items: DaySummary[] = (res.data?.data?.items || []).map((item: any) => ({
+          date: item.date,
+          total_orders: Number(item.total_orders),
+          item_gross_sale: Number(item.item_gross_sale),
+          gross_sale: Number(item.gross_sale),
+          total_delivery_fee: Number(item.total_delivery_fee),
+          tax: Number(item.tax),
+          eatoor_commission: Number(item.eatoor_commission),
+          restaurant_net_pay: Number(item.restaurant_net_pay),
+          average_order_value: Number(item.average_order_value),
+        }));
         const pagination = res.data?.data?.pagination;
         const totalPages = pagination?.total_pages || 1;
         const currentPage = pagination?.page || pageNum;
 
-        // Update transaction totals – includes new fields
         if (res.data?.data?.totals) {
           setTransactionTotals({
             total_orders: res.data.data.totals.total_orders ?? 0,
-            gross_sales: res.data.data.totals.gross_sales ?? 0,
+            item_gross_sale: res.data.data.totals.item_gross_sale ?? 0,
+            gross_sale: res.data.data.totals.gross_sale ?? 0,
             total_delivery_fee: res.data.data.totals.total_delivery_fee ?? 0,
             total_tax: res.data.data.totals.total_tax ?? 0,
-            commission: res.data.data.totals.commission ?? 0,
-            net_pay: res.data.data.totals.net_pay ?? 0,
+            eatoor_commission: res.data.data.totals.eatoor_commission ?? 0,
+            restaurant_net_pay: res.data.data.totals.restaurant_net_pay ?? 0,
           });
         }
 
@@ -247,7 +269,14 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
         setHasMore(currentPage < totalPages);
         setErrorMessage(null);
         if (!restaurantInfo && res.data?.data?.restaurant) {
-          setRestaurantInfo(res.data.data.restaurant);
+          const { id, name, address, phone, email, profile_image } = res.data.data.restaurant;
+          setRestaurantInfo({
+            name: name || 'Restaurant Name',
+            address: address || 'Address not available',
+            phone: phone || '',
+            email: email || '',
+            profile_image: profile_image || null,
+          });
         }
       } catch (e: any) {
         setErrorMessage(e?.message || 'Failed to load settlement data');
@@ -268,7 +297,7 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
     setHasMore(true);
     setLoadingMore(false);
     loadingMoreRef.current = false;
-    setTransactionTotals(null); // reset totals
+    setTransactionTotals(null);
 
     fetchDashboard();
     fetchDaySummaries(1, false);
@@ -300,7 +329,7 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
     refreshData().finally(() => setRefreshing(false));
   }, [refreshData]);
 
-  // Totals from transaction API (used for summary metrics)
+  // Totals from transaction API
   const totals = useMemo(() => {
     if (!transactionTotals) {
       return {
@@ -312,9 +341,9 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
     }
     return {
       totalOrders: transactionTotals.total_orders ?? 0,
-      totalRevenue: transactionTotals.gross_sales ?? 0,      // subtotal
-      totalCommission: transactionTotals.commission ?? 0,
-      totalNet: transactionTotals.net_pay ?? 0,
+      totalRevenue: transactionTotals.item_gross_sale ?? 0,
+      totalCommission: transactionTotals.eatoor_commission ?? 0,
+      totalNet: transactionTotals.restaurant_net_pay ?? 0,
     };
   }, [transactionTotals]);
 
@@ -432,7 +461,7 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
     </View>
   );
 
-  // Preview item for a single day summary
+  // Preview item
   const renderDayPreview = (day: DaySummary) => (
     <TouchableOpacity
       key={day.date}
@@ -447,35 +476,37 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
       <View style={styles.previewItemCenter}>
         <Text style={styles.previewType}>Avg: {formatCurrency(day.average_order_value)}</Text>
       </View>
-      <Text style={styles.previewAmount}>{formatCurrency(day.net_pay)}</Text>
+      <Text style={styles.previewAmount}>{formatCurrency(day.restaurant_net_pay)}</Text>
     </TouchableOpacity>
   );
 
-  // Table row for day summary (uses the new fields)
+  // Table row
   const renderSummaryRow = (day: DaySummary) => (
     <View style={styles.summaryRow} key={day.date}>
       <Text style={[styles.summaryCell, styles.colDate]}>{day.date}</Text>
       <Text style={[styles.summaryCell, styles.colOrderId]}>{day.total_orders}</Text>
-      <Text style={[styles.summaryCell, styles.colCustomer]}>{formatCurrency(day.gross_sales)}</Text>
-      <Text style={[styles.summaryCell, styles.colType]}>{formatCurrency(day.commission)}</Text>
-      <Text style={[styles.summaryCell, styles.colPayment]}>{formatCurrency(day.net_pay)}</Text>
+      <Text style={[styles.summaryCell, styles.colCustomer]}>{formatCurrency(day.gross_sale)}</Text>
+      <Text style={[styles.summaryCell, styles.colCustomer]}>{formatCurrency(day.item_gross_sale)}</Text>
+      <Text style={[styles.summaryCell, styles.colType]}>{formatCurrency(day.eatoor_commission)}</Text>
+      <Text style={[styles.summaryCell, styles.colType]}>{formatCurrency(day.total_delivery_fee)}</Text>
+      <Text style={[styles.summaryCell, styles.colPayment]}>{formatCurrency(day.restaurant_net_pay)}</Text>
       <Text style={[styles.summaryCell, styles.colOrders]}>{formatCurrency(day.average_order_value)}</Text>
     </View>
   );
 
-  // Modal item for day summary (show gross and net)
+  // Modal item
   const renderModalDayItem = (day: DaySummary) => (
     <View style={styles.modalTransactionItem} key={day.date}>
       <View style={styles.modalTransactionLeft}>
         <Text style={styles.modalTransactionDate}>{day.date}</Text>
         <Text style={styles.modalTransactionOrderId}>Orders: {day.total_orders}</Text>
         <View style={styles.modalTransactionRow}>
-          <Text style={styles.modalTransactionDetail}>Gross: {formatCurrency(day.gross_sales)}</Text>
-          <Text style={styles.modalTransactionDetail}>Net: {formatCurrency(day.net_pay)}</Text>
+          <Text style={styles.modalTransactionDetail}>Gross: {formatCurrency(day.item_gross_sale)}</Text>
+          <Text style={styles.modalTransactionDetail}>Net: {formatCurrency(day.restaurant_net_pay)}</Text>
         </View>
       </View>
       <View style={styles.modalTransactionRight}>
-        <Text style={styles.modalTransactionAmount}>{formatCurrency(day.net_pay)}</Text>
+        <Text style={styles.modalTransactionAmount}>{formatCurrency(day.restaurant_net_pay)}</Text>
         <Text style={styles.modalTransactionType}>Avg: {formatCurrency(day.average_order_value)}</Text>
       </View>
     </View>
@@ -513,7 +544,7 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
         </View>
       )}
 
-      {/* Main vertical ScrollView with RefreshControl */}
+      {/* Main vertical ScrollView */}
       <ScrollView
         style={styles.verticalScroll}
         contentContainerStyle={styles.verticalScrollContent}
@@ -535,11 +566,18 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
         }}
         scrollEventThrottle={16}
       >
-        {/* Restaurant Card */}
+        {/* Restaurant Card - now with profile image */}
         <View style={styles.restaurantCard}>
           <View style={styles.restaurantHeader}>
             <View style={styles.restaurantLogo}>
-              <Icon name="restaurant-outline" size={40} color="#FF7F4D" />
+              {restaurantInfo?.profile_image ? (
+                <Image
+                  source={{ uri: restaurantInfo.profile_image }}
+                  style={styles.restaurantImage}
+                />
+              ) : (
+                <Icon name="restaurant-outline" size={40} color="#FF7F4D" />
+              )}
             </View>
             <View style={styles.restaurantDetails}>
               <Text style={styles.restaurantName}>
@@ -601,19 +639,19 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
             <View style={styles.payoutSummaryItem}>
               <Text style={styles.payoutSummaryLabel}>Revenue</Text>
               <Text style={styles.payoutSummaryValue}>
-                ₹{(currentCycle?.revenue ?? 0).toLocaleString('en-IN')}
+                ₹{(currentCycle?.item_gross_sale ?? 0).toLocaleString('en-IN')}
               </Text>
             </View>
             <View style={styles.payoutSummaryItem}>
               <Text style={styles.payoutSummaryLabel}>Net Pay</Text>
               <Text style={styles.payoutSummaryValue}>
-                ₹{(currentCycle?.net_pay ?? 0).toLocaleString('en-IN')}
+                ₹{(currentCycle?.restaurant_net_pay ?? 0).toLocaleString('en-IN')}
               </Text>
             </View>
             <View style={styles.payoutSummaryItem}>
               <Text style={styles.payoutSummaryLabel}>Commission</Text>
               <Text style={styles.payoutSummaryValue}>
-                ₹{(currentCycle?.commission ?? 0).toLocaleString('en-IN')}
+                ₹{(currentCycle?.eatoor_commission ?? 0).toLocaleString('en-IN')}
               </Text>
             </View>
           </View>
@@ -674,7 +712,7 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
           </View>
         )}
 
-        {/* Compact Summary Metrics - now using transaction totals (subtotal based) */}
+        {/* Compact Summary Metrics */}
         <View style={styles.sectionTitle}>
           <Icon name="stats-chart-outline" size={20} color="#FF7F4D" />
           <Text style={styles.sectionTitleText}>Summary</Text>
@@ -686,46 +724,18 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
           {renderCompactMetric('Commission', totals.totalCommission, 'pie-chart-outline', '₹', '#d32f2f')}
         </View>
 
-        {/* Daily Summary Preview List */}
-        {/* <View style={styles.previewSection}>
-          <View style={styles.previewHeader}>
-            <Icon name="list-outline" size={20} color="#FF7F4D" />
-            <Text style={styles.previewTitle}>Daily Summary</Text>
-            {allDays.length > 0 && (
-              <TouchableOpacity onPress={() => setDetailsModalVisible(true)}>
-                <Text style={styles.viewAllLink}>View All</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          {loadingTransactions ? (
-            <ActivityIndicator size="small" color="#FF7F4D" style={{ marginVertical: 20 }} />
-          ) : allDays.length === 0 ? (
-            <Text style={styles.emptyText}>No data found for the selected period.</Text>
-          ) : (
-            <>
-              {allDays.slice(0, 5).map((day) => renderDayPreview(day))}
-              {allDays.length > 5 && (
-                <TouchableOpacity
-                  style={styles.showMoreButton}
-                  onPress={() => setDetailsModalVisible(true)}
-                >
-                  <Text style={styles.showMoreText}>Show all {allDays.length} days</Text>
-                </TouchableOpacity>
-              )}
-            </>
-          )}
-        </View> */}
-
-        {/* Table section - horizontally scrollable */}
+        {/* Table section */}
         <View style={styles.tableContainer}>
           <ScrollView horizontal showsHorizontalScrollIndicator={true}>
-            <View style={{ width: 600 }}>
+            <View style={{ width: 800 }}>
               {/* Table Header */}
               <View style={styles.summaryHeader}>
                 <Text style={[styles.summaryHeaderText, styles.colDate]}>Date</Text>
                 <Text style={[styles.summaryHeaderText, styles.colOrderId]}>Orders</Text>
                 <Text style={[styles.summaryHeaderText, styles.colCustomer]}>Gross</Text>
+                <Text style={[styles.summaryHeaderText, styles.colCustomer]}>Item Gross</Text>
                 <Text style={[styles.summaryHeaderText, styles.colType]}>Commission</Text>
+                <Text style={[styles.summaryHeaderText, styles.colType]}>Delivery Fee</Text>
                 <Text style={[styles.summaryHeaderText, styles.colPayment]}>Net</Text>
                 <Text style={[styles.summaryHeaderText, styles.colOrders]}>Avg Order</Text>
               </View>
@@ -800,7 +810,7 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
   );
 };
 
-// ---------- Styles (unchanged) ----------
+// ---------- Styles (updated with image style) ----------
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -858,6 +868,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,
+    overflow: 'hidden', // ensures image is clipped to circle
+  },
+  restaurantImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
   },
   restaurantDetails: { flex: 1 },
   restaurantName: { fontSize: 18, fontWeight: '700', color: '#1A1A2E' },

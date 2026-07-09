@@ -13,8 +13,8 @@ if (Platform.OS === 'android') {
 
 } else {
   // iOS simulator can use localhost directly
-  BASE_URL = 'https://www.eatoor.com/api';
-  // BASE_URL = 'http://127.0.0.1:8000/api';
+  // BASE_URL = 'https://www.eatoor.com/api';
+  BASE_URL = 'http://127.0.0.1:8000/api';
 }
 
 // For real devices: change BASE_URL to your PC's local IP
