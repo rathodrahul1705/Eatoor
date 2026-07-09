@@ -23,6 +23,7 @@ import EatoorMoneyScreen from '../auth/screens/home/EatoorMoneyScreen';
 import EatmartViewCart from '../eatmart/EatmartViewCart';
 import EatoorMoneyAdd from '../auth/screens/home/EatoorMoneyAdd';
 import PartnerScreen from '../auth/screens/home/PartnerScreen';
+import PartnerSettlementScreen from '../auth/screens/home/PartnerSettlementScreen';
 import LoginScreen from '../auth/screens/LoginScreen';
 import { HomeStackParamList } from '../types/navigation.d';
 import OTPScreen from '../auth/screens/OTPScreen';
@@ -149,6 +150,7 @@ const HomeNavigator = () => {
           <Stack.Screen name="EatmartViewCart" component={EatmartViewCart} />
           <Stack.Screen name="EatoorMoneyAdd" component={EatoorMoneyAdd} />
           <Stack.Screen name="PartnerScreen" component={PartnerScreen} />
+          <Stack.Screen name="PartnerSettlementScreen" component={PartnerSettlementScreen} />
           <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} options={{ title: 'Notification Settings' }}
         />
         </>

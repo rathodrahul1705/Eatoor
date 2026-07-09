@@ -1248,7 +1248,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: scaleHeight(16),
     fontSize: getFontSize(16),
-    color: '#667eea',
+    color: '#FF6B35',
     fontWeight: '500',
   },
   scrollContainer: {
@@ -1261,14 +1261,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'ios' ? 8 : 12,
+    paddingBottom: Platform.OS === 'ios' ? 12 : 16,
+    backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-    padding:10,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
-    zIndex: 10,
+    borderBottomColor: '#f0f0f0',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
   headerTitle: {
     fontSize: getFontSize(20),

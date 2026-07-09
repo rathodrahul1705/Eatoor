@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  SafeAreaView, 
-  TouchableOpacity, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  SafeAreaView,
+  TouchableOpacity,
   FlatList,
   Image,
   TextInput,
@@ -12,11 +12,16 @@ import {
   ActivityIndicator,
   RefreshControl,
   Animated,
-  Easing
+  Easing,
+  Dimensions,
+  Platform
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { getfavouriteKitchenList, updateFavouriteKitchen } from '../../../api/home';
 import { useFocusEffect } from '@react-navigation/native';
+
+const { width } = Dimensions.get('window');
+const CARD_WIDTH = width - 32;
 
 const FavoritesScreen = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -111,78 +116,93 @@ const FavoritesScreen = ({ navigation }) => {
     });
   };
 
-  const renderItem = ({ item }) => (
-    <TouchableOpacity 
-      style={styles.card}
-      onPress={() => handleItemPress(item)}
-      activeOpacity={0.9}
+  const renderItem = ({ item, index }) => (
+    <Animated.View 
+      style={[
+        styles.cardWrapper,
+        {
+          opacity: fadeAnim,
+          transform: [{
+            translateY: fadeAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [30, 0],
+            })
+          }]
+        }
+      ]}
     >
-      <View style={styles.imageContainer}>
-        {item.image ? (
-          <Image 
-            source={{ uri: item.image }} 
-            style={styles.cardImage} 
-            resizeMode="cover"
-          />
-        ) : (
-          <View style={[styles.cardImage, styles.cardImagePlaceholder]}>
-            <Icon name="restaurant" size={40} color="#FF5E00" />
-          </View>
-        )}
-        
-        <TouchableOpacity 
-          style={styles.favoriteButton}
-          onPress={(e) => {
-            e.stopPropagation();
-            toggleFavorite(item.id, item.restaurantId);
-          }}
-        >
-          <Icon 
-            name={item.isFavorite ? 'heart' : 'heart-outline'} 
-            size={24} 
-            color="#FF5E00" 
-          />
-        </TouchableOpacity>
-        
-        {item.status !== 2 && (
-          <View style={styles.closedBadge}>
-            <Text style={styles.closedText}>Closed</Text>
-          </View>
-        )}
-      </View>
-      
-      <View style={styles.cardContent}>
-        <View style={styles.titleRow}>
-          <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
-          <Text style={styles.priceText}>₹{item.price}</Text>
+      <TouchableOpacity 
+        style={styles.card}
+        onPress={() => handleItemPress(item)}
+        activeOpacity={0.9}
+      >
+        <View style={styles.imageContainer}>
+          {item.image ? (
+            <Image 
+              source={{ uri: item.image }} 
+              style={styles.cardImage} 
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={[styles.cardImage, styles.cardImagePlaceholder]}>
+              <Icon name="restaurant" size={50} color="#FF5E00" />
+            </View>
+          )}
+          
+          <TouchableOpacity 
+            style={styles.favoriteButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              toggleFavorite(item.id, item.restaurantId);
+            }}
+          >
+            <Icon 
+              name={item.isFavorite ? 'heart' : 'heart-outline'} 
+              size={22} 
+              color="#FF5E00" 
+            />
+          </TouchableOpacity>
+          
+          {item.status !== 2 && (
+            <View style={styles.closedBadge}>
+              <Text style={styles.closedText}>Closed</Text>
+            </View>
+          )}
         </View>
         
-        <View style={styles.categoryRow}>
-          <View style={styles.categoryBadge}>
-            <Text style={styles.cardCategory}>{item.category}</Text>
-          </View>
-        </View>
-        
-        <View style={styles.statsRow}>
-          <View style={styles.ratingContainer}>
-            <Icon name="star" size={14} color="#FFD700" />
-            <Text style={styles.ratingText}>{item.rating.toFixed(1)}</Text>
-            <Text style={styles.reviewsText}>({item.reviews})</Text>
+        <View style={styles.cardContent}>
+          <View style={styles.titleRow}>
+            <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
+            <Text style={styles.priceText}>₹{item.price}</Text>
           </View>
           
-          <View style={styles.prepTimeContainer}>
-            <Icon name="time-outline" size={14} color="#555" />
-            <Text style={styles.prepTime}>{item.prepTime}</Text>
+          <View style={styles.categoryRow}>
+            <View style={styles.categoryBadge}>
+              <Text style={styles.cardCategory}>{item.category}</Text>
+            </View>
           </View>
+          
+          <View style={styles.statsRow}>
+            <View style={styles.ratingContainer}>
+              <Icon name="star" size={14} color="#FFD700" />
+              <Text style={styles.ratingText}>{item.rating.toFixed(1)}</Text>
+              <Text style={styles.reviewsText}>({item.reviews})</Text>
+            </View>
+            
+            <View style={styles.prepTimeContainer}>
+              <Icon name="time-outline" size={14} color="#FF5E00" />
+              <Text style={styles.prepTime}>{item.prepTime}</Text>
+            </View>
+          </View>
+          
+          {item.description && (
+            <Text style={styles.descriptionText} numberOfLines={2}>
+              {item.description}
+            </Text>
+          )}
         </View>
-        
-        {item.description && (
-          <Text style={styles.descriptionText} numberOfLines={2}>
-            {item.description}
-          </Text>
-        )}
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </Animated.View>
   );
 
   const renderEmptyComponent = () => {
@@ -191,7 +211,7 @@ const FavoritesScreen = ({ navigation }) => {
     return (
       <Animated.View style={[styles.emptyContainer, { opacity: fadeAnim }]}>
         <View style={styles.emptyIconContainer}>
-          <Icon name="heart-dislike" size={60} color="#FF5E00" />
+          <Icon name="heart-dislike" size={70} color="#FF5E00" />
         </View>
         <Text style={styles.emptyTitle}>No favorites yet</Text>
         <Text style={styles.emptySubtitle}>
@@ -278,31 +298,47 @@ const FavoritesScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f8f8',
+    backgroundColor: '#f8f9fa',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    paddingTop: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e0e0e0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-    zIndex: 10,
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'ios' ? 8 : 12,
+    paddingBottom: Platform.OS === 'ios' ? 12 : 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
   backButton: {
     padding: 8,
+    borderRadius: 12,
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#333',
-    fontFamily: 'Poppins-SemiBold',
+    color: '#1a1a1a',
+    ...Platform.select({
+      ios: {
+        fontFamily: 'System',
+        fontWeight: '600',
+      },
+      android: {
+        fontFamily: 'sans-serif-medium',
+      },
+    }),
   },
   headerRight: {
     width: 40,
@@ -311,25 +347,40 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    borderRadius: 12,
-    margin: 16,
+    borderRadius: 16,
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 8,
     paddingHorizontal: 16,
-    height: 50,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    height: 52,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 6,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   searchIcon: {
-    marginRight: 10,
+    marginRight: 12,
   },
   searchInput: {
     flex: 1,
     fontSize: 16,
     color: '#333',
     height: '100%',
-    fontFamily: 'Poppins-Regular',
+    ...Platform.select({
+      ios: {
+        fontFamily: 'System',
+      },
+      android: {
+        fontFamily: 'sans-serif',
+      },
+    }),
   },
   clearButton: {
     padding: 8,
@@ -337,6 +388,7 @@ const styles = StyleSheet.create({
   listContainer: {
     paddingHorizontal: 16,
     paddingBottom: 24,
+    paddingTop: 8,
     flexGrow: 1,
   },
   loadingContainer: {
@@ -344,59 +396,82 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  cardWrapper: {
+    marginBottom: 16,
+  },
   card: {
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 20,
     overflow: 'hidden',
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 5,
+      },
+    }),
   },
   imageContainer: {
     position: 'relative',
   },
   cardImage: {
-    width: '100%',
-    height: 180,
+    width: CARD_WIDTH,
+    height: 200,
     backgroundColor: '#f5f5f5',
   },
   cardImagePlaceholder: {
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#FFF5F0',
   },
   favoriteButton: {
     position: 'absolute',
     top: 12,
     right: 12,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: 20,
-    width: 36,
-    height: 36,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 25,
+    width: 40,
+    height: 40,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   closedBadge: {
     position: 'absolute',
     bottom: 12,
     left: 12,
-    backgroundColor: 'rgba(255, 94, 0, 0.9)',
-    borderRadius: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    backgroundColor: 'rgba(255, 94, 0, 0.95)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
   closedText: {
     fontSize: 12,
     color: '#fff',
-    fontFamily: 'Poppins-Medium',
+    fontWeight: '600',
+    ...Platform.select({
+      ios: {
+        fontFamily: 'System',
+        fontWeight: '600',
+      },
+      android: {
+        fontFamily: 'sans-serif-medium',
+      },
+    }),
   },
   cardContent: {
     padding: 16,
@@ -405,36 +480,61 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   cardTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#333',
-    fontFamily: 'Poppins-SemiBold',
+    color: '#1a1a1a',
     flex: 1,
     marginRight: 8,
+    ...Platform.select({
+      ios: {
+        fontFamily: 'System',
+        fontWeight: '700',
+      },
+      android: {
+        fontFamily: 'sans-serif-medium',
+      },
+    }),
   },
   priceText: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '700',
     color: '#FF5E00',
-    fontFamily: 'Poppins-SemiBold',
+    ...Platform.select({
+      ios: {
+        fontFamily: 'System',
+        fontWeight: '700',
+      },
+      android: {
+        fontFamily: 'sans-serif-medium',
+      },
+    }),
   },
   categoryRow: {
     marginBottom: 12,
   },
   categoryBadge: {
     backgroundColor: '#FF5E0010',
-    borderRadius: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     alignSelf: 'flex-start',
   },
   cardCategory: {
     fontSize: 12,
     color: '#FF5E00',
-    fontFamily: 'Poppins-Medium',
+    fontWeight: '600',
+    ...Platform.select({
+      ios: {
+        fontFamily: 'System',
+        fontWeight: '600',
+      },
+      android: {
+        fontFamily: 'sans-serif-medium',
+      },
+    }),
   },
   statsRow: {
     flexDirection: 'row',
@@ -447,17 +547,32 @@ const styles = StyleSheet.create({
     marginRight: 16,
   },
   ratingText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
     color: '#333',
     marginLeft: 4,
     marginRight: 4,
-    fontFamily: 'Poppins-SemiBold',
+    ...Platform.select({
+      ios: {
+        fontFamily: 'System',
+        fontWeight: '600',
+      },
+      android: {
+        fontFamily: 'sans-serif-medium',
+      },
+    }),
   },
   reviewsText: {
     fontSize: 12,
     color: '#777',
-    fontFamily: 'Poppins-Regular',
+    ...Platform.select({
+      ios: {
+        fontFamily: 'System',
+      },
+      android: {
+        fontFamily: 'sans-serif',
+      },
+    }),
   },
   prepTimeContainer: {
     flexDirection: 'row',
@@ -465,15 +580,31 @@ const styles = StyleSheet.create({
   },
   prepTime: {
     fontSize: 13,
-    color: '#555',
+    color: '#FF5E00',
     marginLeft: 4,
-    fontFamily: 'Poppins-Medium',
+    fontWeight: '500',
+    ...Platform.select({
+      ios: {
+        fontFamily: 'System',
+        fontWeight: '500',
+      },
+      android: {
+        fontFamily: 'sans-serif-medium',
+      },
+    }),
   },
   descriptionText: {
     fontSize: 13,
     color: '#666',
     lineHeight: 18,
-    fontFamily: 'Poppins-Regular',
+    ...Platform.select({
+      ios: {
+        fontFamily: 'System',
+      },
+      android: {
+        fontFamily: 'sans-serif',
+      },
+    }),
   },
   separator: {
     height: 8,
@@ -483,52 +614,82 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 40,
+    marginTop: 60,
   },
   emptyIconContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     backgroundColor: 'rgba(255, 94, 0, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 24,
   },
   emptyTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '600',
-    color: '#333',
+    color: '#1a1a1a',
     marginBottom: 8,
     textAlign: 'center',
-    fontFamily: 'Poppins-SemiBold',
+    ...Platform.select({
+      ios: {
+        fontFamily: 'System',
+        fontWeight: '600',
+      },
+      android: {
+        fontFamily: 'sans-serif-medium',
+      },
+    }),
   },
   emptySubtitle: {
     fontSize: 15,
     color: '#777',
     textAlign: 'center',
     lineHeight: 22,
-    marginBottom: 24,
+    marginBottom: 28,
     paddingHorizontal: 20,
-    fontFamily: 'Poppins-Regular',
+    ...Platform.select({
+      ios: {
+        fontFamily: 'System',
+      },
+      android: {
+        fontFamily: 'sans-serif',
+      },
+    }),
   },
   exploreButton: {
     backgroundColor: '#FF5E00',
-    paddingHorizontal: 24,
+    paddingHorizontal: 28,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#FF5E00',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#FF5E00',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 5,
+      },
+    }),
   },
   exploreButtonText: {
     color: 'white',
     fontWeight: '600',
     fontSize: 16,
     marginRight: 8,
-    fontFamily: 'Poppins-SemiBold',
+    ...Platform.select({
+      ios: {
+        fontFamily: 'System',
+        fontWeight: '600',
+      },
+      android: {
+        fontFamily: 'sans-serif-medium',
+      },
+    }),
   },
 });
 

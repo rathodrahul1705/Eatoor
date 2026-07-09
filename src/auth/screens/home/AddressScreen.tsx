@@ -932,11 +932,10 @@ const AddressScreen: React.FC<AddressScreenProps> = ({ route }) => {
       <StatusBar 
         barStyle="dark-content" 
         backgroundColor="#FFF"
-        animated={true}
       />
       
       {/* Header */}
-      <View style={[styles.header, { height: isIOS ? 44 : 56 }]}>
+      <View style={[styles.header, { height: isIOS ? 44 : 66 }]}>
         <View style={styles.headerContent}>
           <TouchableOpacity 
             style={styles.backButton}
@@ -980,17 +979,24 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#E0E0E0',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'ios' ? 8 : 12,
+    paddingBottom: Platform.OS === 'ios' ? 12 : 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
       },
       android: {
-        elevation: 3,
+        elevation: 4,
       },
     }),
   },

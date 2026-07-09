@@ -19,7 +19,8 @@ import {
   RefreshControl,
   ScrollView,
   Easing,
-  Modal
+  Modal,
+  Alert
 } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -153,6 +154,63 @@ const SEARCH_PLACEHOLDERS = [
   "Healthy, Salad, Bowl..."
 ];
 
+// ============== SERVICEABLE CITIES CONFIGURATION ==============
+
+interface ServiceableCity {
+  name: string;
+  lat: number;
+  lng: number;
+  radiusKm: number; // radius in kilometers
+}
+
+const SERVICEABLE_CITIES: ServiceableCity[] = [
+  {
+    name: 'Thane',
+    lat: 19.2183,
+    lng: 72.9781,
+    radiusKm: 15, // ~15 km radius
+  },
+  // Add more cities here in the future, e.g.:
+  // {
+  //   name: 'Mumbai',
+  //   lat: 19.0760,
+  //   lng: 72.8777,
+  //   radiusKm: 20,
+  // },
+];
+
+// ============== HELPERS ==============
+
+/**
+ * Calculate distance between two coordinates using Haversine formula
+ */
+const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const R = 6371; // Earth's radius in km
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+/**
+ * Check if a given location is within any serviceable city
+ */
+const isLocationServiceable = (lat: number, lng: number): boolean => {
+  if (!lat || !lng) return false;  
+  for (const city of SERVICEABLE_CITIES) {
+    const distance = haversineDistance(lat, lng, city.lat, city.lng);
+    if (distance <= city.radiusKm) {
+      return true;
+    }
+  }
+  return false;
+};
+
 // ============== TYPES ==============
 
 interface BannerTheme {
@@ -213,7 +271,7 @@ interface LocationData {
 
 interface AddressHeaderLeftProps {
   isGuest: boolean;
-  onAddressUpdate?: (address: string, homeType: string) => void;
+  onAddressUpdate?: (address: string, homeType: string, lat?: number, lng?: number) => void;
   bannerColors?: {
     backgroundColor: string;
     textColor: string;
@@ -882,7 +940,7 @@ const OffersCategoryCard = ({ onPress }: { onPress: () => void }) => {
   );
 };
 
-// ============== COMPONENTS ==============
+// ============== ADDRESS HEADER COMPONENT WITH FIXED ANDROID LOCATION ==============
 
 const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCollapsed }: AddressHeaderLeftProps) => {
   const navigation = useNavigation<any>();
@@ -900,6 +958,8 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCo
   const [appState, setAppState] = useState(AppState.currentState);
   const [locationRetryCount, setLocationRetryCount] = useState(0);
   const locationWatchId = useRef<number | null>(null);
+  const hasShownLocationAlert = useRef(false);
+  const hasShownPermissionAlert = useRef(false);
 
   const truncateAddress = (address: string, maxWords: number = 3) => {
     if (!address) return '';
@@ -1006,8 +1066,12 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCo
       }));
 
       if (onAddressUpdate) {
-        onAddressUpdate(full_address, home_type || "Home");
+        onAddressUpdate(full_address, home_type || "Home", lat, lng);
       }
+
+      // Reset alert flags on successful location fetch
+      hasShownLocationAlert.current = false;
+      hasShownPermissionAlert.current = false;
 
       return isExisting;
     } catch (error) {
@@ -1015,6 +1079,67 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCo
       return false;
     }
   }, [isGuest, saveAddressDetails, onAddressUpdate]);
+
+  const checkLocationServicesEnabled = useCallback(async (): Promise<boolean> => {
+  if (Platform.OS === 'ios') {
+    return true;
+  }
+  
+  console.log("===== Android location check started on real device");
+  
+    try {
+      const position = await new Promise<Geolocation.GeoPosition>((resolve, reject) => {
+        let resolved = false;
+        
+        const timeoutId = setTimeout(() => {
+          if (!resolved) {
+            reject({ code: 3, message: 'Location request timeout - GPS may be unavailable' });
+          }
+        }, 25000);
+        
+        Geolocation.getCurrentPosition(
+          (pos) => {
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timeoutId);
+              console.log("getCurrentPosition success:", pos.coords.latitude, pos.coords.longitude);
+              console.log("Accuracy:", pos.coords.accuracy, "meters");
+              resolve(pos);
+            }
+          },
+          (error) => {
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timeoutId);
+              console.log("getCurrentPosition error:", error.code, error.message);
+              
+              // Log specific error types for better debugging
+              if (error.code === 2) {
+                console.log("POSITION_UNAVAILABLE - Location provider not available");
+              } else if (error.code === 3) {
+                console.log("TIMEOUT - Check battery optimization and GPS signal");
+              }
+              
+              reject(error);
+            }
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 25000,
+            maximumAge: 0,
+            showLocationDialog: true,
+            forceRequestLocation: true,
+          }
+        );
+      });
+      
+      console.log("===== Location check successful");
+      return true;
+    } catch (error: any) {
+      console.log('Location services check failed:', error.code, error.message);
+      return false;
+    }
+  }, []);
 
   const requestLocationPermission = useCallback(async (): Promise<boolean> => {
     if (Platform.OS === 'ios') {
@@ -1033,7 +1158,9 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCo
         );
       });
     } else {
+      // Android permission request with better handling
       try {
+        // First check if we have permission
         const hasPermission = await PermissionsAndroid.check(
           PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
         );
@@ -1043,6 +1170,7 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCo
           return true;
         }
 
+        // Request permission with proper rationale for Android
         const granted = await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
           {
@@ -1074,33 +1202,11 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCo
     }
   }, []);
 
-  const checkLocationServices = useCallback(async (): Promise<boolean> => {
-    if (Platform.OS === 'android') {
-      try {
-        const position = await new Promise<Geolocation.GeoPosition>((resolve, reject) => {
-          Geolocation.getCurrentPosition(
-            resolve,
-            reject,
-            {
-              enableHighAccuracy: false,
-              timeout: 3000,
-              maximumAge: 0,
-            }
-          );
-        });
-        return !!position;
-      } catch (error) {
-        console.log('Location services check failed:', error);
-        return false;
-      }
-    }
-    return true;
-  }, []);
-
   const getCurrentLocation = useCallback(async (retryCount = 0): Promise<void> => {
     setLocation(prev => ({ ...prev, loading: true, error: null }));
 
     try {
+
       const savedDetails = await getSavedAddressDetails();
       if (savedDetails.address && savedDetails.coords) {
         console.log('Using saved address:', savedDetails.address);
@@ -1114,17 +1220,35 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCo
           error: null,
         }));
         if (onAddressUpdate) {
-          onAddressUpdate(savedDetails.address, savedDetails.homeType);
+          onAddressUpdate(savedDetails.address, savedDetails.homeType, savedDetails.coords.lat, savedDetails.coords.lng);
         }
         return;
       }
 
-      const areServicesEnabled = await checkLocationServices();
+      // For Android, we need to request permission first
+      if (Platform.OS === 'android') {
+        const hasPermission = await requestLocationPermission();
+        if (!hasPermission) {
+          setLocation(prev => ({
+            ...prev,
+            address: 'Location permission required',
+            coords: null,
+            error: 'Location permission required',
+            showPermissionPrompt: true,
+            loading: false,
+          }));
+          return;
+        }
+      }
+
+      // Check if location services are enabled
+      const areServicesEnabled = await checkLocationServicesEnabled();
+
       if (!areServicesEnabled) {
         console.log('Location services are disabled');
         setLocation(prev => ({
           ...prev,
-          address: 'Location services disabled',
+          address: 'Enable location services',
           coords: null,
           error: 'Location services disabled',
           showEnableLocationPrompt: true,
@@ -1133,37 +1257,43 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCo
         return;
       }
 
-      const hasPermission = await requestLocationPermission();
-      if (!hasPermission) {
-        console.log('Location permission not granted');
-        setLocation(prev => ({
-          ...prev,
-          address: 'Location permission required',
-          coords: null,
-          error: 'Location permission required',
-          showPermissionPrompt: true,
-          loading: false,
-        }));
-        return;
-      }
-
       console.log('Fetching current location...');
       
+      // Get current position with better error handling for Android
       const position = await new Promise<Geolocation.GeoPosition>((resolve, reject) => {
+        let resolved = false;
+        
+        const timeoutId = setTimeout(() => {
+          if (!resolved) {
+            reject({ code: 3, message: 'Location request timeout' });
+          }
+        }, 20000);
+        
         Geolocation.getCurrentPosition(
-          resolve,
-          reject,
+          (pos) => {
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timeoutId);
+              resolve(pos);
+            }
+          },
+          (error) => {
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timeoutId);
+              reject(error);
+            }
+          },
           {
             enableHighAccuracy: true,
             timeout: 20000,
             maximumAge: 0,
-            distanceFilter: 0,
           }
         );
       });
 
       const { latitude, longitude } = position.coords;
-      console.log('Location fetched:', latitude, longitude);
+      console.log('Location fetched successfully:', latitude, longitude);
       
       setLocationRetryCount(0);
       await checkLocationInDatabase(latitude, longitude);
@@ -1175,21 +1305,24 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCo
       let promptForEnable = false;
       let promptForPermission = false;
       
+      // Handle different error codes
       if (error.code === 2 || error.code === 3) {
         errorMessage = error.code === 2 
           ? 'Location unavailable. Please enable GPS and move to an open area.'
           : 'Location request timed out. Please ensure GPS is enabled and try again.';
         promptForEnable = true;
         
-        if (retryCount < 3) {
+        // Retry logic for location fetch failures (only on Android)
+        if (Platform.OS === 'android' && retryCount < 3) {
           console.log(`Retrying location fetch (attempt ${retryCount + 1}/3)...`);
           setTimeout(() => {
             getCurrentLocation(retryCount + 1);
-          }, 3000);
+          }, 2000 * (retryCount + 1)); // Increasing delay
           return;
         }
         
-        if (retryCount === 3 && !locationWatchId.current) {
+        // If retries fail, try watchPosition as fallback (Android only)
+        if (Platform.OS === 'android' && retryCount === 2 && !locationWatchId.current) {
           console.log('Attempting watchPosition fallback...');
           locationWatchId.current = Geolocation.watchPosition(
             (pos) => {
@@ -1209,9 +1342,9 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCo
               }
             },
             {
-              enableHighAccuracy: false,
+              enableHighAccuracy: true,
               timeout: 30000,
-              maximumAge: 10000,
+              maximumAge: 0,
               distanceFilter: 10,
             }
           );
@@ -1221,6 +1354,7 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCo
         errorMessage = 'Location permission denied';
         promptForPermission = true;
         
+        // Clear saved address when permission is denied
         await AsyncStorage.multiRemove([
           STORAGE_KEYS.ADDRESS_ID,
           STORAGE_KEYS.STREET_ADDRESS,
@@ -1240,8 +1374,9 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCo
         loading: false,
       }));
     }
-  }, [requestLocationPermission, checkLocationInDatabase, getSavedAddressDetails, onAddressUpdate, checkLocationServices]);
+  }, [requestLocationPermission, checkLocationInDatabase, getSavedAddressDetails, onAddressUpdate, checkLocationServicesEnabled]);
 
+  // Clean up watch position on unmount
   useEffect(() => {
     return () => {
       if (locationWatchId.current) {
@@ -1250,45 +1385,104 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCo
     };
   }, []);
 
+  // Handle app state changes to refetch location when app comes to foreground
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
       if (appState.match(/inactive|background/) && nextAppState === 'active') {
+        // Reset retry count and try to get location again
         setLocationRetryCount(0);
-        getCurrentLocation();
+        // Small delay to ensure GPS is ready
+        setTimeout(() => {
+          getCurrentLocation();
+        }, 500);
       }
       setAppState(nextAppState);
     });
     return () => subscription.remove();
   }, [appState, getCurrentLocation]);
 
+  // Initial location fetch
   useFocusEffect(
     useCallback(() => {
       getCurrentLocation();
     }, [getCurrentLocation])
   );
 
+  // Function to open location settings
   const showLocationSettingsAlert = useCallback(() => {
-    if (Platform.OS === 'android') {
-      Linking.sendIntent('android.settings.LOCATION_SOURCE_SETTINGS');
-    } else {
-      Linking.openURL('app-settings:');
-    }
+    Alert.alert(
+      'Location Services Disabled',
+      'Please enable location services to find nearby restaurants and get accurate delivery estimates.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Open Settings', 
+          onPress: () => {
+            if (Platform.OS === 'android') {
+              // For Android, try to open location settings
+              Linking.sendIntent('android.settings.LOCATION_SOURCE_SETTINGS').catch(err => {
+                console.error('Failed to open location settings:', err);
+                // Fallback to app settings
+                Linking.openSettings();
+              });
+            } else {
+              Linking.openURL('app-settings:');
+            }
+          }
+        }
+      ]
+    );
   }, []);
 
+  // Function to request permission again
   const showPermissionAlert = useCallback(() => {
-    requestLocationPermission().then(granted => {
-      if (granted) {
-        getCurrentLocation();
-      }
-    });
+    Alert.alert(
+      'Location Permission Required',
+      'Eatoor needs access to your location to show nearby restaurants and provide accurate delivery estimates.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Allow', 
+          onPress: () => {
+            requestLocationPermission().then(granted => {
+              if (granted) {
+                getCurrentLocation();
+              } else {
+                Alert.alert(
+                  'Permission Denied',
+                  'Please enable location permission in settings to use location-based features.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Open Settings', onPress: () => Linking.openSettings() }
+                  ]
+                );
+              }
+            });
+          }
+        }
+      ]
+    );
   }, [getCurrentLocation, requestLocationPermission]);
 
+  // Auto-show alerts when needed (only once)
   useEffect(() => {
-    if (location.showEnableLocationPrompt) showLocationSettingsAlert();
+    if (location.showEnableLocationPrompt && !hasShownLocationAlert.current) {
+      hasShownLocationAlert.current = true;
+      const timer = setTimeout(() => {
+        showLocationSettingsAlert();
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
   }, [location.showEnableLocationPrompt, showLocationSettingsAlert]);
 
   useEffect(() => {
-    if (location.showPermissionPrompt) showPermissionAlert();
+    if (location.showPermissionPrompt && !hasShownPermissionAlert.current) {
+      hasShownPermissionAlert.current = true;
+      const timer = setTimeout(() => {
+        showPermissionAlert();
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
   }, [location.showPermissionPrompt, showPermissionAlert]);
 
   const handleAddressPress = useCallback(() => {
@@ -1302,6 +1496,8 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCo
       onAddressSelect: (selectedAddressObj: any) => {
         const raw = selectedAddressObj.rawAddress;
         if (raw.full_address && raw.latitude && raw.longitude) {
+          const lat = parseFloat(raw.latitude);
+          const lng = parseFloat(raw.longitude);
           saveAddressDetails({
             id: String(raw.id),
             full_address: raw.full_address,
@@ -1313,8 +1509,8 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCo
             ...prev,
             address: raw.full_address,
             coords: {
-              lat: parseFloat(raw.latitude),
-              lng: parseFloat(raw.longitude),
+              lat: lat,
+              lng: lng,
             },
             homeType: raw.home_type || 'Home',
             addressId: String(raw.id),
@@ -1322,7 +1518,7 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCo
             error: null,
           }));
           if (onAddressUpdate) {
-            onAddressUpdate(raw.full_address, raw.home_type || 'Home');
+            onAddressUpdate(raw.full_address, raw.home_type || 'Home', lat, lng);
           }
         }
       }
@@ -1464,7 +1660,7 @@ const CollapsedHeader = React.memo(({
   opacity
 }: { 
   isGuest: boolean;
-  onAddressUpdate?: (address: string, homeType: string) => void;
+  onAddressUpdate?: (address: string, homeType: string, lat?: number, lng?: number) => void;
   onSearchPress: () => void;
   onFavoritePress: () => void;
   onWalletPress: () => void;
@@ -1547,7 +1743,7 @@ const IntegratedHeader = React.memo(({
   collapsedOpacity
 }: { 
   isGuest: boolean;
-  onAddressUpdate?: (address: string, homeType: string) => void;
+  onAddressUpdate?: (address: string, homeType: string, lat?: number, lng?: number) => void;
   onSearchPress: () => void;
   onFavoritePress: () => void;
   onWalletPress: () => void;
@@ -1804,7 +2000,7 @@ const RestaurantCard = ({
   );
 };
 
-// Active Order Card Component (Simplified - No expand functionality)
+// Active Order Card Component
 const ActiveOrderCard = ({ 
   order, 
   onPress
@@ -2127,22 +2323,6 @@ const ActiveOrdersSection = ({
     <>
       <View style={styles.active_orders_section}>
         <View style={styles.active_orders_container}>
-          {/* All Orders Button - Top of Active Orders */}
-          {/* <TouchableOpacity
-            style={styles.all_orders_button}
-            onPress={() => setModalVisible(true)}
-            activeOpacity={0.9}
-          >
-            <View style={styles.all_orders_button_left}>
-              <View style={styles.all_orders_button_icon_container}>
-                <Icon name="list-outline" size={scale(20)} color={COLORS.primary} />
-              </View>
-              <View>
-                <Text style={styles.all_orders_button_title}>All Orders</Text>
-              </View>
-            </View>
-          </TouchableOpacity> */}
-
           {/* Show first 3 orders */}
           {firstThreeOrders.map((order) => (
             <ActiveOrderCard
@@ -2151,28 +2331,8 @@ const ActiveOrdersSection = ({
               onPress={onOrderPress}
             />
           ))}
-
-          {/* Show remaining count indicator if more than 3 orders */}
-          {/* {remainingCount > 0 && (
-            <TouchableOpacity
-              style={styles.remaining_orders_indicator}
-              onPress={() => setModalVisible(true)}
-            >
-              <Text style={styles.remaining_orders_text}>
-                +{remainingCount} more {remainingCount === 1 ? 'order' : 'orders'}
-              </Text>
-              <Icon name="arrow-forward" size={scale(14)} color={COLORS.primary} />
-            </TouchableOpacity>
-          )} */}
         </View>
       </View>
-
-      {/* <AllOrdersModal
-        visible={modalVisible}
-        onClose={() => setModalVisible(false)}
-        orders={orders}
-        onOrderPress={onOrderPress}
-      /> */}
     </>
   );
 };
@@ -2207,6 +2367,43 @@ const CartSummary = ({
           activeOpacity={0.8}
         >
           <Text style={styles.main_app_cart_summary_button_text}>View Cart</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
+// ============== SERVICE NOT AVAILABLE OVERLAY ==============
+
+const ServiceNotAvailable = ({ onRetry }: { onRetry: () => void }) => {
+  return (
+    <View style={styles.service_not_available_container}>
+      <View style={styles.service_not_available_content}>
+        <View style={styles.service_not_available_icon_container}>
+          <Icon name="location-outline" size={scale(80)} color={COLORS.primary} />
+        </View>
+        <Text style={styles.service_not_available_title}>Service Not Available</Text>
+        <Text style={styles.service_not_available_text}>
+          We're sorry, but our delivery service is currently not available in your area.
+        </Text>
+        <Text style={styles.service_not_available_subtext}>
+          We currently serve the following cities:
+        </Text>
+        <View style={styles.service_not_available_cities}>
+          {SERVICEABLE_CITIES.map((city, index) => (
+            <View key={index} style={styles.service_not_available_city_badge}>
+              <Icon name="checkmark-circle" size={scale(16)} color={COLORS.success} />
+              <Text style={styles.service_not_available_city_name}>{city.name}</Text>
+            </View>
+          ))}
+        </View>
+        <TouchableOpacity 
+          style={styles.service_not_available_button}
+          onPress={onRetry}
+          activeOpacity={0.8}
+        >
+          <Icon name="refresh-outline" size={scale(20)} color="#FFFFFF" />
+          <Text style={styles.service_not_available_button_text}>Change Location</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -2250,6 +2447,10 @@ const KitchenScreenTabs: React.FC = () => {
     textColor: '#FFFFFF',
   });
 
+  // Service availability state
+  const [isServiceAvailable, setIsServiceAvailable] = useState<boolean | null>(null);
+  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+
   const scrollY = useRef(new Animated.Value(0)).current;
   const scrollViewRef = useRef<ScrollView>(null);
   const placeholderInterval = useRef<NodeJS.Timeout>();
@@ -2260,7 +2461,6 @@ const KitchenScreenTabs: React.FC = () => {
     extrapolate: 'clamp',
   });
 
-  // Moved useMemo to BEFORE conditional returns
   const hasActiveOrders = activeOrders.length > 0;
   const hasCart = pastKitchenDetails !== null;
   
@@ -2762,9 +2962,16 @@ const KitchenScreenTabs: React.FC = () => {
     
   }, [favoriteLoading, isGuest, navigation, fetchKitchens]);
 
-  const handleAddressUpdate = useCallback((newAddress: string, newHomeType: string) => {
+  const handleAddressUpdate = useCallback((newAddress: string, newHomeType: string, lat?: number, lng?: number) => {
     setAddress(newAddress);
     setHomeType(newHomeType);
+    
+    if (lat !== undefined && lng !== undefined) {
+      setUserCoords({ lat, lng });
+      const available = isLocationServiceable(lat, lng);
+      setIsServiceAvailable(available);
+      console.log(`Service availability for (${lat}, ${lng}): ${available}`);
+    }
   }, []);
 
   const handleRefresh = useCallback(async () => {
@@ -2782,12 +2989,18 @@ const KitchenScreenTabs: React.FC = () => {
         userData ? fetchPastKitchenDetails(userData.id) : fetchPastKitchenDetails(null),
         fetchRecentSearches(),
       ]);
+
+      // Re-check service availability if we have coords
+      if (userCoords) {
+        const available = isLocationServiceable(userCoords.lat, userCoords.lng);
+        setIsServiceAvailable(available);
+      }
     } catch (error) {
       console.error('Refresh error:', error);
     } finally {
       setRefreshing(false);
     }
-  }, [refreshing, fetchBanners, fetchKitchens, fetchActiveOrders, fetchPastKitchenDetails, fetchUserData, fetchRecentSearches]);
+  }, [refreshing, fetchBanners, fetchKitchens, fetchActiveOrders, fetchPastKitchenDetails, fetchUserData, fetchRecentSearches, userCoords]);
 
   const handleCategoryPress = useCallback((categoryId: number, categoryName: string) => {
     const categoryIndex = apiData?.data.CategoryList.findIndex(cat => cat.id === categoryId) ?? -1;
@@ -2895,6 +3108,30 @@ const KitchenScreenTabs: React.FC = () => {
     }
   }, [isGuest, navigation]);
 
+  const handleRetryLocation = useCallback(() => {
+    // Trigger a re-fetch of location by re-mounting AddressHeader? 
+    // We can simply refresh the whole page.
+    handleRefresh();
+    // Also we can force the AddressHeader to refetch by changing a key, but that's complex.
+    // Alternatively, we can navigate to AddressScreen to let user pick manually.
+    navigation.navigate('AddressScreen', {
+      prevLocation: "HomeTabs",
+      currentLocation: userCoords ? {
+        latitude: userCoords.lat,
+        longitude: userCoords.lng
+      } : null,
+      currentAddress: address || 'Select delivery location',
+      onAddressSelect: (selectedAddressObj: any) => {
+        const raw = selectedAddressObj.rawAddress;
+        if (raw.full_address && raw.latitude && raw.longitude) {
+          const lat = parseFloat(raw.latitude);
+          const lng = parseFloat(raw.longitude);
+          handleAddressUpdate(raw.full_address, raw.home_type || 'Home', lat, lng);
+        }
+      }
+    });
+  }, [navigation, userCoords, address, handleAddressUpdate]);
+
   // All useEffect hooks
   useEffect(() => {
     placeholderInterval.current = setInterval(() => {
@@ -2927,6 +3164,17 @@ const KitchenScreenTabs: React.FC = () => {
         await fetchPastKitchenDetails(null);
       }
 
+      // If we have saved coordinates, check service availability
+      const savedLat = await AsyncStorage.getItem(STORAGE_KEYS.LATITUDE);
+      const savedLng = await AsyncStorage.getItem(STORAGE_KEYS.LONGITUDE);
+      if (savedLat && savedLng) {
+        const lat = parseFloat(savedLat);
+        const lng = parseFloat(savedLng);
+        setUserCoords({ lat, lng });
+        const available = isLocationServiceable(lat, lng);
+        setIsServiceAvailable(available);
+      }
+
       setTimeout(() => setLoading(false), 2000);
     };
 
@@ -2952,6 +3200,16 @@ const KitchenScreenTabs: React.FC = () => {
   // ========== CONDITIONAL RETURNS GO HERE (AFTER ALL HOOKS) ==========
   if (loading) {
     return <EnhancedDeliveryLoader />;
+  }
+
+  // Show service not available if we have determined it's not available
+  if (isServiceAvailable === false) {
+    return (
+      <View style={{ flex: 1 }}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <ServiceNotAvailable onRetry={handleRetryLocation} />
+      </View>
+    );
   }
 
   if (!apiData) {
@@ -4904,6 +5162,106 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontWeight: '600',
     fontSize: fontScale(11),
+  },
+
+  // ========== SERVICE NOT AVAILABLE STYLES ==========
+  service_not_available_container: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: scale(32),
+  },
+  service_not_available_content: {
+    alignItems: 'center',
+    maxWidth: screenWidth * 0.9,
+  },
+  service_not_available_icon_container: {
+    width: scale(120),
+    height: scale(120),
+    borderRadius: scale(60),
+    backgroundColor: `${COLORS.primary}10`,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: verticalScale(24),
+  },
+  service_not_available_title: {
+    ...TYPOGRAPHY.h2,
+    color: COLORS.text.primary,
+    fontWeight: '700',
+    marginBottom: verticalScale(12),
+    textAlign: 'center',
+  },
+  service_not_available_text: {
+    ...TYPOGRAPHY.body1,
+    color: COLORS.text.secondary,
+    textAlign: 'center',
+    marginBottom: verticalScale(8),
+    lineHeight: verticalScale(24),
+  },
+  service_not_available_subtext: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.secondary,
+    textAlign: 'center',
+    marginBottom: verticalScale(16),
+  },
+  service_not_available_cities: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: scale(8),
+    marginBottom: verticalScale(24),
+  },
+  service_not_available_city_badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: `${COLORS.success}10`,
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(6),
+    borderRadius: scale(20),
+    gap: scale(4),
+  },
+  service_not_available_city_name: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.text.primary,
+    fontWeight: '500',
+    fontSize: fontScale(13),
+  },
+  service_not_available_button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: scale(32),
+    paddingVertical: verticalScale(14),
+    borderRadius: scale(12),
+    gap: scale(8),
+    marginBottom: verticalScale(12),
+    ...Platform.select({
+      ios: {
+        shadowColor: COLORS.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  service_not_available_button_text: {
+    ...TYPOGRAPHY.button,
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  service_not_available_help_button: {
+    paddingVertical: verticalScale(8),
+  },
+  service_not_available_help_text: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.primary,
+    fontWeight: '500',
+    textDecorationLine: 'underline',
   },
 });
 

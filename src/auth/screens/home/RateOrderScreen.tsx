@@ -338,7 +338,7 @@ const RateOrderScreen = ({ navigation, route }) => {
           style={styles.backButton}
           activeOpacity={0.7}
         >
-          <Icon name="chevron-back" size={28} color="#333" />
+          <Icon name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Rate Your Order</Text>
         <View style={{ width: 28 }} />
@@ -368,7 +368,7 @@ const RateOrderScreen = ({ navigation, route }) => {
             
             <View style={styles.restaurantInfo}>
               <Image 
-                source={{ uri: order.restaurant_image || 'https://via.placeholder.com/80' }} 
+                source={{ uri: order.restaurant_image }} 
                 style={styles.restaurantImage} 
                 resizeMode="cover"
               />
@@ -624,23 +624,29 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'ios' ? 8 : 12,
+    paddingBottom: Platform.OS === 'ios' ? 12 : 16,
+    backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#E8ECF4',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-    zIndex: 10
+    borderBottomColor: '#f0f0f0',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
   backButton: {
     padding: 4,
     borderRadius: 8,
-    backgroundColor: '#F5F5F5',
     width: 40,
     height: 40,
     justifyContent: 'center',
