@@ -10,10 +10,6 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
-    <!-- ⚠️ Play Store sensitive -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="QueryAllPackagesPermission" />
-
     <!-- ================= QUERIES ================= -->
     <queries>
 
@@ -188,7 +184,7 @@
         <!-- Google Maps -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="YOUR_API_KEY" />
+            android:value="AIzaSyBKOWlVTzhP7lRcNEHbT2SNz-W_bYx3v28" />
 
         <!-- AdMob -->
         <meta-data

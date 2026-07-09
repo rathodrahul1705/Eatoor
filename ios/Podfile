@@ -8,26 +8,21 @@ require Pod::Executable.execute_command('node', ['-p',
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
-# Only enable dynamic frameworks if explicitly set (avoid conflicts with static libs)
-linkage = ENV['USE_FRAMEWORKS']
-if linkage != nil
-  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
-  use_frameworks! :linkage => linkage.to_sym
-end
-
 target 'Eatoor' do
   config = use_native_modules!
+
+  # Firebase requires static frameworks
   use_frameworks! :linkage => :static
   $RNFirebaseAsStaticFramework = true
 
-  # Google Maps SDK (works with dynamic frameworks)
+  # Google Maps
   pod 'GoogleMaps'
-  # pod 'GoogleUtilities'
   rn_maps_path = '../node_modules/react-native-maps'
-  rn_razorpath_path = '../node_modules/react-native-razorpay'
   pod 'react-native-maps/Google', :path => rn_maps_path
-  pod 'react-native-razorpay', :path => rn_razorpath_path
-  # DO NOT include 'Google-Maps-iOS-Utils' here (it's a static lib)
+
+  # Razorpay
+  rn_razorpay_path = '../node_modules/react-native-razorpay'
+  pod 'react-native-razorpay', :path => rn_razorpay_path
 
   use_react_native!(
     :path => config[:reactNativePath],
@@ -41,24 +36,23 @@ target 'Eatoor' do
       :mac_catalyst_enabled => false
     )
 
-    # Workaround for Google Maps + use_frameworks! issues
     installer.pods_project.targets.each do |target|
-      if target.name == 'GoogleMaps'
-        target.build_configurations.each do |config|
-          # Ensure GoogleMaps is built as a dynamic framework
-          config.build_settings['MACH_O_TYPE'] = 'mh_dylib'
-        end
-      end
-      
-      # FIX: Disable consteval for fmt to work with Xcode 26.4
+
+      # Xcode 26 workaround for fmt
       if target.name == 'fmt'
         target.build_configurations.each do |config|
           config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
           config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FMT_USE_CONSTEVAL=0'
-          # Also ensure C++ standard is set appropriately
           config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
         end
       end
+
+      # Prevent non-modular include issues
+      target.build_configurations.each do |config|
+        config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+        config.build_settings['BUILD_LIBRARY_FOR_DISTRIBUTION'] = 'NO'
+      end
+
     end
   end
 end

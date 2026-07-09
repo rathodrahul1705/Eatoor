@@ -84,9 +84,12 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         multiDexEnabled true
-        versionCode 26
-        versionName "3.0.6"
+        versionCode 29
+        versionName "3.0.9"
         resValue "string", "build_config_package", "com.eatoor"
+        manifestPlaceholders = [
+            GOOGLE_MAPS_API_KEY: "AIzaSyBKOWlVTzhP7lRcNEHbT2SNz-W_bYx3v28"
+        ]
     }
     signingConfigs {
         debug {
