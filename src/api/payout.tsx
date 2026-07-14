@@ -13,6 +13,10 @@ export type SettlementSortBy = 'date' | 'net' | 'revenue' | 'order_id';
 export type SettlementSortOrder = 'asc' | 'desc';
 export type SettlementExportFormat = 'csv' | 'xlsx' | 'pdf';
 
+
+export const getRestaurantList = (user_id: string) =>
+  API.get(`/restaurants/status/${user_id}/`);
+
 export const SETTLEMENT_ENDPOINTS = {
   dashboard: `/partner/settlements/dashboard/`,
   transactions: `/partner/settlements/transactions/`,

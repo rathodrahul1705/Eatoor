@@ -29,6 +29,7 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Geolocation from '@react-native-community/geolocation';
 import PartnerScreen from './PartnerScreen';
+import AdminDashboardScreen from './AdminDashboardScreen';
 import EatmartScreen from '../../../eatmart/EatmartScreen';
 import ReorderScreen from '../../screens/home/ReorderScreen';
 import { HomeStackParamList, HomeTabParamList } from '../../../types/navigation';
@@ -346,6 +347,7 @@ interface User {
   name: string;
   email: string;
   mobile: string;
+  role?: number; // 1 = Partner, 2 = Admin
 }
 
 interface SearchItem {
@@ -393,7 +395,7 @@ interface SearchSuggestionResponse {
   }>;
 }
 
-type AppTabs = 'Kitchen' | 'Eatmart' | 'Reorder' | 'Partner';
+type AppTabs = 'Kitchen' | 'Eatmart' | 'Reorder' | 'Partner' | 'Admin';
 
 // ============== CUSTOM HOOKS ==============
 
@@ -3511,6 +3513,7 @@ const KitchenTabNavigator = () => {
 
 const HomeTabsNavigator = React.memo(({ isGuest }: { isGuest: boolean }) => {
   const [isRestaurantRegister, setIsRestaurantRegister] = useState(true);
+  const [userRole, setUserRole] = useState<number | null>(null);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -3523,6 +3526,22 @@ const HomeTabsNavigator = React.memo(({ isGuest }: { isGuest: boolean }) => {
       }
     };
     loadStatus();
+  }, []);
+
+  useEffect(() => {
+    const loadUserRole = async () => {
+      try {
+        const userData = await AsyncStorage.getItem(STORAGE_KEYS.USER);
+        if (userData) {
+          const user = JSON.parse(userData);
+          // Assuming the user object has a 'role' field (1 = Partner, 2 = Admin)
+          setUserRole(user.role ?? null);
+        }
+      } catch (error) {
+        console.error('Error loading user role:', error);
+      }
+    };
+    loadUserRole();
   }, []);
 
   const tabBarHeight = useMemo(() => 
@@ -3538,6 +3557,7 @@ const HomeTabsNavigator = React.memo(({ isGuest }: { isGuest: boolean }) => {
     Eatmart: { focused: 'cart', unfocused: 'cart-outline' },
     Reorder: { focused: 'repeat', unfocused: 'repeat-outline' },
     Partner: { focused: 'people', unfocused: 'people-outline' },
+    Admin: { focused: 'shield-checkmark', unfocused: 'shield-checkmark-outline' },
   };
 
   return (
@@ -3573,7 +3593,8 @@ const HomeTabsNavigator = React.memo(({ isGuest }: { isGuest: boolean }) => {
       <Tab.Screen name="Kitchen" component={KitchenTabNavigator} />
       <Tab.Screen name="Eatmart" component={EatmartScreen} />
       {!isGuest && <Tab.Screen name="Reorder" component={ReorderScreen} />}
-      {isRestaurantRegister && <Tab.Screen name="Partner" component={PartnerScreen} />}
+      {isRestaurantRegister && userRole === 1 && <Tab.Screen name="Partner" component={PartnerScreen} />}
+      {userRole === 2 && <Tab.Screen name="Admin" component={AdminDashboardScreen} />}
     </Tab.Navigator>
   );
 });

@@ -13,7 +13,7 @@ import {
   Alert,
   Linking,
   RefreshControl,
-  Image, // <-- Added import
+  Image,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
@@ -120,6 +120,14 @@ interface DaySummary {
   average_order_value: number;
 }
 
+// ---------- Status mapping (user‑friendly) ----------
+const statusMap: Record<string, { text: string; color: string; icon: string }> = {
+  pending:   { text: 'Settlement Pending',   color: '#ed6c02', icon: 'time-outline' },
+  approved:  { text: 'Settlement Approved',  color: '#1976d2', icon: 'sync-outline' },
+  paid:      { text: 'Settlement Paid', color: '#2e7d32', icon: 'checkmark-circle' },
+  cancelled: { text: 'Settlement Cancelled', color: '#d32f2f', icon: 'close-circle' },
+};
+
 // ---------- Main Component ----------
 type SettlementScreenProps = { navigation: any; route: any };
 const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
@@ -140,16 +148,23 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
   const [loadingTransactions, setLoadingTransactions] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Restaurant info now includes profile_image
+  // Restaurant info
   const [restaurantInfo, setRestaurantInfo] = useState<{
     name: string;
     address: string;
     phone: string;
     email: string;
-    profile_image?: string | null; // <-- Added
+    profile_image?: string | null;
   } | null>(null);
 
-  // Updated transaction totals state
+  // Settlement status (from settlement_status)
+  const [settlementStatus, setSettlementStatus] = useState<string | null>(null);
+  const [settlementFile, setSettlementFile] = useState<string | null>(null);
+  const [settlementNumber, setSettlementNumber] = useState<string | null>(null);
+  const [settlementStartDate, setSettlementStartDate] = useState<string | null>(null);
+  const [settlementEndDate, setSettlementEndDate] = useState<string | null>(null);
+
+  // Transaction totals
   const [transactionTotals, setTransactionTotals] = useState<{
     total_orders: number;
     item_gross_sale: number;
@@ -167,7 +182,7 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
   const [allDays, setAllDays] = useState<DaySummary[]>([]);
   const loadingMoreRef = useRef(false);
 
-  // Pull-to-refresh state
+  // Pull-to-refresh
   const [refreshing, setRefreshing] = useState(false);
 
   const apiFilter = useMemo(() => mapUiFilterToApiFilter(selectedFilter), [selectedFilter]);
@@ -193,15 +208,34 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
       }
       const res = await getSettlementDashboard(params);
       setDashboardRes(res.data);
-      if (res.data?.data?.restaurant) {
-        const { id, name, address, phone, email, profile_image } = res.data.data.restaurant;
-        setRestaurantInfo({
-          name: name || 'Restaurant Name',
-          address: address || 'Address not available',
-          phone: phone || '',
-          email: email || '',
-          profile_image: profile_image || null,
-        });
+      const data = res.data?.data;
+      if (data) {
+        // Restaurant info
+        if (data.restaurant) {
+          const { id, name, address, phone, email, profile_image } = data.restaurant;
+          setRestaurantInfo({
+            name: name || 'Restaurant Name',
+            address: address || 'Address not available',
+            phone: phone || '',
+            email: email || '',
+            profile_image: profile_image || null,
+          });
+        }
+        // Settlement status
+        if (data.settlement_status) {
+          setSettlementStatus(data.settlement_status.status || null);
+          setSettlementFile(data.settlement_status.settlement_file || null);
+          setSettlementNumber(data.settlement_status.settlement_number || null);
+          setSettlementStartDate(data.settlement_status.start_date || null);
+          setSettlementEndDate(data.settlement_status.end_date || null);
+        } else {
+          // Clear if not present
+          setSettlementStatus(null);
+          setSettlementFile(null);
+          setSettlementNumber(null);
+          setSettlementStartDate(null);
+          setSettlementEndDate(null);
+        }
       }
       setErrorMessage(null);
     } catch (e: any) {
@@ -268,6 +302,7 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
 
         setHasMore(currentPage < totalPages);
         setErrorMessage(null);
+        // If restaurant info not set yet, try again
         if (!restaurantInfo && res.data?.data?.restaurant) {
           const { id, name, address, phone, email, profile_image } = res.data.data.restaurant;
           setRestaurantInfo({
@@ -348,24 +383,31 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
   }, [transactionTotals]);
 
   const currentCycle = dashboardRes?.data?.current_cycle;
-  const payoutStatus = (() => {
-    if (!currentCycle?.status) return 'Pending';
-    if (currentCycle.status === 'paid') return 'Completed';
-    if (currentCycle.status === 'processing') return 'Processing';
-    return 'Pending';
-  })();
-  const payoutStatusColor =
-    payoutStatus === 'Completed'
-      ? '#2e7d32'
-      : payoutStatus === 'Processing'
-      ? '#1976d2'
-      : '#e65100';
-  const payoutStatusIcon =
-    payoutStatus === 'Completed'
-      ? 'checkmark-circle'
-      : payoutStatus === 'Processing'
-      ? 'sync-outline'
-      : 'time-outline';
+
+  // Determine payout status: prefer settlement_status, fallback to current_cycle
+  const rawStatus = (settlementStatus || currentCycle?.status || 'pending').toLowerCase();
+  const statusInfo = statusMap[rawStatus] || statusMap.pending;
+  const payoutStatus = statusInfo.text;
+  const payoutStatusColor = statusInfo.color;
+  const payoutStatusIcon = statusInfo.icon;
+
+  // Handle download of settlement file
+  const handleDownloadSettlement = async () => {
+    if (!settlementFile) {
+      Alert.alert('No file', 'Settlement file is not available.');
+      return;
+    }
+    try {
+      const canOpen = await Linking.canOpenURL(settlementFile);
+      if (canOpen) {
+        await Linking.openURL(settlementFile);
+      } else {
+        Alert.alert('Error', 'Cannot open the settlement file.');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to open the settlement file.');
+    }
+  };
 
   const handleFilterPress = (filter: string) => {
     setSelectedFilter(filter);
@@ -461,7 +503,7 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
     </View>
   );
 
-  // Preview item
+  // Preview item (not used in current layout, but kept for potential)
   const renderDayPreview = (day: DaySummary) => (
     <TouchableOpacity
       key={day.date}
@@ -566,7 +608,7 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
         }}
         scrollEventThrottle={16}
       >
-        {/* Restaurant Card - now with profile image */}
+        {/* Restaurant Card */}
         <View style={styles.restaurantCard}>
           <View style={styles.restaurantHeader}>
             <View style={styles.restaurantLogo}>
@@ -673,6 +715,18 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
                 : 'Week in Progress'}
             </Text>
           </View>
+
+          {/* Settlement file download button */}
+          {settlementFile && (
+            <TouchableOpacity
+              style={styles.downloadButton}
+              onPress={handleDownloadSettlement}
+              activeOpacity={0.7}
+            >
+              <Icon name="download-outline" size={20} color="#FFFFFF" />
+              <Text style={styles.downloadButtonText}>Download Settlement</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Filter Buttons */}
@@ -810,7 +864,7 @@ const SettlementScreen = ({ navigation, route }: SettlementScreenProps) => {
   );
 };
 
-// ---------- Styles (updated with image style) ----------
+// ---------- Styles ----------
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -868,7 +922,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,
-    overflow: 'hidden', // ensures image is clipped to circle
+    overflow: 'hidden',
   },
   restaurantImage: {
     width: '100%',
@@ -945,6 +999,29 @@ const styles = StyleSheet.create({
   progressBar: { height: 6, backgroundColor: '#F0F0F5', borderRadius: 6, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: '#FF7F4D', borderRadius: 6 },
   progressLabel: { fontSize: 12, color: '#8E8EA0', marginTop: 6, textAlign: 'center', fontWeight: '500' },
+
+  // Download button style
+  downloadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FF7F4D',
+    paddingVertical: 12,
+    borderRadius: 30,
+    marginTop: 14,
+    marginBottom: 2,
+    shadowColor: '#FF7F4D',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  downloadButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+    marginLeft: 8,
+  },
 
   sectionTitle: {
     flexDirection: 'row',

@@ -1405,7 +1405,7 @@ const PartnerScreen = ({ navigation, route }) => {
           {/* ---------- STATS CONTAINER ---------- */}
           <View style={styles.partnerOrderDetailsStatsContainer}>
             <View style={styles.partnerOrderDetailsStatsHeader}>
-              <Text style={styles.partnerOrderDetailsStatsHeaderTitle}>Today's Overview</Text>
+              <Text style={styles.partnerOrderDetailsStatsHeaderTitle}>Weekly Overview</Text>
               <TouchableOpacity style={styles.partnerOrderDetailsSettlementButton} onPress={navigateToSettlement} activeOpacity={0.7}>
                 <Icon name="wallet-outline" size={scaleSize(16)} color="#F07119" />
                 <Text style={styles.partnerOrderDetailsSettlementButtonText}>Settlement</Text>
