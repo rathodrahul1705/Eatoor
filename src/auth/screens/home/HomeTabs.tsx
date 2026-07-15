@@ -42,6 +42,7 @@ import { getOfferBanners } from '../../../api/offer';
 import moment from 'moment';
 import { getSessionId } from '../../../utlis/utils';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useLocation, isLocationServiceable } from '../../screens/home/utils/useLocation';
 
 Icon.loadFont();
 
@@ -112,7 +113,6 @@ const TYPOGRAPHY = {
   button: { fontSize: fontScale(15), lineHeight: fontScale(20), fontWeight: '600' as const },
 };
 
-// Dynamic header heights based on device
 const getHeaderHeights = () => {
   const baseHeaderHeight = Platform.select({
     ios: 400,
@@ -133,11 +133,6 @@ const getHeaderHeights = () => {
 const HEADER_HEIGHTS = getHeaderHeights();
 
 const STORAGE_KEYS = {
-  ADDRESS_ID: 'AddressId',
-  STREET_ADDRESS: 'StreetAddress',
-  HOME_TYPE: 'HomeType',
-  LATITUDE: 'Latitude',
-  LONGITUDE: 'Longitude',
   RECENT_SEARCHES: 'recentSearches',
   SEARCH_HISTORY: 'searchHistory',
   PAST_KITCHEN_DETAILS: 'pastKitchenDetails',
@@ -155,13 +150,12 @@ const SEARCH_PLACEHOLDERS = [
   "Healthy, Salad, Bowl..."
 ];
 
-// ============== SERVICEABLE CITIES CONFIGURATION ==============
-
+// ============== SERVICEABLE CITIES (for UI display) ==============
 interface ServiceableCity {
   name: string;
   lat: number;
   lng: number;
-  radiusKm: number; // radius in kilometers
+  radiusKm: number;
 }
 
 const SERVICEABLE_CITIES: ServiceableCity[] = [
@@ -169,48 +163,9 @@ const SERVICEABLE_CITIES: ServiceableCity[] = [
     name: 'Thane',
     lat: 19.2183,
     lng: 72.9781,
-    radiusKm: 15, // ~15 km radius
+    radiusKm: 15,
   },
-  // Add more cities here in the future, e.g.:
-  // {
-  //   name: 'Mumbai',
-  //   lat: 19.0760,
-  //   lng: 72.8777,
-  //   radiusKm: 20,
-  // },
 ];
-
-// ============== HELPERS ==============
-
-/**
- * Calculate distance between two coordinates using Haversine formula
- */
-const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-  const toRad = (value: number) => (value * Math.PI) / 180;
-  const R = 6371; // Earth's radius in km
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-};
-
-/**
- * Check if a given location is within any serviceable city
- */
-const isLocationServiceable = (lat: number, lng: number): boolean => {
-  if (!lat || !lng) return false;  
-  for (const city of SERVICEABLE_CITIES) {
-    const distance = haversineDistance(lat, lng, city.lat, city.lng);
-    if (distance <= city.radiusKm) {
-      return true;
-    }
-  }
-  return false;
-};
 
 // ============== TYPES ==============
 
@@ -257,37 +212,6 @@ interface Banner {
   terms: string[];
   order: number;
   is_active: boolean;
-}
-
-interface LocationData {
-  address: string;
-  loading: boolean;
-  error: string | null;
-  coords: { lat: number; lng: number } | null;
-  showEnableLocationPrompt: boolean;
-  showPermissionPrompt: boolean;
-  homeType: string;
-  addressId: string | null;
-}
-
-interface AddressHeaderLeftProps {
-  isGuest: boolean;
-  onAddressUpdate?: (address: string, homeType: string, lat?: number, lng?: number) => void;
-  bannerColors?: {
-    backgroundColor: string;
-    textColor: string;
-  };
-  isCollapsed?: boolean;
-}
-
-interface SearchInputProps {
-  onPress: () => void;
-  placeholder: string;
-  bannerColors?: {
-    backgroundColor: string;
-    textColor: string;
-  };
-  isCollapsed?: boolean;
 }
 
 interface Category {
@@ -347,7 +271,7 @@ interface User {
   name: string;
   email: string;
   mobile: string;
-  role?: number; // 1 = Partner, 2 = Admin
+  role?: number;
 }
 
 interface SearchItem {
@@ -942,594 +866,44 @@ const OffersCategoryCard = ({ onPress }: { onPress: () => void }) => {
   );
 };
 
-// ============== ADDRESS HEADER COMPONENT WITH FIXED ANDROID LOCATION ==============
+// ============== ADDRESS HEADER (presentational) ==============
 
-const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCollapsed }: AddressHeaderLeftProps) => {
-  const navigation = useNavigation<any>();
-  const [location, setLocation] = useState<LocationData>({
-    address: 'Select location',
-    loading: true,
-    error: null,
-    coords: null,
-    showEnableLocationPrompt: false,
-    showPermissionPrompt: false,
-    homeType: 'Home',
-    addressId: null,
-  });
-
-  const [appState, setAppState] = useState(AppState.currentState);
-  const [locationRetryCount, setLocationRetryCount] = useState(0);
-  const locationWatchId = useRef<number | null>(null);
-  const hasShownLocationAlert = useRef(false);
-  const hasShownPermissionAlert = useRef(false);
-
-  const truncateAddress = (address: string, maxWords: number = 3) => {
-    if (!address) return '';
-    const words = address.split(' ');
-    if (words.length <= maxWords) return address;
-    return words.slice(0, maxWords).join(' ') + '...';
+interface AddressHeaderLeftProps {
+  isGuest: boolean;
+  onAddressUpdate?: (address: string, homeType: string, lat?: number, lng?: number) => void;
+  bannerColors?: {
+    backgroundColor: string;
+    textColor: string;
   };
-
-  const saveAddressDetails = useCallback(async (addressData: {
-    id?: string;
-    full_address: string;
-    home_type?: string;
-    latitude: string;
-    longitude: string;
-  }) => {
-    try {
-      await AsyncStorage.multiSet([
-        [STORAGE_KEYS.ADDRESS_ID, addressData.id?.toString() || ''],
-        [STORAGE_KEYS.STREET_ADDRESS, addressData.full_address],
-        [STORAGE_KEYS.HOME_TYPE, addressData.home_type || 'Home'],
-        [STORAGE_KEYS.LATITUDE, addressData.latitude],
-        [STORAGE_KEYS.LONGITUDE, addressData.longitude],
-      ]);
-    } catch (error) {
-      console.error('Error saving address:', error);
-    }
-  }, []);
-
-  const getSavedAddressDetails = useCallback(async (): Promise<{
+  isCollapsed?: boolean;
+  location: {
     address: string;
-    homeType: string;
+    loading: boolean;
+    error: string | null;
     coords: { lat: number; lng: number } | null;
+    homeType: string;
     addressId: string | null;
-  }> => {
-    try {
-      const [savedAddress, savedHomeType, savedLat, savedLng, savedAddressId] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_KEYS.STREET_ADDRESS),
-        AsyncStorage.getItem(STORAGE_KEYS.HOME_TYPE),
-        AsyncStorage.getItem(STORAGE_KEYS.LATITUDE),
-        AsyncStorage.getItem(STORAGE_KEYS.LONGITUDE),
-        AsyncStorage.getItem(STORAGE_KEYS.ADDRESS_ID),
-      ]);
+  };
+  onAddressPress: () => void;
+}
 
-      if (savedAddress && savedLat && savedLng) {
-        return {
-          address: savedAddress,
-          homeType: savedHomeType || 'Home',
-          coords: {
-            lat: parseFloat(savedLat),
-            lng: parseFloat(savedLng),
-          },
-          addressId: savedAddressId,
-        };
-      }
-      return {
-        address: '',
-        homeType: 'Home',
-        coords: null,
-        addressId: null,
-      };
-    } catch (error) {
-      console.error('Error getting saved address:', error);
-      return {
-        address: '',
-        homeType: 'Home',
-        coords: null,
-        addressId: null,
-      };
-    }
-  }, []);
+const truncateAddress = (address: string | undefined | null, maxWords: number = 3) => {
+  if (!address || typeof address !== 'string') return '';
+  const words = address.split(' ');
+  if (words.length <= maxWords) return address;
+  return words.slice(0, maxWords).join(' ') + '...';
+};
 
-  const checkLocationInDatabase = useCallback(async (lat: number, lng: number): Promise<boolean> => {
-    try {
-      const response = await getUserAddress({ 
-        lat: lat.toString(), 
-        long: lng.toString(),
-        isGuest: isGuest
-      });
-
-      const addressData = response?.data;
-      if (!addressData) return false;
-
-      const { id, full_address, home_type } = addressData;
-      const isExisting = Boolean(id);
-
-      await saveAddressDetails({
-        id: isExisting ? id.toString() : undefined,
-        full_address,
-        home_type: home_type || "Home",
-        latitude: lat.toString(),
-        longitude: lng.toString(),
-      });
-
-      setLocation(prev => ({
-        ...prev,
-        address: full_address,
-        coords: { lat, lng },
-        homeType: home_type || "Home",
-        addressId: isExisting ? id.toString() : null,
-        loading: false,
-        error: null,
-        showEnableLocationPrompt: false,
-        showPermissionPrompt: false,
-      }));
-
-      if (onAddressUpdate) {
-        onAddressUpdate(full_address, home_type || "Home", lat, lng);
-      }
-
-      // Reset alert flags on successful location fetch
-      hasShownLocationAlert.current = false;
-      hasShownPermissionAlert.current = false;
-
-      return isExisting;
-    } catch (error) {
-      console.error("Error checking location:", error);
-      return false;
-    }
-  }, [isGuest, saveAddressDetails, onAddressUpdate]);
-
-  const checkLocationServicesEnabled = useCallback(async (): Promise<boolean> => {
-  if (Platform.OS === 'ios') {
-    return true;
-  }
-  
-  console.log("===== Android location check started on real device");
-  
-    try {
-      const position = await new Promise<Geolocation.GeoPosition>((resolve, reject) => {
-        let resolved = false;
-        
-        const timeoutId = setTimeout(() => {
-          if (!resolved) {
-            reject({ code: 3, message: 'Location request timeout - GPS may be unavailable' });
-          }
-        }, 25000);
-        
-        Geolocation.getCurrentPosition(
-          (pos) => {
-            if (!resolved) {
-              resolved = true;
-              clearTimeout(timeoutId);
-              console.log("getCurrentPosition success:", pos.coords.latitude, pos.coords.longitude);
-              console.log("Accuracy:", pos.coords.accuracy, "meters");
-              resolve(pos);
-            }
-          },
-          (error) => {
-            if (!resolved) {
-              resolved = true;
-              clearTimeout(timeoutId);
-              console.log("getCurrentPosition error:", error.code, error.message);
-              
-              // Log specific error types for better debugging
-              if (error.code === 2) {
-                console.log("POSITION_UNAVAILABLE - Location provider not available");
-              } else if (error.code === 3) {
-                console.log("TIMEOUT - Check battery optimization and GPS signal");
-              }
-              
-              reject(error);
-            }
-          },
-          {
-            enableHighAccuracy: true,
-            timeout: 25000,
-            maximumAge: 0,
-            showLocationDialog: true,
-            forceRequestLocation: true,
-          }
-        );
-      });
-      
-      console.log("===== Location check successful");
-      return true;
-    } catch (error: any) {
-      console.log('Location services check failed:', error.code, error.message);
-      return false;
-    }
-  }, []);
-
-  const requestLocationPermission = useCallback(async (): Promise<boolean> => {
-    if (Platform.OS === 'ios') {
-      return new Promise((resolve) => {
-        Geolocation.getCurrentPosition(
-          () => resolve(true),
-          (error) => {
-            console.log('iOS location error:', error);
-            if (error.code === 1) {
-              resolve(false);
-            } else {
-              resolve(true);
-            }
-          },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
-      });
-    } else {
-      // Android permission request with better handling
-      try {
-        // First check if we have permission
-        const hasPermission = await PermissionsAndroid.check(
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
-        );
-        
-        if (hasPermission) {
-          console.log('Location permission already granted');
-          return true;
-        }
-
-        // Request permission with proper rationale for Android
-        const granted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-          {
-            title: 'Location Permission Required',
-            message: 'Eatoor needs access to your location to show nearby restaurants and provide accurate delivery estimates.',
-            buttonPositive: 'Allow',
-            buttonNegative: 'Deny',
-            buttonNeutral: 'Ask Me Later',
-          }
-        );
-
-        console.log('Permission request result:', granted);
-        
-        if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-          console.log('Location permission granted');
-          return true;
-        } else if (granted === PermissionsAndroid.RESULTS.DENIED) {
-          console.log('Location permission denied');
-          return false;
-        } else if (granted === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
-          console.log('Location permission permanently denied');
-          return false;
-        }
-        return false;
-      } catch (error) {
-        console.error('Error requesting permission:', error);
-        return false;
-      }
-    }
-  }, []);
-
-  const getCurrentLocation = useCallback(async (retryCount = 0): Promise<void> => {
-    setLocation(prev => ({ ...prev, loading: true, error: null }));
-
-    try {
-
-      const savedDetails = await getSavedAddressDetails();
-      if (savedDetails.address && savedDetails.coords) {
-        console.log('Using saved address:', savedDetails.address);
-        setLocation(prev => ({
-          ...prev,
-          address: savedDetails.address,
-          coords: savedDetails.coords,
-          homeType: savedDetails.homeType,
-          addressId: savedDetails.addressId,
-          loading: false,
-          error: null,
-        }));
-        if (onAddressUpdate) {
-          onAddressUpdate(savedDetails.address, savedDetails.homeType, savedDetails.coords.lat, savedDetails.coords.lng);
-        }
-        return;
-      }
-
-      // For Android, we need to request permission first
-      if (Platform.OS === 'android') {
-        const hasPermission = await requestLocationPermission();
-        if (!hasPermission) {
-          setLocation(prev => ({
-            ...prev,
-            address: 'Location permission required',
-            coords: null,
-            error: 'Location permission required',
-            showPermissionPrompt: true,
-            loading: false,
-          }));
-          return;
-        }
-      }
-
-      // Check if location services are enabled
-      const areServicesEnabled = await checkLocationServicesEnabled();
-
-      if (!areServicesEnabled) {
-        console.log('Location services are disabled');
-        setLocation(prev => ({
-          ...prev,
-          address: 'Enable location services',
-          coords: null,
-          error: 'Location services disabled',
-          showEnableLocationPrompt: true,
-          loading: false,
-        }));
-        return;
-      }
-
-      console.log('Fetching current location...');
-      
-      // Get current position with better error handling for Android
-      const position = await new Promise<Geolocation.GeoPosition>((resolve, reject) => {
-        let resolved = false;
-        
-        const timeoutId = setTimeout(() => {
-          if (!resolved) {
-            reject({ code: 3, message: 'Location request timeout' });
-          }
-        }, 20000);
-        
-        Geolocation.getCurrentPosition(
-          (pos) => {
-            if (!resolved) {
-              resolved = true;
-              clearTimeout(timeoutId);
-              resolve(pos);
-            }
-          },
-          (error) => {
-            if (!resolved) {
-              resolved = true;
-              clearTimeout(timeoutId);
-              reject(error);
-            }
-          },
-          {
-            enableHighAccuracy: true,
-            timeout: 20000,
-            maximumAge: 0,
-          }
-        );
-      });
-
-      const { latitude, longitude } = position.coords;
-      console.log('Location fetched successfully:', latitude, longitude);
-      
-      setLocationRetryCount(0);
-      await checkLocationInDatabase(latitude, longitude);
-      
-    } catch (error: any) {
-      console.error('Error getting location:', error);
-      
-      let errorMessage = 'Unable to get location';
-      let promptForEnable = false;
-      let promptForPermission = false;
-      
-      // Handle different error codes
-      if (error.code === 2 || error.code === 3) {
-        errorMessage = error.code === 2 
-          ? 'Location unavailable. Please enable GPS and move to an open area.'
-          : 'Location request timed out. Please ensure GPS is enabled and try again.';
-        promptForEnable = true;
-        
-        // Retry logic for location fetch failures (only on Android)
-        if (Platform.OS === 'android' && retryCount < 3) {
-          console.log(`Retrying location fetch (attempt ${retryCount + 1}/3)...`);
-          setTimeout(() => {
-            getCurrentLocation(retryCount + 1);
-          }, 2000 * (retryCount + 1)); // Increasing delay
-          return;
-        }
-        
-        // If retries fail, try watchPosition as fallback (Android only)
-        if (Platform.OS === 'android' && retryCount === 2 && !locationWatchId.current) {
-          console.log('Attempting watchPosition fallback...');
-          locationWatchId.current = Geolocation.watchPosition(
-            (pos) => {
-              const { latitude, longitude } = pos.coords;
-              console.log('Watch position success:', latitude, longitude);
-              checkLocationInDatabase(latitude, longitude);
-              if (locationWatchId.current) {
-                Geolocation.clearWatch(locationWatchId.current);
-                locationWatchId.current = null;
-              }
-            },
-            (watchError) => {
-              console.error('Watch position error:', watchError);
-              if (locationWatchId.current) {
-                Geolocation.clearWatch(locationWatchId.current);
-                locationWatchId.current = null;
-              }
-            },
-            {
-              enableHighAccuracy: true,
-              timeout: 30000,
-              maximumAge: 0,
-              distanceFilter: 10,
-            }
-          );
-          return;
-        }
-      } else if (error.code === 1) {
-        errorMessage = 'Location permission denied';
-        promptForPermission = true;
-        
-        // Clear saved address when permission is denied
-        await AsyncStorage.multiRemove([
-          STORAGE_KEYS.ADDRESS_ID,
-          STORAGE_KEYS.STREET_ADDRESS,
-          STORAGE_KEYS.HOME_TYPE,
-          STORAGE_KEYS.LATITUDE,
-          STORAGE_KEYS.LONGITUDE,
-        ]);
-      }
-      
-      setLocation(prev => ({
-        ...prev,
-        address: errorMessage,
-        coords: null,
-        error: errorMessage,
-        showEnableLocationPrompt: promptForEnable,
-        showPermissionPrompt: promptForPermission,
-        loading: false,
-      }));
-    }
-  }, [requestLocationPermission, checkLocationInDatabase, getSavedAddressDetails, onAddressUpdate, checkLocationServicesEnabled]);
-
-  // Clean up watch position on unmount
-  useEffect(() => {
-    return () => {
-      if (locationWatchId.current) {
-        Geolocation.clearWatch(locationWatchId.current);
-      }
-    };
-  }, []);
-
-  // Handle app state changes to refetch location when app comes to foreground
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
-      if (appState.match(/inactive|background/) && nextAppState === 'active') {
-        // Reset retry count and try to get location again
-        setLocationRetryCount(0);
-        // Small delay to ensure GPS is ready
-        setTimeout(() => {
-          getCurrentLocation();
-        }, 500);
-      }
-      setAppState(nextAppState);
-    });
-    return () => subscription.remove();
-  }, [appState, getCurrentLocation]);
-
-  // Initial location fetch
-  useFocusEffect(
-    useCallback(() => {
-      getCurrentLocation();
-    }, [getCurrentLocation])
-  );
-
-  // Function to open location settings
-  const showLocationSettingsAlert = useCallback(() => {
-    Alert.alert(
-      'Location Services Disabled',
-      'Please enable location services to find nearby restaurants and get accurate delivery estimates.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Open Settings', 
-          onPress: () => {
-            if (Platform.OS === 'android') {
-              // For Android, try to open location settings
-              Linking.sendIntent('android.settings.LOCATION_SOURCE_SETTINGS').catch(err => {
-                console.error('Failed to open location settings:', err);
-                // Fallback to app settings
-                Linking.openSettings();
-              });
-            } else {
-              Linking.openURL('app-settings:');
-            }
-          }
-        }
-      ]
-    );
-  }, []);
-
-  // Function to request permission again
-  const showPermissionAlert = useCallback(() => {
-    Alert.alert(
-      'Location Permission Required',
-      'Eatoor needs access to your location to show nearby restaurants and provide accurate delivery estimates.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Allow', 
-          onPress: () => {
-            requestLocationPermission().then(granted => {
-              if (granted) {
-                getCurrentLocation();
-              } else {
-                Alert.alert(
-                  'Permission Denied',
-                  'Please enable location permission in settings to use location-based features.',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Open Settings', onPress: () => Linking.openSettings() }
-                  ]
-                );
-              }
-            });
-          }
-        }
-      ]
-    );
-  }, [getCurrentLocation, requestLocationPermission]);
-
-  // Auto-show alerts when needed (only once)
-  useEffect(() => {
-    if (location.showEnableLocationPrompt && !hasShownLocationAlert.current) {
-      hasShownLocationAlert.current = true;
-      const timer = setTimeout(() => {
-        showLocationSettingsAlert();
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [location.showEnableLocationPrompt, showLocationSettingsAlert]);
-
-  useEffect(() => {
-    if (location.showPermissionPrompt && !hasShownPermissionAlert.current) {
-      hasShownPermissionAlert.current = true;
-      const timer = setTimeout(() => {
-        showPermissionAlert();
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [location.showPermissionPrompt, showPermissionAlert]);
-
-  const handleAddressPress = useCallback(() => {
-    navigation.navigate('AddressScreen', {
-      prevLocation: "HomeTabs",
-      currentLocation: location.coords ? {
-        latitude: location.coords.lat,
-        longitude: location.coords.lng
-      } : null,
-      currentAddress: location.address || 'Select delivery location',
-      onAddressSelect: (selectedAddressObj: any) => {
-        const raw = selectedAddressObj.rawAddress;
-        if (raw.full_address && raw.latitude && raw.longitude) {
-          const lat = parseFloat(raw.latitude);
-          const lng = parseFloat(raw.longitude);
-          saveAddressDetails({
-            id: String(raw.id),
-            full_address: raw.full_address,
-            home_type: raw.home_type || 'Home',
-            latitude: raw.latitude,
-            longitude: raw.longitude,
-          });
-          setLocation(prev => ({
-            ...prev,
-            address: raw.full_address,
-            coords: {
-              lat: lat,
-              lng: lng,
-            },
-            homeType: raw.home_type || 'Home',
-            addressId: String(raw.id),
-            loading: false,
-            error: null,
-          }));
-          if (onAddressUpdate) {
-            onAddressUpdate(raw.full_address, raw.home_type || 'Home', lat, lng);
-          }
-        }
-      }
-    });
-  }, [navigation, location.coords, location.address, saveAddressDetails, onAddressUpdate]);
-
+const AddressHeader = React.memo(({ 
+  isGuest, 
+  bannerColors, 
+  isCollapsed,
+  location,
+  onAddressPress,
+}: AddressHeaderLeftProps) => {
   const displayAddress = location.loading 
     ? 'Fetching location...' 
-    : location.error || truncateAddress(location.address, 3);
+    : location.error || truncateAddress(location.address, 3) || 'Select location';
 
   const textColor = bannerColors?.textColor || COLORS.text.primary;
   const secondaryTextColor = bannerColors?.textColor ? `${bannerColors.textColor}CC` : COLORS.text.secondary;
@@ -1537,7 +911,7 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCo
   if (isCollapsed) {
     return (
       <TouchableOpacity
-        onPress={handleAddressPress}
+        onPress={onAddressPress}
         activeOpacity={0.7}
         style={styles.main_app_collapsed_address_container}
       >
@@ -1552,7 +926,7 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCo
 
   return (
     <TouchableOpacity
-      onPress={handleAddressPress}
+      onPress={onAddressPress}
       activeOpacity={0.7}
       style={styles.main_app_address_container}
     >
@@ -1571,6 +945,18 @@ const AddressHeader = React.memo(({ isGuest, onAddressUpdate, bannerColors, isCo
     </TouchableOpacity>
   );
 });
+
+// ============== SEARCH BAR ==============
+
+interface SearchInputProps {
+  onPress: () => void;
+  placeholder: string;
+  bannerColors?: {
+    backgroundColor: string;
+    textColor: string;
+  };
+  isCollapsed?: boolean;
+}
 
 const SearchBar: React.FC<SearchInputProps> = React.memo(({ onPress, placeholder, bannerColors, isCollapsed }) => {
   const searchBgColor = bannerColors?.backgroundColor 
@@ -1641,6 +1027,8 @@ const SearchBar: React.FC<SearchInputProps> = React.memo(({ onPress, placeholder
   );
 });
 
+// ============== HEADER ACTION ==============
+
 const HeaderAction = React.memo(({ onPress, icon, color, isCollapsed }: { onPress: () => void; icon: string; color?: string; isCollapsed?: boolean }) => (
   <TouchableOpacity 
     style={[styles.main_app_header_action, isCollapsed && styles.main_app_collapsed_header_action]}
@@ -1649,6 +1037,8 @@ const HeaderAction = React.memo(({ onPress, icon, color, isCollapsed }: { onPres
     <Icon name={icon} size={isCollapsed ? scale(20) : scale(24)} color={color || COLORS.text.primary} />
   </TouchableOpacity>
 ));
+
+// ============== COLLAPSED HEADER ==============
 
 const CollapsedHeader = React.memo(({ 
   isGuest, 
@@ -1659,7 +1049,9 @@ const CollapsedHeader = React.memo(({
   onProfilePress,
   placeholder,
   bannerColors,
-  opacity
+  opacity,
+  location,
+  onAddressPress,
 }: { 
   isGuest: boolean;
   onAddressUpdate?: (address: string, homeType: string, lat?: number, lng?: number) => void;
@@ -1673,6 +1065,8 @@ const CollapsedHeader = React.memo(({
     textColor: string;
   };
   opacity: Animated.AnimatedInterpolation;
+  location: AddressHeaderLeftProps['location'];
+  onAddressPress: () => void;
 }) => {
   const insets = useSafeAreaInsets();
   
@@ -1694,9 +1088,10 @@ const CollapsedHeader = React.memo(({
       <View style={styles.main_app_collapsed_header_content}>
         <AddressHeader 
           isGuest={isGuest} 
-          onAddressUpdate={onAddressUpdate} 
           bannerColors={bannerColors}
           isCollapsed={true}
+          location={location}
+          onAddressPress={onAddressPress}
         />
         <SearchBar 
           onPress={onSearchPress} 
@@ -1729,6 +1124,8 @@ const CollapsedHeader = React.memo(({
   );
 });
 
+// ============== INTEGRATED HEADER ==============
+
 const IntegratedHeader = React.memo(({ 
   isGuest, 
   onAddressUpdate, 
@@ -1742,7 +1139,9 @@ const IntegratedHeader = React.memo(({
   onBannerChange,
   bannerColors,
   scrollY,
-  collapsedOpacity
+  collapsedOpacity,
+  location,
+  onAddressPress,
 }: { 
   isGuest: boolean;
   onAddressUpdate?: (address: string, homeType: string, lat?: number, lng?: number) => void;
@@ -1760,6 +1159,8 @@ const IntegratedHeader = React.memo(({
   };
   scrollY: Animated.Value;
   collapsedOpacity: Animated.AnimatedInterpolation;
+  location: AddressHeaderLeftProps['location'];
+  onAddressPress: () => void;
 }) => {
   const insets = useSafeAreaInsets();
   
@@ -1817,7 +1218,12 @@ const IntegratedHeader = React.memo(({
       >
         <View style={[styles.main_app_integrated_header_content, { paddingTop: insets.top }]}>
           <Animated.View style={[styles.main_app_header_top, { opacity: addressHeaderOpacity }]}>
-            <AddressHeader isGuest={isGuest} onAddressUpdate={onAddressUpdate} bannerColors={bannerColors} />
+            <AddressHeader 
+              isGuest={isGuest} 
+              bannerColors={bannerColors}
+              location={location}
+              onAddressPress={onAddressPress}
+            />
             <View style={styles.main_app_header_actions}>
               <HeaderAction 
                 onPress={onFavoritePress}
@@ -1871,10 +1277,14 @@ const IntegratedHeader = React.memo(({
         placeholder={placeholder}
         bannerColors={bannerColors}
         opacity={collapsedOpacity}
+        location={location}
+        onAddressPress={onAddressPress}
       />
     </>
   );
 });
+
+// ============== CATEGORY CARD ==============
 
 const CategoryCard = ({ 
   category, 
@@ -1902,6 +1312,8 @@ const CategoryCard = ({
     </TouchableOpacity>
   );
 };
+
+// ============== RESTAURANT CARD ==============
 
 const RestaurantCard = ({ 
   kitchen, 
@@ -2002,7 +1414,8 @@ const RestaurantCard = ({
   );
 };
 
-// Active Order Card Component
+// ============== ACTIVE ORDER CARD ==============
+
 const ActiveOrderCard = ({ 
   order, 
   onPress
@@ -2099,7 +1512,8 @@ const ActiveOrderCard = ({
   );
 };
 
-// All Orders Bottom Sheet Modal
+// ============== ALL ORDERS MODAL ==============
+
 const AllOrdersModal = ({ 
   visible, 
   onClose, 
@@ -2295,6 +1709,8 @@ const AllOrdersModal = ({
   );
 };
 
+// ============== ACTIVE ORDERS SECTION ==============
+
 const ActiveOrdersSection = ({ 
   orders, 
   onOrderPress,
@@ -2325,7 +1741,6 @@ const ActiveOrdersSection = ({
     <>
       <View style={styles.active_orders_section}>
         <View style={styles.active_orders_container}>
-          {/* Show first 3 orders */}
           {firstThreeOrders.map((order) => (
             <ActiveOrderCard
               key={order.id}
@@ -2338,6 +1753,8 @@ const ActiveOrdersSection = ({
     </>
   );
 };
+
+// ============== CART SUMMARY ==============
 
 const CartSummary = ({ 
   pastKitchenDetails, 
@@ -2419,7 +1836,6 @@ const KitchenScreenTabs: React.FC = () => {
   const { isGuest, userToken } = useContext(AuthContext);
   const insets = useSafeAreaInsets();
   
-  // ========== ALL HOOKS MUST BE DECLARED BEFORE ANY CONDITIONAL RETURNS ==========
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [apiData, setApiData] = useState<ApiResponse | null>(null);
@@ -2449,10 +1865,46 @@ const KitchenScreenTabs: React.FC = () => {
     textColor: '#FFFFFF',
   });
 
-  // Service availability state
-  const [isServiceAvailable, setIsServiceAvailable] = useState<boolean | null>(null);
-  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  // ---- Use the location hook ----
+  const {
+    location,
+    isServiceAvailable,
+    isManualAddress,
+    updateAddress,
+    refreshLocation,
+    requestLocationPermission,
+    showLocationSettingsAlert,
+    showPermissionAlert,
+  } = useLocation(isGuest, handleAddressUpdate);
 
+  // ---- Address update handler (used by hook and navigation) ----
+  const handleAddressUpdate = useCallback((newAddress: string, newHomeType: string, lat?: number, lng?: number) => {
+    setAddress(newAddress);
+    setHomeType(newHomeType);
+  }, []);
+
+  // ---- Override the onAddressSelect from AddressScreen ----
+  const handleAddressSelectFromScreen = useCallback((selectedAddressObj: any) => {
+    const raw = selectedAddressObj.rawAddress;
+    if (raw.full_address && raw.latitude && raw.longitude) {
+      updateAddress(raw);
+    }
+  }, [updateAddress]);
+
+  // ---- Navigate to AddressScreen ----
+  const handleAddressPress = useCallback(() => {
+    navigation.navigate('AddressScreen', {
+      prevLocation: "HomeTabs",
+      currentLocation: location.coords ? {
+        latitude: location.coords.lat,
+        longitude: location.coords.lng
+      } : null,
+      currentAddress: location.address || 'Select delivery location',
+      onAddressSelect: handleAddressSelectFromScreen,
+    });
+  }, [navigation, location, handleAddressSelectFromScreen]);
+
+  // ---- Rest of state and callbacks ----
   const scrollY = useRef(new Animated.Value(0)).current;
   const scrollViewRef = useRef<ScrollView>(null);
   const placeholderInterval = useRef<NodeJS.Timeout>();
@@ -2476,7 +1928,7 @@ const KitchenScreenTabs: React.FC = () => {
     return verticalScale(20);
   }, [hasActiveOrders, hasCart]);
 
-  // All useCallback definitions
+  // ========== ALL useCallback hooks (unchanged from original) ==========
   const fetchBanners = useCallback(async () => {
     try {
       const response = await getOfferBanners();
@@ -2961,20 +2413,7 @@ const KitchenScreenTabs: React.FC = () => {
     }
 
     fetchKitchens()
-    
   }, [favoriteLoading, isGuest, navigation, fetchKitchens]);
-
-  const handleAddressUpdate = useCallback((newAddress: string, newHomeType: string, lat?: number, lng?: number) => {
-    setAddress(newAddress);
-    setHomeType(newHomeType);
-    
-    if (lat !== undefined && lng !== undefined) {
-      setUserCoords({ lat, lng });
-      const available = isLocationServiceable(lat, lng);
-      setIsServiceAvailable(available);
-      console.log(`Service availability for (${lat}, ${lng}): ${available}`);
-    }
-  }, []);
 
   const handleRefresh = useCallback(async () => {
     if (refreshing) return;
@@ -2992,17 +2431,13 @@ const KitchenScreenTabs: React.FC = () => {
         fetchRecentSearches(),
       ]);
 
-      // Re-check service availability if we have coords
-      if (userCoords) {
-        const available = isLocationServiceable(userCoords.lat, userCoords.lng);
-        setIsServiceAvailable(available);
-      }
+      await refreshLocation();
     } catch (error) {
       console.error('Refresh error:', error);
     } finally {
       setRefreshing(false);
     }
-  }, [refreshing, fetchBanners, fetchKitchens, fetchActiveOrders, fetchPastKitchenDetails, fetchUserData, fetchRecentSearches, userCoords]);
+  }, [refreshing, fetchBanners, fetchKitchens, fetchActiveOrders, fetchPastKitchenDetails, fetchUserData, fetchRecentSearches, refreshLocation]);
 
   const handleCategoryPress = useCallback((categoryId: number, categoryName: string) => {
     const categoryIndex = apiData?.data.CategoryList.findIndex(cat => cat.id === categoryId) ?? -1;
@@ -3111,30 +2546,18 @@ const KitchenScreenTabs: React.FC = () => {
   }, [isGuest, navigation]);
 
   const handleRetryLocation = useCallback(() => {
-    // Trigger a re-fetch of location by re-mounting AddressHeader? 
-    // We can simply refresh the whole page.
-    handleRefresh();
-    // Also we can force the AddressHeader to refetch by changing a key, but that's complex.
-    // Alternatively, we can navigate to AddressScreen to let user pick manually.
     navigation.navigate('AddressScreen', {
       prevLocation: "HomeTabs",
-      currentLocation: userCoords ? {
-        latitude: userCoords.lat,
-        longitude: userCoords.lng
+      currentLocation: location.coords ? {
+        latitude: location.coords.lat,
+        longitude: location.coords.lng
       } : null,
       currentAddress: address || 'Select delivery location',
-      onAddressSelect: (selectedAddressObj: any) => {
-        const raw = selectedAddressObj.rawAddress;
-        if (raw.full_address && raw.latitude && raw.longitude) {
-          const lat = parseFloat(raw.latitude);
-          const lng = parseFloat(raw.longitude);
-          handleAddressUpdate(raw.full_address, raw.home_type || 'Home', lat, lng);
-        }
-      }
+      onAddressSelect: handleAddressSelectFromScreen,
     });
-  }, [navigation, userCoords, address, handleAddressUpdate]);
+  }, [navigation, location, address, handleAddressSelectFromScreen]);
 
-  // All useEffect hooks
+  // ========== useEffect hooks ==========
   useEffect(() => {
     placeholderInterval.current = setInterval(() => {
       setCurrentPlaceholderIndex(prev => (prev + 1) % SEARCH_PLACEHOLDERS.length);
@@ -3166,17 +2589,6 @@ const KitchenScreenTabs: React.FC = () => {
         await fetchPastKitchenDetails(null);
       }
 
-      // If we have saved coordinates, check service availability
-      const savedLat = await AsyncStorage.getItem(STORAGE_KEYS.LATITUDE);
-      const savedLng = await AsyncStorage.getItem(STORAGE_KEYS.LONGITUDE);
-      if (savedLat && savedLng) {
-        const lat = parseFloat(savedLat);
-        const lng = parseFloat(savedLng);
-        setUserCoords({ lat, lng });
-        const available = isLocationServiceable(lat, lng);
-        setIsServiceAvailable(available);
-      }
-
       setTimeout(() => setLoading(false), 2000);
     };
 
@@ -3199,17 +2611,17 @@ const KitchenScreenTabs: React.FC = () => {
     }
   }, [debouncedSearchQuery, isSearchModalVisible, fetchSearchSuggestions]);
 
-  // ========== CONDITIONAL RETURNS GO HERE (AFTER ALL HOOKS) ==========
+  // ========== CONDITIONAL RETURNS ==========
   if (loading) {
     return <EnhancedDeliveryLoader />;
   }
 
-  // Show service not available if we have determined it's not available
   if (isServiceAvailable === false) {
     return (
       <View style={{ flex: 1 }}>
         <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-        <ServiceNotAvailable onRetry={handleRetryLocation} />
+        {/* onRetry now opens AddressScreen so user can pick a serviceable location */}
+        <ServiceNotAvailable onRetry={handleAddressPress} />
       </View>
     );
   }
@@ -3381,6 +2793,8 @@ const KitchenScreenTabs: React.FC = () => {
         bannerColors={currentBannerColors}
         scrollY={scrollY}
         collapsedOpacity={collapsedOpacity}
+        location={location}
+        onAddressPress={handleAddressPress}
       />
 
       <Animated.ScrollView
@@ -3484,7 +2898,6 @@ const KitchenScreenTabs: React.FC = () => {
         </View>
       </Animated.ScrollView>
 
-      {/* Active Orders Section - Only for logged-in users */}
       {!isGuest && (
         <ActiveOrdersSection 
           orders={activeOrders}
@@ -3502,6 +2915,8 @@ const KitchenScreenTabs: React.FC = () => {
     </View>
   );
 };
+
+// ============== NAVIGATORS ==============
 
 const KitchenTabNavigator = () => {
   return (
@@ -3534,7 +2949,6 @@ const HomeTabsNavigator = React.memo(({ isGuest }: { isGuest: boolean }) => {
         const userData = await AsyncStorage.getItem(STORAGE_KEYS.USER);
         if (userData) {
           const user = JSON.parse(userData);
-          // Assuming the user object has a 'role' field (1 = Partner, 2 = Admin)
           setUserRole(user.role ?? null);
         }
       } catch (error) {
@@ -3610,6 +3024,7 @@ const HomeTabs = () => {
   );
 };
 
+// ============== STYLES ==============
 const styles = StyleSheet.create({
   // Track Order Styles
   track_order_container: {

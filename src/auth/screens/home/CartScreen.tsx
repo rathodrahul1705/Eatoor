@@ -15,6 +15,8 @@ import {
   Alert,
   Platform,
   KeyboardAvoidingView,
+  Modal,
+  TextInput,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { getCartDetails, updateCart, updatePyamentData } from '../../../api/cart';
@@ -41,10 +43,11 @@ import {
   SelectedPaymentType,
   SavedUPI
 } from '../home/utils/PaymentMethodModal';
+import { updateUserAddress } from '../../../api/address';
 
 const { width, height } = Dimensions.get('window');
 
-// Responsive scaling functions with Android optimization
+// Responsive scaling functions
 const scale = (size: number) => (width / 375) * size;
 const verticalScale = (size: number) => (height / 812) * size;
 const moderateScale = (size: number, factor = 0.5) => {
@@ -52,7 +55,6 @@ const moderateScale = (size: number, factor = 0.5) => {
   return Platform.OS === 'android' ? Math.round(scaled) : scaled;
 };
 
-// Responsive font sizes with Android-specific adjustments
 const FONT = {
   XS: Platform.OS === 'android' ? Math.max(10, Math.round(scale(10))) : Math.max(10, scale(10)),
   SM: Platform.OS === 'android' ? Math.max(11, Math.round(scale(11))) : Math.max(11, scale(11)),
@@ -87,7 +89,6 @@ const ORDER_STATUS = {
   PENDING: 1,
 } as const;
 
-// Type definitions
 type CartItem = {
   item_id: number;
   id: number;
@@ -131,7 +132,6 @@ type CartApiResponse = {
   order_count: number;
 };
 
-// Helper functions
 const safeText = (text: any, fallback: string = ''): string => {
   if (text === null || text === undefined || text === '') {
     return fallback;
@@ -161,12 +161,11 @@ const CartScreen = ({ route, navigation }: any) => {
   const [pastKitchenDetails, setPastKitchenDetails] = useState<any>(null);
   const { isGuest } = useContext(AuthContext);
 
-  // Wallet states
   const [walletBalance, setWalletBalance] = useState<any>(null);
   const [useWallet, setUseWallet] = useState(false);
   const [walletLoading, setWalletLoading] = useState(false);
   
-  // Payment method states from API
+  // Payment method states
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodsResponse | null>(null);
   const [selectedPaymentType, setSelectedPaymentType] = useState<SelectedPaymentType>(null);
   const [selectedUpiApp, setSelectedUpiApp] = useState<UPIPaymentApp | null>(null);
@@ -182,8 +181,6 @@ const CartScreen = ({ route, navigation }: any) => {
   const [showSavedUpiIds, setShowSavedUpiIds] = useState(false);
   const [checkingApps, setCheckingApps] = useState(true);
   const [isSavingUpi, setIsSavingUpi] = useState(false);
-  
-  // New states for VPA and payment method type
   const [selectedUpiVpa, setSelectedUpiVpa] = useState<string>('');
   const [selectedUpiPaymentMethodType, setSelectedUpiPaymentMethodType] = useState<string>('');
   
@@ -193,7 +190,6 @@ const CartScreen = ({ route, navigation }: any) => {
   const [currentOrderRef, setCurrentOrderRef] = useState<string | null>(null);
   const [currentPaymentData, setCurrentPaymentData] = useState<any>(null);
   
-  // Payment Modal states
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [paymentModalStatus, setPaymentModalStatus] = useState<'idle' | 'processing' | 'success' | 'failed' | 'pending'>('idle');
   const [paymentAmount, setPaymentAmount] = useState(0);
@@ -202,8 +198,13 @@ const CartScreen = ({ route, navigation }: any) => {
   const [createdOrderId, setCreatedOrderId] = useState<number | null>(null);
   const [createdOrderTotal, setCreatedOrderTotal] = useState('');
   const [pollingAttempts, setPollingAttempts] = useState(0);
-  
-  // Refs
+
+  // NEW STATES for receiver modal
+  const [showReceiverModal, setShowReceiverModal] = useState(false);
+  const [receiverNameInput, setReceiverNameInput] = useState('');
+  const [receiverPhoneInput, setReceiverPhoneInput] = useState('');
+  const [updatingReceiver, setUpdatingReceiver] = useState(false);
+
   const paymentInProgressRef = useRef(false);
   const pollingControlRef = useRef<any>(null);
   
@@ -211,13 +212,12 @@ const CartScreen = ({ route, navigation }: any) => {
   const userId = user?.id;
   const kitchenId = pastKitchenDetails?.id;
 
-  // Load payment methods from API
+  // Load payment methods
   const loadPaymentMethods = useCallback(async () => {
     if (!userId && !isGuest) {
       console.log('Waiting for userId to load payment methods...');
       return;
     }
-    
     setCheckingApps(true);
     try {      
       const response = userId
@@ -230,10 +230,8 @@ const CartScreen = ({ route, navigation }: any) => {
       if (response.upi?.isActive && response.upi.apps) {
         const installedApps = response.upi.apps.filter(app => app.installed === true);
         const allApps = response.upi.apps;
-        
         setInstalledUpiApps(installedApps);
         setAllUpiApps(allApps);
-        
         if (installedApps.length > 0 && !selectedUpiApp && !selectedSavedUPI) {
           setSelectedUpiApp(installedApps[0]);
         }
@@ -241,7 +239,6 @@ const CartScreen = ({ route, navigation }: any) => {
         setInstalledUpiApps([]);
         setAllUpiApps([]);
       }
-      
     } catch (error) {
       console.error('Error loading payment methods:', error);
       setInstalledUpiApps([]);
@@ -258,13 +255,11 @@ const CartScreen = ({ route, navigation }: any) => {
         session = await getSessionId();
       }
       setSessionId(session);
-      
       const userData = await AsyncStorage.getItem("user");
       if (userData) {
         const parsedUser = JSON.parse(userData);
         setUser(parsedUser);
       }
-      
       return session;
     } catch (error) {
       console.error("Error initializing session:", error);
@@ -274,12 +269,10 @@ const CartScreen = ({ route, navigation }: any) => {
     }
   }, []);
   
-  // Initialize session and load user data
   useEffect(() => {
     initializeSession();
   }, []);
 
-  // Load payment methods when userId becomes available
   useEffect(() => {
     if (userId || sessionId) {
       loadPaymentMethods();
@@ -298,7 +291,6 @@ const CartScreen = ({ route, navigation }: any) => {
         if (savedAddressId) {
           setAddressId(savedAddressId);
         }
-
         const storedDetails = await AsyncStorage.getItem('pastKitchenDetails');
         if (storedDetails) {
           setPastKitchenDetails(JSON.parse(storedDetails));
@@ -307,7 +299,6 @@ const CartScreen = ({ route, navigation }: any) => {
         console.error('Error fetching user data:', error);
       }
     };
-
     fetchUserData();
   }, []);
 
@@ -334,11 +325,9 @@ const CartScreen = ({ route, navigation }: any) => {
 
   const fetchWalletBalance = async () => {
     if (!userId) return;
-    
     try {
       setWalletLoading(true);
       const response = await getWalletBalance(userId);
-      
       if (response.status === 200) {
         setWalletBalance({
           balance: safePrice(response.data.balance),
@@ -358,33 +347,26 @@ const CartScreen = ({ route, navigation }: any) => {
       setLoading(false);
       return;
     }
-
     try {
       setLoading(true);
       setError(null);
-      
       const response = await getCartDetails({
         user_id: userId,
         session_id: sessionId,
         restaurant_id: kitchenId,
         address_id: addressId
       });
-
       if (response.status === 200) {
         const updatedResponse = response.data;
-        
         if (updatedResponse.billing_details) {
           if (updatedResponse.delivery_offer_exist) {
             updatedResponse.billing_details.delivery_amount = 0;
           }
-          
           const subtotal = safePrice(updatedResponse.billing_details.subtotal);
           const deliveryAmount = safePrice(updatedResponse.billing_details.delivery_amount);
           const tax = safePrice(updatedResponse.billing_details.tax);
-          
           updatedResponse.billing_details.total = subtotal + deliveryAmount + tax;
         }
-
         if (updatedResponse.cart_details && updatedResponse.suggestion_cart_items) {
           updatedResponse.suggestion_cart_items = updatedResponse.suggestion_cart_items.map((suggestedItem: SuggestedItem) => {
             const cartItem = updatedResponse.cart_details.find((item: CartItem) => item.item_id === suggestedItem.item_id);
@@ -401,7 +383,6 @@ const CartScreen = ({ route, navigation }: any) => {
             };
           });
         }
-
         setCartData(updatedResponse);
         updateAddressDisplay(updatedResponse);
       } else {
@@ -421,7 +402,6 @@ const CartScreen = ({ route, navigation }: any) => {
       let address = "";
       let homeType = "";
       const estimatedTime = cartResponse?.delivery_time?.estimated_time || "";
-      
       if (cartResponse?.delivery_address_details?.address_line1) {
         address = safeText(cartResponse.delivery_address_details.address_line1);
         if (cartResponse.delivery_address_details.address_line2) {
@@ -432,14 +412,11 @@ const CartScreen = ({ route, navigation }: any) => {
         address = safeText(await AsyncStorage.getItem("StreetAddress"));
         homeType = safeText(await AsyncStorage.getItem("HomeType"));
       }
-
       const safeAddress = address || "Select Address";
       const safeHomeType = homeType || "";
-      
       const shortAddr = safeAddress.length > 18 ? `${safeAddress.substring(0, 18)}...` : safeAddress;
       const shortAddressText = safeHomeType ? `${safeHomeType} | ${shortAddr}` : shortAddr;
       setShortAddress(estimatedTime ? `${estimatedTime} | ${shortAddressText}` : shortAddressText);
-
       const fullAddressText = safeHomeType ? `${safeHomeType} | ${safeAddress}` : safeAddress;
       setFullAddress(estimatedTime ? `${estimatedTime} | ${fullAddressText.substring(0, 50)}...` : fullAddressText);
     } catch (error) {
@@ -468,30 +445,24 @@ const CartScreen = ({ route, navigation }: any) => {
 
   const calculateFinalAmount = (): number => {
     if (!cartData) return 0;
-    
     const totalAmount = safePrice(cartData.billing_details?.total);
-    
     if (useWallet && walletBalance && walletBalance.balance > 0) {
       const walletAmount = safePrice(walletBalance.balance);
       const amountAfterWallet = totalAmount - walletAmount;
       return Math.max(amountAfterWallet, 0);
     }
-    
     return totalAmount;
   };
 
   const calculateWalletUsage = (): number => {
     if (!cartData || !useWallet || !walletBalance) return 0;
-    
     const totalAmount = safePrice(cartData.billing_details?.total);
     const walletAmount = safePrice(walletBalance.balance);
-    
     return Math.min(walletAmount, totalAmount);
   };
 
   const debitWalletAmount = async (amount: number, orderId?: number) => {
     if (!userId) return;
-
     try {
       const payload = {
         user_id: userId,
@@ -500,7 +471,6 @@ const CartScreen = ({ route, navigation }: any) => {
         description: 'Payment for order',
         transaction_type: 'debit'
       };
-
       const response = await debitWallet(payload);
       if (response.status === 200) {
         await fetchWalletBalance();
@@ -571,12 +541,10 @@ const CartScreen = ({ route, navigation }: any) => {
     if (!cartData || !kitchenId || !addressId) {
       throw new Error('Required data missing');
     }
-
     try {
       const walletUsage = useWallet ? calculateWalletUsage() : 0;
       const finalAmount = calculateFinalAmount();
       const upiVpa = getUpiVpaForPayment();
-      
       const payload = {
         user_id: userId,
         restaurant_id: kitchenId,
@@ -608,9 +576,7 @@ const CartScreen = ({ route, navigation }: any) => {
         bank_code: selectedBank?.code,
         card_type: selectedCardType,
       };
-
       const response = await updatePyamentData(payload);
-      
       if (response.status === 201 || response.status === 200) {
         return response.data;
       } else {
@@ -632,12 +598,10 @@ const CartScreen = ({ route, navigation }: any) => {
     if (!cartData || !kitchenId || !addressId) {
       throw new Error('Required data missing');
     }
-
     try {
       const walletUsage = useWallet ? calculateWalletUsage() : 0;
       const finalAmount = calculateFinalAmount();
       const upiVpa = getUpiVpaForPayment();
-      
       const payload = {
         user_id: userId,
         restaurant_id: kitchenId,
@@ -671,11 +635,8 @@ const CartScreen = ({ route, navigation }: any) => {
         order_id: orderId,
         order_number: orderNumber
       };
-
       console.log('Finalizing payment with payload:', payload);
-      
       const response = await updatePyamentData(payload);
-      
       if (response.status === 201 || response.status === 200) {
         console.log('Payment finalized successfully:', response.data);
         return response.data;
@@ -704,7 +665,6 @@ const CartScreen = ({ route, navigation }: any) => {
   const handlePaymentRetry = () => {
     setPaymentModalVisible(false);
     resetPaymentState();
-    
     setTimeout(() => {
       if (selectedPaymentType === 'upi' || selectedPaymentType === 'saved_upi') {
         initiateUPIPaymentFlow();
@@ -730,33 +690,26 @@ const CartScreen = ({ route, navigation }: any) => {
       Alert.alert('Error', 'Required information missing');
       return;
     }
-    
     const finalAmount = calculateFinalAmount();
-    
     if (finalAmount > 0 && finalAmount < MINIMUM_ORDER_VALUE) {
       Alert.alert('Minimum Order Value', `Minimum order value is ₹${MINIMUM_ORDER_VALUE}`);
       return;
     }
-    
     if (!addressId) {
       Alert.alert('Delivery Address Required', 'Please select a delivery address');
       return;
     }
-    
     if (paymentInProgressRef.current) return;
-    
     const customerDetails = await getCustomerDetails();
     if (!customerDetails?.contact_number && !isGuest) {
       Alert.alert('Login Required', 'Please login to make payment');
       return;
     }
-    
     paymentInProgressRef.current = true;
     setIsPaymentInProgress(true);
     setPaymentAmount(finalAmount);
     setPaymentModalStatus('processing');
     setPaymentModalVisible(true);
-    
     try {
       const walletUsage = useWallet ? calculateWalletUsage() : 0;
       const finalAmountCalc = calculateFinalAmount();
@@ -767,7 +720,6 @@ const CartScreen = ({ route, navigation }: any) => {
       const deliveryFee = safePrice(cartData.billing_details.delivery_amount);
       const quantity = calculateTotalQuantity(cartData.cart_details);
       const upiVpa = getUpiVpaForPayment();
-      
       const orderData = {
         user_id: userId,
         restaurant_id: kitchenId,
@@ -800,34 +752,25 @@ const CartScreen = ({ route, navigation }: any) => {
         bank_code: selectedBank?.code,
         card_type: selectedCardType
       };
-      
       const paymentInit = await initiateBackendPayment(orderData);
-      
       setCurrentPaymentData(paymentInit);
       setCurrentTransactionId(paymentInit.txnid);
       setCurrentOrderRef(paymentInit.txnid);
       setCreatedOrderId(paymentInit.order_id);
       setCreatedOrderNumber(paymentInit.order_number);
       setCreatedOrderTotal(paymentInit.order_total);
-      
-      // For APP based UPI payment (not saved UPI)
       if (getPaymentMethodType() === "APP" && selectedUpiApp && !selectedSavedUPI) {
         const upiResult = await processUPIPayment(paymentInit, selectedUpiApp?.id);
         if (!upiResult.success) {
           throw new Error(upiResult.error || 'Failed to initiate payment app');
         }
       }
-      
       setPaymentModalStatus('pending');
       setPollingAttempts(0);
-      
-      // Start polling for payment status
       setTimeout(() => {
         if (!paymentInProgressRef.current) return;
-        
         const paymentMethodIdForPolling = getPaymentMethodId();
         const orderIdForPolling = paymentInit.order_id;
-        
         pollingControlRef.current = startPaymentPolling(
           paymentInit.txnid,
           paymentMethodIdForPolling,
@@ -837,11 +780,9 @@ const CartScreen = ({ route, navigation }: any) => {
           },
           async (result) => {
             pollingControlRef.current = null;
-            
             if (result.success) {
               try {
                 console.log('Payment verified successfully, finalizing order...');
-                
                 const finalizeResult = await finalizePaymentAfterVerification(
                   result.transaction_id || paymentInit.txnid,
                   result.payment_id || 'UPI_PAYMENT',
@@ -849,24 +790,18 @@ const CartScreen = ({ route, navigation }: any) => {
                   result.order_number || paymentInit.order_number,
                   PAYMENT_STATUS.COMPLETED
                 );
-                
                 console.log('Finalization result:', finalizeResult);
-                
                 if (useWallet && calculateWalletUsage() > 0) {
                   await debitWalletAmount(calculateWalletUsage(), result.order_id || paymentInit.order_id);
                 }
-                
                 await AsyncStorage.removeItem('pastKitchenDetails');
-                
                 const finalOrderNumber = finalizeResult.order_number || paymentInit.order_number;
                 const finalOrderId = finalizeResult.order_id || paymentInit.order_id;
                 const finalOrderTotal = finalizeResult.total_amount || finalizeResult.final_amount || paymentInit.order_total;
-                
                 setCreatedOrderNumber(finalOrderNumber);
                 setCreatedOrderId(finalOrderId);
                 setCreatedOrderTotal(finalOrderTotal);
                 setPaymentModalStatus('success');
-                
               } catch (finalizeError) {
                 console.error('Error finalizing payment:', finalizeError);
                 setPaymentError('Payment successful but order update failed. Please contact support.');
@@ -877,7 +812,6 @@ const CartScreen = ({ route, navigation }: any) => {
               setPaymentModalStatus('failed');
               console.log('Payment failed for transaction:', paymentInit.txnid);
             }
-            
             paymentInProgressRef.current = false;
             setIsPaymentInProgress(false);
           },
@@ -891,7 +825,6 @@ const CartScreen = ({ route, navigation }: any) => {
           }
         );
       }, 5000);
-      
     } catch (error: any) {
       console.error('UPI payment error:', error);
       setPaymentError(error.message || 'Failed to initiate payment');
@@ -906,25 +839,19 @@ const CartScreen = ({ route, navigation }: any) => {
       Alert.alert('Error', 'Required information missing');
       return;
     }
-    
     const walletBalanceAmount = walletBalance?.balance || 0;
     const totalAmount = safePrice(cartData.billing_details?.total);
-
     if (walletBalanceAmount < totalAmount) {
       Alert.alert('Insufficient Balance', 'Please add money to your Eatoor Money wallet');
       return;
     }
-    
     if (paymentInProgressRef.current) return;
-    
     const finalAmount = calculateFinalAmount();
-    
     paymentInProgressRef.current = true;
     setIsPaymentInProgress(true);
     setPaymentAmount(finalAmount);
     setPaymentModalStatus('processing');
     setPaymentModalVisible(true);
-    
     try {
       const updateResponse = await updatePaymentAndCreateOrder(
         null,
@@ -932,19 +859,15 @@ const CartScreen = ({ route, navigation }: any) => {
         PAYMENT_STATUS.COMPLETED,
         true
       );
-      
       if (updateResponse && (updateResponse.status === 'success' || updateResponse.order_id)) {
         const walletUsage = calculateWalletUsage();
         if (useWallet && walletUsage > 0) {
           await debitWalletAmount(walletUsage, updateResponse.order_id);
         }
-        
         await AsyncStorage.removeItem('pastKitchenDetails');
-        
         const finalOrderNumber = updateResponse.order_number;
         const finalOrderId = updateResponse.order_id;
         const finalOrderTotal = updateResponse.total_amount || updateResponse.final_amount;
-        
         setCreatedOrderNumber(finalOrderNumber);
         setCreatedOrderId(finalOrderId);
         setCreatedOrderTotal(finalOrderTotal);
@@ -967,12 +890,9 @@ const CartScreen = ({ route, navigation }: any) => {
       Alert.alert('Error', 'Required information missing');
       return;
     }
-    
     if (paymentInProgressRef.current) return;
-    
     paymentInProgressRef.current = true;
     setIsPaymentInProgress(true);
-    
     try {
       const updateResponse = await updatePaymentAndCreateOrder(
         null,
@@ -981,18 +901,14 @@ const CartScreen = ({ route, navigation }: any) => {
         false,
         true
       );
-      
       if (updateResponse && (updateResponse.status === 'success' || updateResponse.order_id)) {
         if (useWallet && calculateWalletUsage() > 0) {
           await debitWalletAmount(calculateWalletUsage(), updateResponse.order_id);
         }
-        
         await AsyncStorage.removeItem('pastKitchenDetails');
-        
         const finalOrderNumber = updateResponse.order_number;
         const finalOrderId = updateResponse.order_id;
         const finalOrderTotal = updateResponse.total_amount || updateResponse.final_amount;
-        
         setCreatedOrderNumber(finalOrderNumber);
         setCreatedOrderId(finalOrderId);
         setCreatedOrderTotal(finalOrderTotal);
@@ -1017,12 +933,10 @@ const CartScreen = ({ route, navigation }: any) => {
       handleAddressChange();
       return;
     }
-    
     if (!selectedPaymentType) {
       setShowPaymentSectionModal(true);
       return;
     }
-    
     switch (selectedPaymentType) {
       case 'wallet':
         handleWalletPayment();
@@ -1049,8 +963,6 @@ const CartScreen = ({ route, navigation }: any) => {
 
   const selectPaymentMethod = (type: SelectedPaymentType, data?: any, vpa?: string, paymentMethodType?: string) => {
     setSelectedPaymentType(type);
-    
-    // Reset selection states
     setSelectedUpiApp(null);
     setSelectedSavedUPI(null);
     setSelectedWalletApp(null);
@@ -1058,7 +970,6 @@ const CartScreen = ({ route, navigation }: any) => {
     setSelectedCardType(null);
     setSelectedUpiVpa('');
     setSelectedUpiPaymentMethodType('');
-    
     if (type === 'upi' && data) {
       setSelectedUpiApp(data);
       if (vpa) {
@@ -1072,34 +983,27 @@ const CartScreen = ({ route, navigation }: any) => {
       }
       setSelectedUpiPaymentMethodType(paymentMethodType || (data.customUPIID ? 'VPA' : 'APP'));
     }
-    
     if (type === 'saved_upi' && data) {
       setSelectedSavedUPI(data);
       const vpaToUse = data.raw_vpa || data.vpa;
       setSelectedUpiVpa(vpaToUse);
       setSelectedUpiPaymentMethodType('SAVED_UPI');
     }
-    
     if (type === 'wallet' && data) {
       setSelectedWalletApp(data);
     }
-    
     if (type === 'netbanking' && data) {
       setSelectedBank(data);
     }
-    
     if (type === 'cards' && data) {
       setSelectedCardType(data);
     }
-    
     setShowPaymentSectionModal(false);
   };
 
   const updateItemQuantity = async (itemId: number, action: 'increment' | 'decrement', source: 'CART' | 'SUGGESTION' = 'CART') => {
     if (!cartData || !kitchenId) return;
-
     setUpdatingItems(prev => [...prev, {id: itemId, action}]);
-    
     try {
       const payload = {
         user_id: userId,
@@ -1110,9 +1014,7 @@ const CartScreen = ({ route, navigation }: any) => {
         quantity: 1,
         action: action === 'increment' ? 'add' : 'remove'
       };
-
       const response = await updateCart(payload);
-      
       if (response.status === 200) {
         await fetchCartData();
       }
@@ -1133,7 +1035,6 @@ const CartScreen = ({ route, navigation }: any) => {
 
   const handleClearCart = () => {
     if (!cartData || !kitchenId) return;
-    
     const clearCartItems = async () => {
       try {
         for (const item of cartData.cart_details) {
@@ -1153,7 +1054,6 @@ const CartScreen = ({ route, navigation }: any) => {
         console.error('Error clearing cart:', error);
       }
     };
-    
     clearCartItems();
   };
 
@@ -1168,149 +1068,202 @@ const CartScreen = ({ route, navigation }: any) => {
     return num.toFixed(decimals);
   };
 
-  // Corrected Suggested Item Renderer with proper discount handling
-const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
-  const isUpdating = updatingItems.some(i => i.id === item.item_id);
-  const currentAction = isUpdating 
-    ? updatingItems.find(i => i.id === item.item_id)?.action 
-    : null;
-  
-  const quantity = item.quantity || 0;
-  const itemPrice = safePrice(item.item_price);
-  const originalPrice = safePrice(item.original_item_price);
-  const discountPercent = safePrice(item.discount_percent);
-  const discountActive = item.discount_active === 1;
-  const discountAmount = originalPrice - itemPrice;
-  const discountPercentage = discountPercent > 0 ? discountPercent : Math.round((discountAmount / originalPrice) * 100);
+  // NEW: open receiver details modal
+  const openReceiverModal = () => {
+    const address = cartData?.delivery_address_details;
+    if (address) {
+      setReceiverNameInput(address.receiver_name || '');
+      setReceiverPhoneInput(address.receiver_phone || '');
+    }
+    setShowReceiverModal(true);
+  };
 
-  return (
-    <TouchableOpacity 
-      style={styles.suggestedItemCard}
-      onPress={() => {
-        if (quantity === 0) {
-          updateItemQuantity(item.item_id, 'increment', 'SUGGESTION');
-        }
-      }}
-      activeOpacity={0.7}
-      disabled={isPaymentInProgress}
-    >
-      {/* Image Section with Badge */}
-      <View style={styles.suggestedItemImageContainer}>
-        <Image 
-          source={{ uri: item.item_image || 'https://via.placeholder.com/150' }} 
-          style={styles.suggestedItemImage} 
-          resizeMode="cover"
-        />
-        <View style={[
-          styles.suggestedItemTypeBadge,
-          item.type === 'Veg' ? styles.vegBadge : styles.nonVegBadge
-        ]}>
+  const closeReceiverModal = () => {
+    setShowReceiverModal(false);
+  };
+
+  // NEW: update receiver details with validation
+  const handleUpdateReceiverDetails = async () => {
+    if (!cartData?.delivery_address_details) {
+      Alert.alert('Error', 'No address details found');
+      return;
+    }
+    const name = receiverNameInput.trim();
+    const phone = receiverPhoneInput.trim();
+    if (!name) {
+      Alert.alert('Error', 'Please enter receiver name');
+      return;
+    }
+    // Validate phone: exactly 10 digits, numeric
+    const phoneRegex = /^[0-9]{10}$/;
+    if (!phoneRegex.test(phone)) {
+      Alert.alert('Error', 'Please enter a valid 10-digit mobile number');
+      return;
+    }
+    setUpdatingReceiver(true);
+    try {
+      const address = cartData.delivery_address_details;
+      const addressIdStr = String(address.id);
+      const payload = {
+        user: userId,
+        street_address: address.street_address || '',
+        city: address.city || '',
+        state: address.state || '',
+        country: address.country || '',
+        zip_code: address.postal_code || '',
+        near_by_landmark: address.landmark || '',
+        home_type: address.address_type || 'Home',
+        name_of_location: address.street_address || 'Address',
+        latitude: address.latitude || 0,
+        longitude: address.longitude || 0,
+        is_default: address.is_default || false,
+        receiver_name: name,
+        receiver_phone: phone,
+      };
+      const response = await updateUserAddress(addressIdStr, payload);
+      if (response.status === 200 || response.status === 201) {
+        Alert.alert('Success', 'Receiver details updated successfully');
+        closeReceiverModal();
+        await fetchCartData();
+      } else {
+        throw new Error('Update failed');
+      }
+    } catch (error: any) {
+      console.error('Error updating receiver details:', error);
+      Alert.alert('Update Failed', error.message || 'Could not update receiver details. Please try again.');
+    } finally {
+      setUpdatingReceiver(false);
+    }
+  };
+
+  // Render functions (unchanged except for the phone input maxLength)
+  const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
+    const isUpdating = updatingItems.some(i => i.id === item.item_id);
+    const currentAction = isUpdating 
+      ? updatingItems.find(i => i.id === item.item_id)?.action 
+      : null;
+    const quantity = item.quantity || 0;
+    const itemPrice = safePrice(item.item_price);
+    const originalPrice = safePrice(item.original_item_price);
+    const discountPercent = safePrice(item.discount_percent);
+    const discountActive = item.discount_active === 1;
+    const discountAmount = originalPrice - itemPrice;
+    const discountPercentage = discountPercent > 0 ? discountPercent : Math.round((discountAmount / originalPrice) * 100);
+
+    return (
+      <TouchableOpacity 
+        style={styles.suggestedItemCard}
+        onPress={() => {
+          if (quantity === 0) {
+            updateItemQuantity(item.item_id, 'increment', 'SUGGESTION');
+          }
+        }}
+        activeOpacity={0.7}
+        disabled={isPaymentInProgress}
+      >
+        <View style={styles.suggestedItemImageContainer}>
+          <Image 
+            source={{ uri: item.item_image || 'https://via.placeholder.com/150' }} 
+            style={styles.suggestedItemImage} 
+            resizeMode="cover"
+          />
           <View style={[
-            styles.suggestedItemTypeIndicator,
-            item.type === 'Veg' ? styles.vegIndicator : styles.nonVegIndicator
-          ]} />
-        </View>
-        {discountActive && discountPercentage > 0 && (
-          <View style={styles.discountBadgeAbsolute}>
-            <Text style={styles.discountBadgeText}>{discountPercentage}% OFF</Text>
+            styles.suggestedItemTypeBadge,
+            item.type === 'Veg' ? styles.vegBadge : styles.nonVegBadge
+          ]}>
+            <View style={[
+              styles.suggestedItemTypeIndicator,
+              item.type === 'Veg' ? styles.vegIndicator : styles.nonVegIndicator
+            ]} />
           </View>
-        )}
-      </View>
-      
-      {/* Content Section */}
-      <View style={styles.suggestedItemContent}>
-        <Text style={styles.suggestedItemName} numberOfLines={2}>
-          {safeText(item.item_name, 'Unnamed Item')}
-        </Text>
-        
-        {/* Price Section */}
-        <View style={styles.suggestedItemPriceContainer}>
-          {discountActive && originalPrice > itemPrice ? (
-            <>
-              <Text style={styles.currentPrice}>₹{itemPrice.toFixed(2)}</Text>
-              <Text style={styles.originalSuggestedPrice}>₹{originalPrice.toFixed(2)}</Text>
-            </>
-          ) : (
-            <Text style={styles.currentPrice}>₹{itemPrice.toFixed(2)}</Text>
+          {discountActive && discountPercentage > 0 && (
+            <View style={styles.discountBadgeAbsolute}>
+              <Text style={styles.discountBadgeText}>{discountPercentage}% OFF</Text>
+            </View>
           )}
         </View>
-        
-        {/* Action Button - Always at bottom in one line */}
-        <View style={styles.suggestedItemFooter}>
-          {quantity > 0 ? (
-            <View style={styles.quantityContainerHorizontal}>
+        <View style={styles.suggestedItemContent}>
+          <Text style={styles.suggestedItemName} numberOfLines={2}>
+            {safeText(item.item_name, 'Unnamed Item')}
+          </Text>
+          <View style={styles.suggestedItemPriceContainer}>
+            {discountActive && originalPrice > itemPrice ? (
+              <>
+                <Text style={styles.currentPrice}>₹{itemPrice.toFixed(2)}</Text>
+                <Text style={styles.originalSuggestedPrice}>₹{originalPrice.toFixed(2)}</Text>
+              </>
+            ) : (
+              <Text style={styles.currentPrice}>₹{itemPrice.toFixed(2)}</Text>
+            )}
+          </View>
+          <View style={styles.suggestedItemFooter}>
+            {quantity > 0 ? (
+              <View style={styles.quantityContainerHorizontal}>
+                <TouchableOpacity 
+                  style={[
+                    styles.quantityButtonHorizontal,
+                    (quantity <= 1 || isPaymentInProgress) && styles.disabledButton
+                  ]} 
+                  onPress={() => updateItemQuantity(item.item_id, 'decrement', 'SUGGESTION')}
+                >
+                  {isUpdating && currentAction === 'decrement' ? (
+                    <ActivityIndicator size="small" color="#E65C00" />
+                  ) : (
+                    <Icon name="remove" size={moderateScale(14)} color={quantity <= 1 ? "#ccc" : "#E65C00"} />
+                  )}
+                </TouchableOpacity>
+                <Text style={styles.quantityTextHorizontal}>{safeText(quantity, '0')}</Text>
+                <TouchableOpacity 
+                  style={[
+                    styles.quantityButtonHorizontal,
+                    isPaymentInProgress && styles.disabledButton
+                  ]} 
+                  onPress={() => updateItemQuantity(item.item_id, 'increment', 'SUGGESTION')}
+                >
+                  {isUpdating && currentAction === 'increment' ? (
+                    <ActivityIndicator size="small" color="#E65C00" />
+                  ) : (
+                    <Icon name="add" size={moderateScale(14)} color="#E65C00" />
+                  )}
+                </TouchableOpacity>
+              </View>
+            ) : (
               <TouchableOpacity 
                 style={[
-                  styles.quantityButtonHorizontal,
-                  (quantity <= 1 || isPaymentInProgress) && styles.disabledButton
-                ]} 
-                onPress={() => updateItemQuantity(item.item_id, 'decrement', 'SUGGESTION')}
-              >
-                {isUpdating && currentAction === 'decrement' ? (
-                  <ActivityIndicator size="small" color="#E65C00" />
-                ) : (
-                  <Icon name="remove" size={moderateScale(14)} color={quantity <= 1 ? "#ccc" : "#E65C00"} />
-                )}
-              </TouchableOpacity>
-              
-              <Text style={styles.quantityTextHorizontal}>{safeText(quantity, '0')}</Text>
-              
-              <TouchableOpacity 
-                style={[
-                  styles.quantityButtonHorizontal,
+                  styles.addItemButtonHorizontal,
+                  isUpdating && styles.addItemButtonDisabled,
                   isPaymentInProgress && styles.disabledButton
-                ]} 
+                ]}
                 onPress={() => updateItemQuantity(item.item_id, 'increment', 'SUGGESTION')}
+                disabled={isUpdating || isPaymentInProgress}
               >
                 {isUpdating && currentAction === 'increment' ? (
-                  <ActivityIndicator size="small" color="#E65C00" />
+                  <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Icon name="add" size={moderateScale(14)} color="#E65C00" />
+                  <>
+                    <Icon name="add-circle-outline" size={moderateScale(16)} color="#fff" />
+                    <Text style={styles.addItemButtonTextHorizontal}>ADD</Text>
+                  </>
                 )}
               </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity 
-              style={[
-                styles.addItemButtonHorizontal,
-                isUpdating && styles.addItemButtonDisabled,
-                isPaymentInProgress && styles.disabledButton
-              ]}
-              onPress={() => updateItemQuantity(item.item_id, 'increment', 'SUGGESTION')}
-              disabled={isUpdating || isPaymentInProgress}
-            >
-              {isUpdating && currentAction === 'increment' ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  <Icon name="add-circle-outline" size={moderateScale(16)} color="#fff" />
-                  <Text style={styles.addItemButtonTextHorizontal}>ADD</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
+            )}
+          </View>
         </View>
-      </View>
-    </TouchableOpacity>
-  );
-};
+      </TouchableOpacity>
+    );
+  };
 
   const handleWalletToggle = () => {
     const walletBalanceAmount = walletBalance?.balance || 0;
-    
-    // Don't allow toggling if balance is zero
     if (walletBalanceAmount <= 0) {
       Alert.alert('Insufficient Balance', 'Your Eatoor Money balance is zero. Please add money to use this payment method.');
       return;
     }
-    
     const newUseWallet = !useWallet;
     setUseWallet(newUseWallet);
-    
     if (newUseWallet && walletBalance && walletBalance.balance > 0) {
       const isEatoorMoneyAvailable = paymentMethods?.wallets?.isActive && 
         paymentMethods?.wallets?.wallets?.some(w => w.id === 'eatoor_money');
-      
       if (isEatoorMoneyAvailable) {
         const eatoorWallet = paymentMethods?.wallets?.wallets?.find(w => w.id === 'eatoor_money');
         setSelectedPaymentType('wallet');
@@ -1324,9 +1277,7 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
   const renderEatoorMoneySection = () => {
     const balance = walletBalance?.balance || 0;
     const isWalletActive = paymentMethods?.wallets?.isActive && paymentMethods?.wallets?.wallets?.length > 0;
-    
     if (!isWalletActive) return null;
-
     return (
       <View style={styles.eatoorMoneyContainer}>
         <View style={styles.eatoorMoneyToggleRow}>
@@ -1347,7 +1298,6 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
               <Text style={styles.balanceTextSmall}>Balance: ₹{balance.toFixed(2)}</Text>
             </View>
           </TouchableOpacity>
-          
           <TouchableOpacity 
             style={styles.addMoneyButton}
             onPress={() => navigation.navigate('EatoorMoneyAdd', { prevScreen: 'CartScreen' })}
@@ -1364,7 +1314,6 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
   const renderPaymentMethodSelector = () => {
     const finalAmount = calculateFinalAmount();
     const isAddressSelected = !!addressId;
-    
     let buttonText = '';
     if (!isAddressSelected) {
       buttonText = 'Select Location';
@@ -1380,7 +1329,6 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
       if (!selectedPaymentType) {
         return { title: 'Select Payment', subtitle: 'Choose a payment method', icon: 'card-outline' };
       }
-      
       switch (selectedPaymentType) {
         case 'upi':
           const vpaDisplay = selectedUpiVpa ? `VPA: ${selectedUpiVpa}` : '';
@@ -1429,13 +1377,11 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
                 <Icon name={display.icon} size={moderateScale(22)} color="#E65C00" />
               </View>
             </View>
-
             <View style={styles.textContainer}>
               <View style={styles.topRow}>
                 <Text style={styles.payUsingLabel}>PAY USING</Text>
                 <Icon name="chevron-down" size={moderateScale(12)} color="#999" />
               </View>
-
               <View style={styles.paymentMethodRow}>
                 <Text style={styles.paymentMethodName} numberOfLines={1}>
                   {display.title}
@@ -1447,7 +1393,6 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
             </View>
           </View>
         </TouchableOpacity>
-
         <TouchableOpacity 
           style={[
             styles.proceedButton,
@@ -1470,7 +1415,6 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
     );
   };
 
-  // Improved Cart Item Renderer
   const renderCartItem = ({ item }: { item: CartItem }) => {
     const isUpdating = updatingItems.some(i => i.id === item.item_id);
     const itemPrice = safePrice(item.item_price);
@@ -1491,7 +1435,6 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
               ]} />
             </View>
           </View>
-          
           <View style={styles.itemDetails}>
             <Text style={styles.itemName} numberOfLines={2}>
               {safeText(item.item_name, 'Unnamed Item')}
@@ -1504,10 +1447,8 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
                 </View>
               </View>
             ) : null}
-            
             <Text style={styles.itemPrice}>₹{itemPrice.toFixed(2)}</Text>
           </View>
-          
           <View style={styles.cartQuantityContainer}>
             <TouchableOpacity 
               style={[
@@ -1521,9 +1462,7 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
                 <Icon name="remove" size={moderateScale(16)} color={item.quantity <= 1 ? "#E65C00" : "#E65C00"} />
               )}
             </TouchableOpacity>
-            
             <Text style={styles.cartQuantityText}>{safeText(item.quantity, '0')}</Text>
-            
             <TouchableOpacity 
               style={[
                 styles.cartQuantityButton,
@@ -1554,7 +1493,6 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
         </Text>
         <View style={{ width: moderateScale(24) }} />
       </View>
-      
       <View style={styles.emptyContent}>
         <View style={styles.emptyIllustration}>
           <Icon name="cart-outline" size={moderateScale(80)} color="#E8ECF4" />
@@ -1566,7 +1504,6 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
         <Text style={styles.emptyDescription}>
           Looks like you haven't added anything to your cart yet
         </Text>
-        
         <TouchableOpacity style={styles.exploreButton} onPress={BackToKitchen}>
           <View style={styles.exploreButtonContent}>
             <Text style={styles.exploreButtonText}>Browse Menu</Text>
@@ -1574,7 +1511,6 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
           </View>
         </TouchableOpacity>
       </View>
-
       {cartData?.suggestion_cart_items && cartData?.suggestion_cart_items.length > 0 && (
         <View style={styles.emptySuggestionsContainer}>
           <Text style={styles.suggestionTitle}>
@@ -1623,7 +1559,6 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
                 </View>
               )}
             </View>
-
             {cartData?.cart_details?.length > 0 && (
               <TouchableOpacity 
                 style={styles.clearCartButton}
@@ -1635,7 +1570,6 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
               </TouchableOpacity>
             )}
           </View>
-
           <View style={styles.cartItemsList}>
             <FlatList
               data={cartData?.cart_details}
@@ -1646,7 +1580,7 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
           </View>
         </View>
 
-        {/* Add More Items Section - Improved Design */}
+        {/* Add More Items Section */}
         {cartData?.suggestion_cart_items && cartData?.suggestion_cart_items.length > 0 && (
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
@@ -1663,7 +1597,6 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
                 <Icon name="chevron-forward" size={moderateScale(16)} color="#E65C00" />
               </TouchableOpacity>
             </View>
-
             <FlatList
               data={cartData?.suggestion_cart_items}
               renderItem={renderSuggestedItem}
@@ -1675,7 +1608,7 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
           </View>
         )}
 
-        {/* Delivery Details Section */}
+        {/* Delivery Details Section - UPDATED with Receiver Details */}
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleContainer}>
@@ -1715,6 +1648,51 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
                 </View>
               </View>
             )}
+
+            {/* NEW: Receiver Details Row - Clickable */}
+            {addressId && (
+              <TouchableOpacity
+                style={[
+                  styles.detailRow,
+                  {
+                    marginTop: verticalScale(8),
+                    paddingTop: verticalScale(8),
+                    borderTopWidth: 1,
+                    borderTopColor: '#f0f0f0',
+                  },
+                ]}
+                onPress={openReceiverModal}
+                activeOpacity={0.7}
+              >
+                <View style={styles.detailIconContainer}>
+                  <Icon
+                    name="person-outline"
+                    size={moderateScale(24)}
+                    color="#E65C00"
+                  />
+                </View>
+
+                <View style={styles.addressContainer}>
+                  <Text style={styles.detailLabel}>Receiver Details</Text>
+                  <Text style={styles.detailText}>
+                    {safeText(
+                      cartData?.delivery_address_details?.receiver_name,
+                      'Not provided'
+                    )}
+                    {cartData?.delivery_address_details?.receiver_phone
+                      ? ` | ${cartData.delivery_address_details.receiver_phone}`
+                      : ''}
+                  </Text>
+                </View>
+
+                <Icon
+                  name="chevron-forward"
+                  size={moderateScale(20)}
+                  color="#ccc"
+                />
+              </TouchableOpacity>
+            )}
+
           </TouchableOpacity>
         </View>
 
@@ -1726,7 +1704,6 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
               <Text style={styles.sectionTitle}>Bill Details</Text>
             </View>
           </View>
-          
           <View style={styles.billCard}>
             <View style={styles.billRow}>
               <Text style={styles.billLabel}>Item Total</Text>
@@ -1734,7 +1711,6 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
                 ₹{safeFormatNumber(cartData?.billing_details?.subtotal, 2)}
               </Text>
             </View>
-
             <View style={styles.billRow}>
               <Text style={styles.billLabel}>Delivery Fee</Text>
               <View style={styles.billValueContainer}>
@@ -1751,14 +1727,12 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
                 </Text>
               </View>
             </View>
-
             <View style={styles.billRow}>
               <Text style={styles.billLabel}>Tax & Charges</Text>
               <Text style={styles.billValue}>
                 ₹{safeFormatNumber(cartData?.billing_details?.tax, 2)}
               </Text>
             </View>
-
             {useWallet && walletBalance && walletBalance.balance > 0 && (
               <View style={styles.billRow}>
                 <Text style={styles.billLabel}>Eatoor Money</Text>
@@ -1767,7 +1741,6 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
                 </Text>
               </View>
             )}
-
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>
                 {useWallet && calculateFinalAmount() > 0 ? 'Amount to Pay' : 'Total Bill'}
@@ -1786,7 +1759,6 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
     if (!cartData || cartData?.cart_details?.length === 0) {
       return null;
     }
-
     return (
       <View style={styles.paymentFooter}>
         {!isGuest && renderEatoorMoneySection()}
@@ -1795,6 +1767,7 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
     );
   };
   
+  // Main render
   if (loading && !cartData) {
     return (
       <SafeAreaView style={styles.container}>
@@ -1874,6 +1847,76 @@ const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
         isSavingUpi={isSavingUpi}
         refreshPaymentMethods={loadPaymentMethods}
       />
+
+      {/* NEW: Receiver Details Modal */}
+      <Modal
+        visible={showReceiverModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={closeReceiverModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Update Receiver Details</Text>
+            
+            <View style={styles.modalAddressContainer}>
+              <Text style={styles.modalAddressLabel}>Delivery Address</Text>
+              <Text style={styles.modalAddressText}>
+                {safeText(cartData?.delivery_address_details?.street_address, '')}
+                {cartData?.delivery_address_details?.city ? `, ${cartData.delivery_address_details.city}` : ''}
+                {cartData?.delivery_address_details?.state ? `, ${cartData.delivery_address_details.state}` : ''}
+                {cartData?.delivery_address_details?.postal_code ? ` - ${cartData.delivery_address_details.postal_code}` : ''}
+              </Text>
+            </View>
+
+            <View style={styles.modalInputContainer}>
+              <Text style={styles.modalInputLabel}>Receiver Name</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={receiverNameInput}
+                onChangeText={setReceiverNameInput}
+                placeholder="Enter receiver's name"
+                placeholderTextColor="#999"
+              />
+            </View>
+
+            <View style={styles.modalInputContainer}>
+              <Text style={styles.modalInputLabel}>Receiver Mobile Number</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={receiverPhoneInput}
+                onChangeText={setReceiverPhoneInput}
+                placeholder="Enter 10-digit mobile number"
+                placeholderTextColor="#999"
+                keyboardType="phone-pad"
+                maxLength={10} // enforce exactly 10 digits
+              />
+            </View>
+
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalCancelButton]}
+                onPress={closeReceiverModal}
+                disabled={updatingReceiver}
+              >
+                <Text style={styles.modalCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalUpdateButton]}
+                onPress={handleUpdateReceiverDetails}
+                disabled={updatingReceiver}
+              >
+                {updatingReceiver ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.modalUpdateButtonText}>Update</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       
       {isCartEmpty ? (
         renderEmptyCart()
@@ -2529,7 +2572,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(8),
     paddingBottom: verticalScale(8),
   },
-  // Improved Suggested Item Styles
   suggestedItemCard: {
     width: scale(180),
     backgroundColor: '#fff',
@@ -2623,7 +2665,6 @@ const styles = StyleSheet.create({
   suggestedItemFooter: {
     width: '100%',
   },
-  // Horizontal quantity container for suggested items
   quantityContainerHorizontal: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2754,6 +2795,102 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
       },
     }),
+  },
+  // NEW MODAL STYLES
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: moderateScale(20),
+    borderTopRightRadius: moderateScale(20),
+    paddingHorizontal: scale(20),
+    paddingBottom: Platform.OS === 'android' ? verticalScale(20) : verticalScale(30),
+    paddingTop: verticalScale(20),
+    maxHeight: height * 0.8,
+  },
+  modalHandle: {
+    width: moderateScale(40),
+    height: verticalScale(4),
+    backgroundColor: '#ddd',
+    borderRadius: moderateScale(4),
+    alignSelf: 'center',
+    marginBottom: verticalScale(16),
+  },
+  modalTitle: {
+    fontSize: FONT.XL,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: verticalScale(16),
+    textAlign: 'center',
+  },
+  modalAddressContainer: {
+    backgroundColor: '#f8f9fa',
+    padding: moderateScale(12),
+    borderRadius: moderateScale(8),
+    marginBottom: verticalScale(16),
+  },
+  modalAddressLabel: {
+    fontSize: FONT.SM,
+    color: '#666',
+    fontWeight: '500',
+    marginBottom: verticalScale(4),
+  },
+  modalAddressText: {
+    fontSize: FONT.BASE,
+    color: '#1a1a1a',
+    fontWeight: '500',
+  },
+  modalInputContainer: {
+    marginBottom: verticalScale(16),
+  },
+  modalInputLabel: {
+    fontSize: FONT.SM,
+    color: '#333',
+    fontWeight: '600',
+    marginBottom: verticalScale(6),
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: moderateScale(8),
+    paddingHorizontal: moderateScale(12),
+    paddingVertical: Platform.OS === 'android' ? verticalScale(8) : verticalScale(10),
+    fontSize: FONT.BASE,
+    color: '#1a1a1a',
+    backgroundColor: '#fff',
+  },
+  modalButtonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: verticalScale(8),
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: verticalScale(12),
+    borderRadius: moderateScale(8),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancelButton: {
+    backgroundColor: '#f0f0f0',
+    marginRight: moderateScale(8),
+  },
+  modalCancelButtonText: {
+    color: '#333',
+    fontSize: FONT.BASE,
+    fontWeight: '600',
+  },
+  modalUpdateButton: {
+    backgroundColor: '#E65C00',
+    marginLeft: moderateScale(8),
+  },
+  modalUpdateButtonText: {
+    color: '#fff',
+    fontSize: FONT.BASE,
+    fontWeight: '700',
   },
 });
 

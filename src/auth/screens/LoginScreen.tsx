@@ -55,6 +55,7 @@ const isLargeDevice = width > 414;
 
 const LoginScreen = () => {
   const navigation = useNavigation<StackNavigationProp<AuthStackParamList, 'Login'>>();
+  const { isGuest, loginAsGuest, logout } = useContext(AuthContext);
 
   const [mobileNumber, setMobileNumber] = useState('');
   const [error, setError] = useState('');
@@ -71,7 +72,20 @@ const LoginScreen = () => {
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
-  const { loginAsGuest } = useContext(AuthContext);
+
+  const handleLogout = async () => {
+    try {
+      logout();
+    } catch (error) {
+      console.error('Error during logout:', error);
+    }
+  };
+
+  useEffect(() => {
+    if(isGuest){
+      handleLogout()
+    }
+  }, [isGuest]);
 
   /** ----------------------------------
    *  RUN ANIMATIONS
