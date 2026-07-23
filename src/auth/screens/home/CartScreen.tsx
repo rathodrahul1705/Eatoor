@@ -34,11 +34,11 @@ import {
   startPaymentPolling,
   getCustomerDetails,
 } from './utils/PaymentService';
-import { 
-  PaymentMethodModal, 
-  PaymentMethodsResponse, 
-  UPIPaymentApp, 
-  WalletPaymentMethod, 
+import {
+  PaymentMethodModal,
+  PaymentMethodsResponse,
+  UPIPaymentApp,
+  WalletPaymentMethod,
   NetbankingBank,
   SelectedPaymentType,
   SavedUPI
@@ -164,7 +164,7 @@ const CartScreen = ({ route, navigation }: any) => {
   const [walletBalance, setWalletBalance] = useState<any>(null);
   const [useWallet, setUseWallet] = useState(false);
   const [walletLoading, setWalletLoading] = useState(false);
-  
+
   // Payment method states
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodsResponse | null>(null);
   const [selectedPaymentType, setSelectedPaymentType] = useState<SelectedPaymentType>(null);
@@ -183,13 +183,13 @@ const CartScreen = ({ route, navigation }: any) => {
   const [isSavingUpi, setIsSavingUpi] = useState(false);
   const [selectedUpiVpa, setSelectedUpiVpa] = useState<string>('');
   const [selectedUpiPaymentMethodType, setSelectedUpiPaymentMethodType] = useState<string>('');
-  
+
   // Payment tracking states
   const [isPaymentInProgress, setIsPaymentInProgress] = useState(false);
   const [currentTransactionId, setCurrentTransactionId] = useState<string | null>(null);
   const [currentOrderRef, setCurrentOrderRef] = useState<string | null>(null);
   const [currentPaymentData, setCurrentPaymentData] = useState<any>(null);
-  
+
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [paymentModalStatus, setPaymentModalStatus] = useState<'idle' | 'processing' | 'success' | 'failed' | 'pending'>('idle');
   const [paymentAmount, setPaymentAmount] = useState(0);
@@ -207,7 +207,7 @@ const CartScreen = ({ route, navigation }: any) => {
 
   const paymentInProgressRef = useRef(false);
   const pollingControlRef = useRef<any>(null);
-  
+
   const [sessionId, setSessionId] = useState<any>(null);
   const userId = user?.id;
   const kitchenId = pastKitchenDetails?.id;
@@ -219,14 +219,14 @@ const CartScreen = ({ route, navigation }: any) => {
       return;
     }
     setCheckingApps(true);
-    try {      
+    try {
       const response = userId
         ? await getAllPaymentMethods(userId)
         : await getAllPaymentMethods();
-      
+
       console.log('Payment methods loaded:', response);
       setPaymentMethods(response);
-      
+
       if (response.upi?.isActive && response.upi.apps) {
         const installedApps = response.upi.apps.filter(app => app.installed === true);
         const allApps = response.upi.apps;
@@ -268,7 +268,7 @@ const CartScreen = ({ route, navigation }: any) => {
       return fallbackSession;
     }
   }, []);
-  
+
   useEffect(() => {
     initializeSession();
   }, []);
@@ -434,7 +434,7 @@ const CartScreen = ({ route, navigation }: any) => {
   };
 
   const handleAddressChange = async () => {
-    navigation.navigate('AddressScreen', { 
+    navigation.navigate('AddressScreen', {
       prevLocation: 'CartScreen',
       onAddressSelect: async (selectedAddressId: string | number) => {
         await AsyncStorage.setItem('AddressId', String(selectedAddressId.id));
@@ -1003,7 +1003,7 @@ const CartScreen = ({ route, navigation }: any) => {
 
   const updateItemQuantity = async (itemId: number, action: 'increment' | 'decrement', source: 'CART' | 'SUGGESTION' = 'CART') => {
     if (!cartData || !kitchenId) return;
-    setUpdatingItems(prev => [...prev, {id: itemId, action}]);
+    setUpdatingItems(prev => [...prev, { id: itemId, action }]);
     try {
       const payload = {
         user_id: userId,
@@ -1068,7 +1068,7 @@ const CartScreen = ({ route, navigation }: any) => {
     return num.toFixed(decimals);
   };
 
-  // NEW: open receiver details modal
+  // Receiver modal handlers
   const openReceiverModal = () => {
     const address = cartData?.delivery_address_details;
     if (address) {
@@ -1082,7 +1082,6 @@ const CartScreen = ({ route, navigation }: any) => {
     setShowReceiverModal(false);
   };
 
-  // NEW: update receiver details with validation
   const handleUpdateReceiverDetails = async () => {
     if (!cartData?.delivery_address_details) {
       Alert.alert('Error', 'No address details found');
@@ -1094,7 +1093,6 @@ const CartScreen = ({ route, navigation }: any) => {
       Alert.alert('Error', 'Please enter receiver name');
       return;
     }
-    // Validate phone: exactly 10 digits, numeric
     const phoneRegex = /^[0-9]{10}$/;
     if (!phoneRegex.test(phone)) {
       Alert.alert('Error', 'Please enter a valid 10-digit mobile number');
@@ -1136,11 +1134,11 @@ const CartScreen = ({ route, navigation }: any) => {
     }
   };
 
-  // Render functions (unchanged except for the phone input maxLength)
+  // Render functions (improved with flat design)
   const renderSuggestedItem = ({ item }: { item: SuggestedItem }) => {
     const isUpdating = updatingItems.some(i => i.id === item.item_id);
-    const currentAction = isUpdating 
-      ? updatingItems.find(i => i.id === item.item_id)?.action 
+    const currentAction = isUpdating
+      ? updatingItems.find(i => i.id === item.item_id)?.action
       : null;
     const quantity = item.quantity || 0;
     const itemPrice = safePrice(item.item_price);
@@ -1151,8 +1149,8 @@ const CartScreen = ({ route, navigation }: any) => {
     const discountPercentage = discountPercent > 0 ? discountPercent : Math.round((discountAmount / originalPrice) * 100);
 
     return (
-      <TouchableOpacity 
-        style={styles.suggestedItemCard}
+      <TouchableOpacity
+        style={styles['cartscreen-suggested-item']}
         onPress={() => {
           if (quantity === 0) {
             updateItemQuantity(item.item_id, 'increment', 'SUGGESTION');
@@ -1161,49 +1159,49 @@ const CartScreen = ({ route, navigation }: any) => {
         activeOpacity={0.7}
         disabled={isPaymentInProgress}
       >
-        <View style={styles.suggestedItemImageContainer}>
-          <Image 
-            source={{ uri: item.item_image || 'https://via.placeholder.com/150' }} 
-            style={styles.suggestedItemImage} 
+        <View style={styles['cartscreen-suggested-image-wrap']}>
+          <Image
+            source={{ uri: item.item_image || 'https://via.placeholder.com/150' }}
+            style={styles['cartscreen-suggested-image']}
             resizeMode="cover"
           />
           <View style={[
-            styles.suggestedItemTypeBadge,
-            item.type === 'Veg' ? styles.vegBadge : styles.nonVegBadge
+            styles['cartscreen-suggested-type-badge'],
+            item.type === 'Veg' ? styles['cartscreen-veg-badge'] : styles['cartscreen-nonveg-badge']
           ]}>
             <View style={[
-              styles.suggestedItemTypeIndicator,
-              item.type === 'Veg' ? styles.vegIndicator : styles.nonVegIndicator
+              styles['cartscreen-suggested-type-indicator'],
+              item.type === 'Veg' ? styles['cartscreen-veg-indicator'] : styles['cartscreen-nonveg-indicator']
             ]} />
           </View>
           {discountActive && discountPercentage > 0 && (
-            <View style={styles.discountBadgeAbsolute}>
-              <Text style={styles.discountBadgeText}>{discountPercentage}% OFF</Text>
+            <View style={styles['cartscreen-discount-badge-absolute']}>
+              <Text style={styles['cartscreen-discount-badge-text']}>{discountPercentage}% OFF</Text>
             </View>
           )}
         </View>
-        <View style={styles.suggestedItemContent}>
-          <Text style={styles.suggestedItemName} numberOfLines={2}>
+        <View style={styles['cartscreen-suggested-content']}>
+          <Text style={styles['cartscreen-suggested-name']} numberOfLines={2}>
             {safeText(item.item_name, 'Unnamed Item')}
           </Text>
-          <View style={styles.suggestedItemPriceContainer}>
+          <View style={styles['cartscreen-suggested-price-wrap']}>
             {discountActive && originalPrice > itemPrice ? (
               <>
-                <Text style={styles.currentPrice}>₹{itemPrice.toFixed(2)}</Text>
-                <Text style={styles.originalSuggestedPrice}>₹{originalPrice.toFixed(2)}</Text>
+                <Text style={styles['cartscreen-current-price']}>₹{itemPrice.toFixed(2)}</Text>
+                <Text style={styles['cartscreen-original-suggested-price']}>₹{originalPrice.toFixed(2)}</Text>
               </>
             ) : (
-              <Text style={styles.currentPrice}>₹{itemPrice.toFixed(2)}</Text>
+              <Text style={styles['cartscreen-current-price']}>₹{itemPrice.toFixed(2)}</Text>
             )}
           </View>
-          <View style={styles.suggestedItemFooter}>
+          <View style={styles['cartscreen-suggested-footer']}>
             {quantity > 0 ? (
-              <View style={styles.quantityContainerHorizontal}>
-                <TouchableOpacity 
+              <View style={styles['cartscreen-quantity-horizontal']}>
+                <TouchableOpacity
                   style={[
-                    styles.quantityButtonHorizontal,
-                    (quantity <= 1 || isPaymentInProgress) && styles.disabledButton
-                  ]} 
+                    styles['cartscreen-qty-btn-horizontal'],
+                    (quantity <= 1 || isPaymentInProgress) && styles['cartscreen-disabled-btn']
+                  ]}
                   onPress={() => updateItemQuantity(item.item_id, 'decrement', 'SUGGESTION')}
                 >
                   {isUpdating && currentAction === 'decrement' ? (
@@ -1212,12 +1210,12 @@ const CartScreen = ({ route, navigation }: any) => {
                     <Icon name="remove" size={moderateScale(14)} color={quantity <= 1 ? "#ccc" : "#E65C00"} />
                   )}
                 </TouchableOpacity>
-                <Text style={styles.quantityTextHorizontal}>{safeText(quantity, '0')}</Text>
-                <TouchableOpacity 
+                <Text style={styles['cartscreen-qty-text-horizontal']}>{safeText(quantity, '0')}</Text>
+                <TouchableOpacity
                   style={[
-                    styles.quantityButtonHorizontal,
-                    isPaymentInProgress && styles.disabledButton
-                  ]} 
+                    styles['cartscreen-qty-btn-horizontal'],
+                    isPaymentInProgress && styles['cartscreen-disabled-btn']
+                  ]}
                   onPress={() => updateItemQuantity(item.item_id, 'increment', 'SUGGESTION')}
                 >
                   {isUpdating && currentAction === 'increment' ? (
@@ -1228,11 +1226,11 @@ const CartScreen = ({ route, navigation }: any) => {
                 </TouchableOpacity>
               </View>
             ) : (
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[
-                  styles.addItemButtonHorizontal,
-                  isUpdating && styles.addItemButtonDisabled,
-                  isPaymentInProgress && styles.disabledButton
+                  styles['cartscreen-add-item-btn-horizontal'],
+                  isUpdating && styles['cartscreen-add-item-disabled'],
+                  isPaymentInProgress && styles['cartscreen-disabled-btn']
                 ]}
                 onPress={() => updateItemQuantity(item.item_id, 'increment', 'SUGGESTION')}
                 disabled={isUpdating || isPaymentInProgress}
@@ -1242,7 +1240,7 @@ const CartScreen = ({ route, navigation }: any) => {
                 ) : (
                   <>
                     <Icon name="add-circle-outline" size={moderateScale(16)} color="#fff" />
-                    <Text style={styles.addItemButtonTextHorizontal}>ADD</Text>
+                    <Text style={styles['cartscreen-add-item-text-horizontal']}>ADD</Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -1262,7 +1260,7 @@ const CartScreen = ({ route, navigation }: any) => {
     const newUseWallet = !useWallet;
     setUseWallet(newUseWallet);
     if (newUseWallet && walletBalance && walletBalance.balance > 0) {
-      const isEatoorMoneyAvailable = paymentMethods?.wallets?.isActive && 
+      const isEatoorMoneyAvailable = paymentMethods?.wallets?.isActive &&
         paymentMethods?.wallets?.wallets?.some(w => w.id === 'eatoor_money');
       if (isEatoorMoneyAvailable) {
         const eatoorWallet = paymentMethods?.wallets?.wallets?.find(w => w.id === 'eatoor_money');
@@ -1279,31 +1277,31 @@ const CartScreen = ({ route, navigation }: any) => {
     const isWalletActive = paymentMethods?.wallets?.isActive && paymentMethods?.wallets?.wallets?.length > 0;
     if (!isWalletActive) return null;
     return (
-      <View style={styles.eatoorMoneyContainer}>
-        <View style={styles.eatoorMoneyToggleRow}>
-          <TouchableOpacity 
-            style={styles.checkboxContainer}
+      <View style={styles['cartscreen-eatoor-container']}>
+        <View style={styles['cartscreen-eatoor-row']}>
+          <TouchableOpacity
+            style={styles['cartscreen-eatoor-checkbox-wrap']}
             onPress={handleWalletToggle}
             disabled={isPaymentInProgress || balance <= 0}
           >
             <View style={[
-              styles.checkbox,
-              useWallet && styles.checkboxChecked,
-              (balance <= 0 || isPaymentInProgress) && styles.checkboxDisabled
+              styles['cartscreen-eatoor-checkbox'],
+              useWallet && styles['cartscreen-eatoor-checkbox-checked'],
+              (balance <= 0 || isPaymentInProgress) && styles['cartscreen-eatoor-checkbox-disabled']
             ]}>
               {useWallet && <Icon name="checkmark" size={moderateScale(12)} color="#fff" />}
             </View>
-            <View style={styles.checkboxLabelContainer}>
-              <Text style={styles.checkboxLabel}>Use Eatoor Money</Text>
-              <Text style={styles.balanceTextSmall}>Balance: ₹{balance.toFixed(2)}</Text>
+            <View style={styles['cartscreen-eatoor-label-wrap']}>
+              <Text style={styles['cartscreen-eatoor-label']}>Use Eatoor Money</Text>
+              <Text style={styles['cartscreen-eatoor-balance-small']}>Balance: ₹{balance.toFixed(2)}</Text>
             </View>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.addMoneyButton}
+          <TouchableOpacity
+            style={styles['cartscreen-eatoor-add-btn']}
             onPress={() => navigation.navigate('EatoorMoneyAdd', { prevScreen: 'CartScreen' })}
             disabled={isPaymentInProgress}
           >
-            <Text style={styles.addMoneyButtonText}>Add Money</Text>
+            <Text style={styles['cartscreen-eatoor-add-btn-text']}>Add Money</Text>
             <Icon name="arrow-forward" size={moderateScale(14)} color="#E65C00" />
           </TouchableOpacity>
         </View>
@@ -1333,10 +1331,10 @@ const CartScreen = ({ route, navigation }: any) => {
         case 'upi':
           const vpaDisplay = selectedUpiVpa ? `VPA: ${selectedUpiVpa}` : '';
           const methodTypeDisplay = selectedUpiPaymentMethodType === 'VPA' ? ' (UPI ID)' : ' (UPI App)';
-          return { 
-            title: selectedUpiApp?.name || 'UPI', 
-            subtitle: vpaDisplay || `Pay using UPI${methodTypeDisplay}`, 
-            icon: 'phone-portrait-outline' 
+          return {
+            title: selectedUpiApp?.name || 'UPI',
+            subtitle: vpaDisplay || `Pay using UPI${methodTypeDisplay}`,
+            icon: 'phone-portrait-outline'
           };
         case 'saved_upi':
           return {
@@ -1345,10 +1343,10 @@ const CartScreen = ({ route, navigation }: any) => {
             icon: 'save-outline'
           };
         case 'wallet':
-          return { 
-            title: selectedWalletApp?.name || 'Eatoor Money', 
+          return {
+            title: selectedWalletApp?.name || 'Eatoor Money',
             subtitle: `Balance: ₹${walletBalance?.balance.toFixed(2) || '0'}`,
-            icon: 'wallet-outline' 
+            icon: 'wallet-outline'
           };
         case 'cod':
           return { title: 'Pay on Delivery', subtitle: 'Cash / UPI at delivery', icon: 'cash-outline' };
@@ -1364,50 +1362,50 @@ const CartScreen = ({ route, navigation }: any) => {
     const display = getSelectedMethodDisplay();
 
     return (
-      <View style={styles.paymentMethodInlineContainer}>
-        <TouchableOpacity 
-          style={styles.paymentMethodDropdown}
+      <View style={styles['cartscreen-payment-inline']}>
+        <TouchableOpacity
+          style={styles['cartscreen-payment-dropdown']}
           onPress={() => setShowPaymentSectionModal(true)}
           disabled={isPaymentInProgress}
           activeOpacity={0.7}
         >
-          <View style={styles.paymentMethodContent}>
-            <View style={styles.iconContainer}>
-              <View style={styles.paymentIconContainer}>
+          <View style={styles['cartscreen-payment-content']}>
+            <View style={styles['cartscreen-payment-icon-wrap']}>
+              <View style={styles['cartscreen-payment-icon-container']}>
                 <Icon name={display.icon} size={moderateScale(22)} color="#E65C00" />
               </View>
             </View>
-            <View style={styles.textContainer}>
-              <View style={styles.topRow}>
-                <Text style={styles.payUsingLabel}>PAY USING</Text>
+            <View style={styles['cartscreen-payment-text-wrap']}>
+              <View style={styles['cartscreen-payment-top-row']}>
+                <Text style={styles['cartscreen-pay-using-label']}>PAY USING</Text>
                 <Icon name="chevron-down" size={moderateScale(12)} color="#999" />
               </View>
-              <View style={styles.paymentMethodRow}>
-                <Text style={styles.paymentMethodName} numberOfLines={1}>
+              <View style={styles['cartscreen-payment-method-row']}>
+                <Text style={styles['cartscreen-payment-method-name']} numberOfLines={1}>
                   {display.title}
                 </Text>
               </View>
-              <Text style={styles.paymentMethodSubtitle} numberOfLines={1}>
+              <Text style={styles['cartscreen-payment-method-subtitle']} numberOfLines={1}>
                 {display.subtitle}
               </Text>
             </View>
           </View>
         </TouchableOpacity>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[
-            styles.proceedButton,
-            (isPaymentInProgress || paymentModalStatus === 'processing') && styles.proceedButtonDisabled,
-            !isAddressSelected && styles.selectLocationButton
+            styles['cartscreen-proceed-btn'],
+            (isPaymentInProgress || paymentModalStatus === 'processing') && styles['cartscreen-proceed-btn-disabled'],
+            !isAddressSelected && styles['cartscreen-select-location-btn']
           ]}
           onPress={initiatePayment}
           disabled={paymentModalStatus === 'processing' || isPaymentInProgress}
           activeOpacity={0.8}
         >
-          <View style={styles.proceedButtonContent}>
+          <View style={styles['cartscreen-proceed-btn-content']}>
             {paymentModalStatus === 'processing' || isPaymentInProgress ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Text style={styles.proceedButtonText}>{buttonText}</Text>
+              <Text style={styles['cartscreen-proceed-btn-text']}>{buttonText}</Text>
             )}
           </View>
         </TouchableOpacity>
@@ -1422,38 +1420,36 @@ const CartScreen = ({ route, navigation }: any) => {
     const discountPercent = safePrice(item.discount_percent);
 
     return (
-      <View style={styles.cartItemCard}>
-        <View style={styles.cartItemContent}>
-          <View style={styles.itemTypeContainer}>
+      <View style={styles['cartscreen-cart-item']}>
+        <View style={styles['cartscreen-cart-item-content']}>
+          <View style={styles['cartscreen-item-type-wrap']}>
             <View style={[
-              styles.itemTypeBadge,
-              item.type === 'Veg' ? styles.vegBadge : styles.nonVegBadge
+              styles['cartscreen-item-type-badge'],
+              item.type === 'Veg' ? styles['cartscreen-veg-badge'] : styles['cartscreen-nonveg-badge']
             ]}>
               <View style={[
-                styles.itemTypeIndicator,
-                item.type === 'Veg' ? styles.vegIndicator : styles.nonVegIndicator
+                styles['cartscreen-item-type-indicator'],
+                item.type === 'Veg' ? styles['cartscreen-veg-indicator'] : styles['cartscreen-nonveg-indicator']
               ]} />
             </View>
           </View>
-          <View style={styles.itemDetails}>
-            <Text style={styles.itemName} numberOfLines={2}>
+          <View style={styles['cartscreen-item-details']}>
+            <Text style={styles['cartscreen-item-name']} numberOfLines={2}>
               {safeText(item.item_name, 'Unnamed Item')}
-            </Text>            
+            </Text>
             {item.discount_active ? (
-              <View style={styles.priceRow}>
-                <Text style={styles.originalPrice}>₹{originalPrice.toFixed(2)}</Text>
-                <View style={styles.discountBadge}>
-                  <Text style={styles.discountText}>{discountPercent}% OFF</Text>
+              <View style={styles['cartscreen-price-row']}>
+                <Text style={styles['cartscreen-original-price']}>₹{originalPrice.toFixed(2)}</Text>
+                <View style={styles['cartscreen-discount-badge']}>
+                  <Text style={styles['cartscreen-discount-text']}>{discountPercent}% OFF</Text>
                 </View>
               </View>
             ) : null}
-            <Text style={styles.itemPrice}>₹{itemPrice.toFixed(2)}</Text>
+            <Text style={styles['cartscreen-item-price']}>₹{itemPrice.toFixed(2)}</Text>
           </View>
-          <View style={styles.cartQuantityContainer}>
-            <TouchableOpacity 
-              style={[
-                styles.cartQuantityButton,
-              ]} 
+          <View style={styles['cartscreen-cart-qty-wrap']}>
+            <TouchableOpacity
+              style={styles['cartscreen-cart-qty-btn']}
               onPress={() => updateItemQuantity(item.item_id, 'decrement')}
             >
               {isUpdating ? (
@@ -1462,12 +1458,12 @@ const CartScreen = ({ route, navigation }: any) => {
                 <Icon name="remove" size={moderateScale(16)} color={item.quantity <= 1 ? "#E65C00" : "#E65C00"} />
               )}
             </TouchableOpacity>
-            <Text style={styles.cartQuantityText}>{safeText(item.quantity, '0')}</Text>
-            <TouchableOpacity 
+            <Text style={styles['cartscreen-cart-qty-text']}>{safeText(item.quantity, '0')}</Text>
+            <TouchableOpacity
               style={[
-                styles.cartQuantityButton,
-                isPaymentInProgress && styles.disabledButton
-              ]} 
+                styles['cartscreen-cart-qty-btn'],
+                isPaymentInProgress && styles['cartscreen-disabled-btn']
+              ]}
               onPress={() => updateItemQuantity(item.item_id, 'increment')}
             >
               {isUpdating ? (
@@ -1483,37 +1479,37 @@ const CartScreen = ({ route, navigation }: any) => {
   };
 
   const renderEmptyCart = () => (
-    <View style={styles.emptyContainer}>
-      <View style={styles.emptyHeader}>
-        <TouchableOpacity onPress={BackToKitchen} style={styles.backButton}>
+    <View style={styles['cartscreen-empty-container']}>
+      <View style={styles['cartscreen-empty-header']}>
+        <TouchableOpacity onPress={BackToKitchen} style={styles['cartscreen-back-btn']}>
           <Icon name="arrow-back" size={moderateScale(24)} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.emptyHeaderTitle}>
+        <Text style={styles['cartscreen-empty-header-title']}>
           {safeText(cartData?.restaurant_name, 'Your Cart')}
         </Text>
         <View style={{ width: moderateScale(24) }} />
       </View>
-      <View style={styles.emptyContent}>
-        <View style={styles.emptyIllustration}>
+      <View style={styles['cartscreen-empty-content']}>
+        <View style={styles['cartscreen-empty-illustration']}>
           <Icon name="cart-outline" size={moderateScale(80)} color="#E8ECF4" />
-          <View style={styles.emptyIconOverlay}>
+          <View style={styles['cartscreen-empty-icon-overlay']}>
             <Icon name="close" size={moderateScale(40)} color="#E65C00" />
           </View>
         </View>
-        <Text style={styles.emptyTitle}>Your cart is empty</Text>
-        <Text style={styles.emptyDescription}>
+        <Text style={styles['cartscreen-empty-title']}>Your cart is empty</Text>
+        <Text style={styles['cartscreen-empty-description']}>
           Looks like you haven't added anything to your cart yet
         </Text>
-        <TouchableOpacity style={styles.exploreButton} onPress={BackToKitchen}>
-          <View style={styles.exploreButtonContent}>
-            <Text style={styles.exploreButtonText}>Browse Menu</Text>
+        <TouchableOpacity style={styles['cartscreen-explore-btn']} onPress={BackToKitchen}>
+          <View style={styles['cartscreen-explore-btn-content']}>
+            <Text style={styles['cartscreen-explore-btn-text']}>Browse Menu</Text>
             <Icon name="arrow-forward" size={moderateScale(20)} color="#fff" />
           </View>
         </TouchableOpacity>
       </View>
       {cartData?.suggestion_cart_items && cartData?.suggestion_cart_items.length > 0 && (
-        <View style={styles.emptySuggestionsContainer}>
-          <Text style={styles.suggestionTitle}>
+        <View style={styles['cartscreen-empty-suggestions']}>
+          <Text style={styles['cartscreen-suggestion-title']}>
             Popular Items from {safeText(cartData?.restaurant_name, 'this restaurant')}
           </Text>
           <FlatList
@@ -1522,7 +1518,7 @@ const CartScreen = ({ route, navigation }: any) => {
             keyExtractor={item => safeText(item.item_id, '0')}
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.suggestedItemsHorizontalContainer}
+            contentContainerStyle={styles['cartscreen-suggested-horizontal-list']}
           />
         </View>
       )}
@@ -1530,13 +1526,13 @@ const CartScreen = ({ route, navigation }: any) => {
   );
 
   const renderCartContent = () => (
-    <KeyboardAvoidingView 
-      style={styles.scrollContainer}
+    <KeyboardAvoidingView
+      style={styles['cartscreen-scroll-wrap']}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
     >
-      <ScrollView 
-        contentContainerStyle={styles.scrollContentContainer}
+      <ScrollView
+        contentContainerStyle={styles['cartscreen-scroll-content']}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -1548,29 +1544,29 @@ const CartScreen = ({ route, navigation }: any) => {
         showsVerticalScrollIndicator={false}
       >
         {/* Your Items Section */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleContainer}>
+        <View style={styles['cartscreen-section']}>
+          <View style={styles['cartscreen-section-header']}>
+            <View style={styles['cartscreen-section-title-wrap']}>
               <Icon name="restaurant-outline" size={moderateScale(20)} color="#E65C00" />
-              <Text style={styles.sectionTitle}>Your Items</Text>
+              <Text style={styles['cartscreen-section-title']}>Your Items</Text>
               {cartData?.cart_details?.length > 0 && (
-                <View style={styles.itemCountBadge}>
-                  <Text style={styles.itemCountText}>{getTotalItems()}</Text>
+                <View style={styles['cartscreen-item-count-badge']}>
+                  <Text style={styles['cartscreen-item-count-text']}>{getTotalItems()}</Text>
                 </View>
               )}
             </View>
             {cartData?.cart_details?.length > 0 && (
-              <TouchableOpacity 
-                style={styles.clearCartButton}
+              <TouchableOpacity
+                style={styles['cartscreen-clear-btn']}
                 onPress={handleClearCart}
                 disabled={isPaymentInProgress}
               >
                 <Icon name="trash-outline" size={moderateScale(16)} color="#E65C00" />
-                <Text style={styles.clearCartText}>Clear All</Text>
+                <Text style={styles['cartscreen-clear-text']}>Clear All</Text>
               </TouchableOpacity>
             )}
           </View>
-          <View style={styles.cartItemsList}>
+          <View style={styles['cartscreen-cart-list']}>
             <FlatList
               data={cartData?.cart_details}
               renderItem={renderCartItem}
@@ -1582,18 +1578,18 @@ const CartScreen = ({ route, navigation }: any) => {
 
         {/* Add More Items Section */}
         {cartData?.suggestion_cart_items && cartData?.suggestion_cart_items.length > 0 && (
-          <View style={styles.sectionCard}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleContainer}>
+          <View style={styles['cartscreen-section']}>
+            <View style={styles['cartscreen-section-header']}>
+              <View style={styles['cartscreen-section-title-wrap']}>
                 <Icon name="add-circle-outline" size={moderateScale(20)} color="#E65C00" />
-                <Text style={styles.sectionTitle}>Add More Items</Text>
+                <Text style={styles['cartscreen-section-title']}>Add More Items</Text>
               </View>
-              <TouchableOpacity 
-                style={styles.viewAllButton}
+              <TouchableOpacity
+                style={styles['cartscreen-view-all-btn']}
                 onPress={BackToKitchen}
                 disabled={isPaymentInProgress}
               >
-                <Text style={styles.viewAllText}>View All</Text>
+                <Text style={styles['cartscreen-view-all-text']}>View All</Text>
                 <Icon name="chevron-forward" size={moderateScale(16)} color="#E65C00" />
               </TouchableOpacity>
             </View>
@@ -1603,32 +1599,32 @@ const CartScreen = ({ route, navigation }: any) => {
               keyExtractor={item => safeText(item.item_id, '0')}
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.suggestedItemsHorizontalContainer}
+              contentContainerStyle={styles['cartscreen-suggested-horizontal-list']}
             />
           </View>
         )}
 
         {/* Delivery Details Section - UPDATED with Receiver Details */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleContainer}>
+        <View style={styles['cartscreen-section']}>
+          <View style={styles['cartscreen-section-header']}>
+            <View style={styles['cartscreen-section-title-wrap']}>
               <Icon name="location-outline" size={moderateScale(20)} color="#E65C00" />
-              <Text style={styles.sectionTitle}>Delivery Details</Text>
+              <Text style={styles['cartscreen-section-title']}>Delivery Details</Text>
             </View>
           </View>
-          
-          <TouchableOpacity 
-            style={styles.detailCard}
+
+          <TouchableOpacity
+            style={styles['cartscreen-detail-card']}
             onPress={handleAddressChange}
             activeOpacity={0.7}
           >
-            <View style={styles.detailRow}>
-              <View style={styles.detailIconContainer}>
+            <View style={styles['cartscreen-detail-row']}>
+              <View style={styles['cartscreen-detail-icon-wrap']}>
                 <Icon name="navigate-circle" size={moderateScale(24)} color="#E65C00" />
               </View>
-              <View style={styles.addressContainer}>
-                <Text style={styles.detailLabel}>Delivery Address</Text>
-                <Text style={styles.detailText}>
+              <View style={styles['cartscreen-address-wrap']}>
+                <Text style={styles['cartscreen-detail-label']}>Delivery Address</Text>
+                <Text style={styles['cartscreen-detail-text']}>
                   {fullAddress !== "Select Address" ? fullAddress : "Please select a delivery address"}
                 </Text>
               </View>
@@ -1636,116 +1632,94 @@ const CartScreen = ({ route, navigation }: any) => {
             </View>
 
             {cartData?.delivery_time?.estimated_time && (
-              <View style={[styles.detailRow, { marginTop: verticalScale(8), paddingTop: verticalScale(8), borderTopWidth: 1, borderTopColor: '#f0f0f0' }]}>
-                <View style={styles.detailIconContainer}>
+              <View style={[styles['cartscreen-detail-row'], styles['cartscreen-detail-row-border']]}>
+                <View style={styles['cartscreen-detail-icon-wrap']}>
                   <Icon name="time-outline" size={moderateScale(24)} color="#E65C00" />
                 </View>
-                <View style={styles.addressContainer}>
-                  <Text style={styles.detailLabel}>Delivery Time</Text>
-                  <Text style={styles.detailText}>
+                <View style={styles['cartscreen-address-wrap']}>
+                  <Text style={styles['cartscreen-detail-label']}>Delivery Time</Text>
+                  <Text style={styles['cartscreen-detail-text']}>
                     {safeText(cartData?.delivery_time?.estimated_time)}
                   </Text>
                 </View>
               </View>
             )}
 
-            {/* NEW: Receiver Details Row - Clickable */}
+            {/* Receiver Details Row - Clickable */}
             {addressId && (
               <TouchableOpacity
-                style={[
-                  styles.detailRow,
-                  {
-                    marginTop: verticalScale(8),
-                    paddingTop: verticalScale(8),
-                    borderTopWidth: 1,
-                    borderTopColor: '#f0f0f0',
-                  },
-                ]}
+                style={[styles['cartscreen-detail-row'], styles['cartscreen-detail-row-border']]}
                 onPress={openReceiverModal}
                 activeOpacity={0.7}
               >
-                <View style={styles.detailIconContainer}>
-                  <Icon
-                    name="person-outline"
-                    size={moderateScale(24)}
-                    color="#E65C00"
-                  />
+                <View style={styles['cartscreen-detail-icon-wrap']}>
+                  <Icon name="person-outline" size={moderateScale(24)} color="#E65C00" />
                 </View>
-
-                <View style={styles.addressContainer}>
-                  <Text style={styles.detailLabel}>Receiver Details</Text>
-                  <Text style={styles.detailText}>
-                    {safeText(
-                      cartData?.delivery_address_details?.receiver_name,
-                      'Not provided'
-                    )}
+                <View style={styles['cartscreen-address-wrap']}>
+                  <Text style={styles['cartscreen-detail-label']}>Receiver Details</Text>
+                  <Text style={styles['cartscreen-detail-text']}>
+                    {safeText(cartData?.delivery_address_details?.receiver_name, 'Not provided')}
                     {cartData?.delivery_address_details?.receiver_phone
                       ? ` | ${cartData.delivery_address_details.receiver_phone}`
                       : ''}
                   </Text>
                 </View>
-
-                <Icon
-                  name="chevron-forward"
-                  size={moderateScale(20)}
-                  color="#ccc"
-                />
+                <Icon name="chevron-forward" size={moderateScale(20)} color="#ccc" />
               </TouchableOpacity>
             )}
-
           </TouchableOpacity>
         </View>
 
         {/* Bill Details Section */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleContainer}>
+        <View style={styles['cartscreen-section']}>
+          <View style={styles['cartscreen-section-header']}>
+            <View style={styles['cartscreen-section-title-wrap']}>
               <Icon name="receipt-outline" size={moderateScale(20)} color="#E65C00" />
-              <Text style={styles.sectionTitle}>Bill Details</Text>
+              <Text style={styles['cartscreen-section-title']}>Bill Details</Text>
             </View>
           </View>
-          <View style={styles.billCard}>
-            <View style={styles.billRow}>
-              <Text style={styles.billLabel}>Item Total</Text>
-              <Text style={styles.billValue}>
+          <View style={styles['cartscreen-bill-card']}>
+            <View style={styles['cartscreen-bill-row']}>
+              <Text style={styles['cartscreen-bill-label']}>Item Total</Text>
+              <Text style={styles['cartscreen-bill-value']}>
                 ₹{safeFormatNumber(cartData?.billing_details?.subtotal, 2)}
               </Text>
             </View>
-            <View style={styles.billRow}>
-              <Text style={styles.billLabel}>Delivery Fee</Text>
-              <View style={styles.billValueContainer}>
+            <View style={styles['cartscreen-bill-row']}>
+              <Text style={styles['cartscreen-bill-label']}>Delivery Fee</Text>
+              <View style={styles['cartscreen-bill-value-wrap']}>
                 {cartData?.delivery_offer_exist && (
-                  <View style={styles.freeDeliveryBadge}>
-                    <Text style={styles.freeDeliveryBadgeText}>FREE</Text>
+                  <View style={styles['cartscreen-free-badge']}>
+                    <Text style={styles['cartscreen-free-badge-text']}>FREE</Text>
                   </View>
                 )}
                 <Text style={[
-                  styles.billValue,
-                  cartData?.delivery_offer_exist && styles.freeDeliveryValue
+                  styles['cartscreen-bill-value'],
+                  cartData?.delivery_offer_exist && styles['cartscreen-free-value']
                 ]}>
                   {cartData?.delivery_offer_exist ? '₹0' : `₹${safeFormatNumber(cartData?.billing_details?.delivery_amount, 2)}`}
                 </Text>
               </View>
             </View>
-            <View style={styles.billRow}>
-              <Text style={styles.billLabel}>Tax & Charges</Text>
-              <Text style={styles.billValue}>
+            <View style={styles['cartscreen-bill-row']}>
+              <Text style={styles['cartscreen-bill-label']}>Tax & Charges</Text>
+              <Text style={styles['cartscreen-bill-value']}>
                 ₹{safeFormatNumber(cartData?.billing_details?.tax, 2)}
               </Text>
             </View>
             {useWallet && walletBalance && walletBalance.balance > 0 && (
-              <View style={styles.billRow}>
-                <Text style={styles.billLabel}>Eatoor Money</Text>
-                <Text style={[styles.billValue, styles.eatoorMoneyDeductionBill]}>
+              <View style={styles['cartscreen-bill-row']}>
+                <Text style={styles['cartscreen-bill-label']}>Eatoor Money</Text>
+                <Text style={[styles['cartscreen-bill-value'], styles['cartscreen-eatoor-deduction']]}>
                   - ₹{calculateWalletUsage().toFixed(2)}
                 </Text>
               </View>
             )}
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>
+            <View style={styles['cartscreen-total-row']}>
+              <Text style={styles['cartscreen-total-label']}>
                 {useWallet && calculateFinalAmount() > 0 ? 'Amount to Pay' : 'Total Bill'}
               </Text>
-              <Text style={styles.totalValue}>
+              <Text style={styles['cartscreen-total-value']}>
                 ₹{calculateFinalAmount().toFixed(2)}
               </Text>
             </View>
@@ -1754,27 +1728,27 @@ const CartScreen = ({ route, navigation }: any) => {
       </ScrollView>
     </KeyboardAvoidingView>
   );
-    
+
   const renderPaymentFooter = () => {
     if (!cartData || cartData?.cart_details?.length === 0) {
       return null;
     }
     return (
-      <View style={styles.paymentFooter}>
+      <View style={styles['cartscreen-payment-footer']}>
         {!isGuest && renderEatoorMoneySection()}
         {renderPaymentMethodSelector()}
       </View>
     );
   };
-  
+
   // Main render
   if (loading && !cartData) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles['cartscreen-container']}>
         <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-        <View style={styles.loadingContainer}>
+        <View style={styles['cartscreen-loading-container']}>
           <ActivityIndicator size="large" color="#E65C00" />
-          <Text style={styles.loadingText}>Loading your cart...</Text>
+          <Text style={styles['cartscreen-loading-text']}>Loading your cart...</Text>
         </View>
       </SafeAreaView>
     );
@@ -1782,17 +1756,17 @@ const CartScreen = ({ route, navigation }: any) => {
 
   if (error) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles['cartscreen-container']}>
         <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-        <View style={styles.errorContainer}>
-          <View style={styles.errorContent}>
+        <View style={styles['cartscreen-error-container']}>
+          <View style={styles['cartscreen-error-content']}>
             <Icon name="warning-outline" size={moderateScale(48)} color="#E65C00" />
-            <Text style={styles.errorText}>{safeText(error)}</Text>
-            <TouchableOpacity style={styles.primaryButton} onPress={fetchCartData}>
-              <Text style={styles.primaryButtonText}>Try Again</Text>
+            <Text style={styles['cartscreen-error-text']}>{safeText(error)}</Text>
+            <TouchableOpacity style={styles['cartscreen-primary-btn']} onPress={fetchCartData}>
+              <Text style={styles['cartscreen-primary-btn-text']}>Try Again</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.secondaryButton} onPress={BackToKitchen}>
-              <Text style={styles.secondaryButtonText}>Back to Menu</Text>
+            <TouchableOpacity style={styles['cartscreen-secondary-btn']} onPress={BackToKitchen}>
+              <Text style={styles['cartscreen-secondary-btn-text']}>Back to Menu</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1801,11 +1775,11 @@ const CartScreen = ({ route, navigation }: any) => {
   }
 
   const isCartEmpty = !cartData?.cart_details || cartData?.cart_details.length === 0;
-  
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles['cartscreen-container']}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-      
+
       <PaymentModal
         visible={paymentModalVisible}
         status={paymentModalStatus}
@@ -1825,7 +1799,7 @@ const CartScreen = ({ route, navigation }: any) => {
           resetPaymentState();
         }}
       />
-      
+
       <PaymentMethodModal
         visible={showPaymentSectionModal}
         onClose={() => setShowPaymentSectionModal(false)}
@@ -1848,21 +1822,21 @@ const CartScreen = ({ route, navigation }: any) => {
         refreshPaymentMethods={loadPaymentMethods}
       />
 
-      {/* NEW: Receiver Details Modal */}
+      {/* Receiver Details Modal */}
       <Modal
         visible={showReceiverModal}
         transparent={true}
         animationType="slide"
         onRequestClose={closeReceiverModal}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Update Receiver Details</Text>
-            
-            <View style={styles.modalAddressContainer}>
-              <Text style={styles.modalAddressLabel}>Delivery Address</Text>
-              <Text style={styles.modalAddressText}>
+        <View style={styles['cartscreen-modal-overlay']}>
+          <View style={styles['cartscreen-modal-content']}>
+            <View style={styles['cartscreen-modal-handle']} />
+            <Text style={styles['cartscreen-modal-title']}>Update Receiver Details</Text>
+
+            <View style={styles['cartscreen-modal-address-wrap']}>
+              <Text style={styles['cartscreen-modal-address-label']}>Delivery Address</Text>
+              <Text style={styles['cartscreen-modal-address-text']}>
                 {safeText(cartData?.delivery_address_details?.street_address, '')}
                 {cartData?.delivery_address_details?.city ? `, ${cartData.delivery_address_details.city}` : ''}
                 {cartData?.delivery_address_details?.state ? `, ${cartData.delivery_address_details.state}` : ''}
@@ -1870,10 +1844,10 @@ const CartScreen = ({ route, navigation }: any) => {
               </Text>
             </View>
 
-            <View style={styles.modalInputContainer}>
-              <Text style={styles.modalInputLabel}>Receiver Name</Text>
+            <View style={styles['cartscreen-modal-input-wrap']}>
+              <Text style={styles['cartscreen-modal-input-label']}>Receiver Name</Text>
               <TextInput
-                style={styles.modalInput}
+                style={styles['cartscreen-modal-input']}
                 value={receiverNameInput}
                 onChangeText={setReceiverNameInput}
                 placeholder="Enter receiver's name"
@@ -1881,66 +1855,66 @@ const CartScreen = ({ route, navigation }: any) => {
               />
             </View>
 
-            <View style={styles.modalInputContainer}>
-              <Text style={styles.modalInputLabel}>Receiver Mobile Number</Text>
+            <View style={styles['cartscreen-modal-input-wrap']}>
+              <Text style={styles['cartscreen-modal-input-label']}>Receiver Mobile Number</Text>
               <TextInput
-                style={styles.modalInput}
+                style={styles['cartscreen-modal-input']}
                 value={receiverPhoneInput}
                 onChangeText={setReceiverPhoneInput}
                 placeholder="Enter 10-digit mobile number"
                 placeholderTextColor="#999"
                 keyboardType="phone-pad"
-                maxLength={10} // enforce exactly 10 digits
+                maxLength={10}
               />
             </View>
 
-            <View style={styles.modalButtonRow}>
+            <View style={styles['cartscreen-modal-btn-row']}>
               <TouchableOpacity
-                style={[styles.modalButton, styles.modalCancelButton]}
+                style={[styles['cartscreen-modal-btn'], styles['cartscreen-modal-cancel-btn']]}
                 onPress={closeReceiverModal}
                 disabled={updatingReceiver}
               >
-                <Text style={styles.modalCancelButtonText}>Cancel</Text>
+                <Text style={styles['cartscreen-modal-cancel-text']}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalButton, styles.modalUpdateButton]}
+                style={[styles['cartscreen-modal-btn'], styles['cartscreen-modal-update-btn']]}
                 onPress={handleUpdateReceiverDetails}
                 disabled={updatingReceiver}
               >
                 {updatingReceiver ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={styles.modalUpdateButtonText}>Update</Text>
+                  <Text style={styles['cartscreen-modal-update-text']}>Update</Text>
                 )}
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-      
+
       {isCartEmpty ? (
         renderEmptyCart()
       ) : (
         <>
-          <View style={styles.header}>
-            <TouchableOpacity 
+          <View style={styles['cartscreen-header']}>
+            <TouchableOpacity
               onPress={BackToKitchen}
-              style={styles.backButton}
+              style={styles['cartscreen-back-btn']}
               disabled={isPaymentInProgress}
             >
               <Icon name="arrow-back" size={moderateScale(24)} color="#333" />
             </TouchableOpacity>
-            <View style={styles.headerContent}>
-              <Text style={styles.restaurantName} numberOfLines={1}>
+            <View style={styles['cartscreen-header-content']}>
+              <Text style={styles['cartscreen-restaurant-name']} numberOfLines={1}>
                 {safeText(cartData?.restaurant_name, 'Restaurant')}
               </Text>
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={handleAddressChange}
-                style={styles.headerAddressContainer}
+                style={styles['cartscreen-header-address']}
                 disabled={isPaymentInProgress}
               >
                 <Icon name="location-outline" size={moderateScale(14)} color="#E65C00" />
-                <Text style={styles.headerAddressText} numberOfLines={1}>
+                <Text style={styles['cartscreen-header-address-text']} numberOfLines={1}>
                   {safeText(shortAddress, 'Select Address')}
                 </Text>
                 <Icon name="chevron-down" size={moderateScale(14)} color="#E65C00" />
@@ -1950,83 +1924,66 @@ const CartScreen = ({ route, navigation }: any) => {
           {renderCartContent()}
         </>
       )}
-      
+
       {renderPaymentFooter()}
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  'cartscreen-container': {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#F2F4F7',
   },
-  loadingContainer: {
+  'cartscreen-loading-container': {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#F2F4F7',
   },
-  loadingText: {
+  'cartscreen-loading-text': {
     marginTop: verticalScale(16),
     fontSize: FONT.LG,
     color: '#666',
     fontWeight: '500',
   },
-  scrollContainer: {
+  'cartscreen-scroll-wrap': {
     flex: 1,
   },
-  scrollContentContainer: {
+  'cartscreen-scroll-content': {
     paddingBottom: Platform.OS === 'android' ? verticalScale(180) : verticalScale(140),
     paddingHorizontal: scale(16),
+    paddingTop: verticalScale(8),
   },
-  header: {
+  'cartscreen-header': {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: Platform.OS === 'android' ? verticalScale(12) : verticalScale(12),
     paddingHorizontal: scale(16),
     backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: '#eee',
     minHeight: Platform.OS === 'android' ? verticalScale(60) : verticalScale(70),
-    ...Platform.select({
-      android: {
-        elevation: 2,
-      },
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
-      },
-    }),
   },
-  backButton: {
+  'cartscreen-back-btn': {
     padding: moderateScale(8),
     marginRight: moderateScale(12),
-    borderRadius: moderateScale(24),
-    backgroundColor: '#f8f8f8',
-    ...Platform.select({
-      android: {
-        elevation: 1,
-      },
-    }),
   },
-  headerContent: {
+  'cartscreen-header-content': {
     flex: 1,
     justifyContent: 'center',
   },
-  restaurantName: {
+  'cartscreen-restaurant-name': {
     fontSize: FONT.XL,
     fontWeight: '700',
     color: '#1a1a1a',
-    marginBottom: verticalScale(4),
+    marginBottom: verticalScale(2),
   },
-  headerAddressContainer: {
+  'cartscreen-header-address': {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  headerAddressText: {
+  'cartscreen-header-address-text': {
     fontSize: FONT.SM,
     fontWeight: '500',
     color: '#666',
@@ -2034,27 +1991,27 @@ const styles = StyleSheet.create({
     marginRight: scale(4),
     flex: 1,
   },
-  paymentMethodInlineContainer: {
+  'cartscreen-payment-inline': {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: scale(16),
     paddingVertical: Platform.OS === 'android' ? verticalScale(10) : verticalScale(12),
     backgroundColor: '#fff',
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopColor: '#eee',
   },
-  paymentMethodDropdown: {
+  'cartscreen-payment-dropdown': {
     flex: 1,
     marginRight: scale(12),
   },
-  paymentMethodContent: {
+  'cartscreen-payment-content': {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  iconContainer: {
+  'cartscreen-payment-icon-wrap': {
     marginRight: moderateScale(12),
   },
-  paymentIconContainer: {
+  'cartscreen-payment-icon-container': {
     width: moderateScale(44),
     height: moderateScale(44),
     borderRadius: moderateScale(22),
@@ -2062,81 +2019,76 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  textContainer: {
+  'cartscreen-payment-text-wrap': {
     flex: 1,
   },
-  topRow: {
+  'cartscreen-payment-top-row': {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: verticalScale(2),
   },
-  payUsingLabel: {
+  'cartscreen-pay-using-label': {
     fontSize: FONT.XS,
     color: '#999',
     fontWeight: '600',
     marginRight: scale(6),
     letterSpacing: 0.5,
   },
-  paymentMethodRow: {
+  'cartscreen-payment-method-row': {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: verticalScale(2),
   },
-  paymentMethodName: {
+  'cartscreen-payment-method-name': {
     fontSize: FONT.BASE,
     fontWeight: '700',
     color: '#1a1a1a',
   },
-  paymentMethodSubtitle: {
+  'cartscreen-payment-method-subtitle': {
     fontSize: FONT.XS,
     color: '#999',
   },
-  proceedButton: {
+  'cartscreen-proceed-btn': {
     backgroundColor: '#E65C00',
     borderRadius: moderateScale(12),
     overflow: 'hidden',
     minWidth: moderateScale(110),
-    ...Platform.select({
-      android: {
-        elevation: 2,
-      },
-    }),
   },
-  proceedButtonContent: {
+  'cartscreen-proceed-btn-content': {
     paddingVertical: Platform.OS === 'android' ? verticalScale(10) : verticalScale(12),
     paddingHorizontal: scale(20),
     alignItems: 'center',
     justifyContent: 'center',
   },
-  selectLocationButton: {
+  'cartscreen-select-location-btn': {
     opacity: 0.9,
   },
-  proceedButtonDisabled: {
+  'cartscreen-proceed-btn-disabled': {
     opacity: 0.7,
   },
-  proceedButtonText: {
+  'cartscreen-proceed-btn-text': {
     color: '#fff',
     fontSize: FONT.BASE,
     fontWeight: '700',
   },
-  eatoorMoneyContainer: {
+  'cartscreen-eatoor-container': {
     paddingHorizontal: scale(16),
     paddingVertical: Platform.OS === 'android' ? verticalScale(10) : verticalScale(12),
     backgroundColor: '#FFF8F0',
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: '#eee',
   },
-  eatoorMoneyToggleRow: {
+  'cartscreen-eatoor-row': {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  checkboxContainer: {
+  'cartscreen-eatoor-checkbox-wrap': {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
-  checkbox: {
+  'cartscreen-eatoor-checkbox': {
     width: moderateScale(22),
     height: moderateScale(22),
     borderRadius: moderateScale(6),
@@ -2147,28 +2099,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: scale(12),
   },
-  checkboxChecked: {
+  'cartscreen-eatoor-checkbox-checked': {
     backgroundColor: '#E65C00',
     borderColor: '#E65C00',
   },
-  checkboxDisabled: {
+  'cartscreen-eatoor-checkbox-disabled': {
     opacity: 0.5,
   },
-  checkboxLabelContainer: {
+  'cartscreen-eatoor-label-wrap': {
     flex: 1,
   },
-  checkboxLabel: {
+  'cartscreen-eatoor-label': {
     fontSize: FONT.BASE,
     fontWeight: '600',
     color: '#1a1a1a',
   },
-  balanceTextSmall: {
+  'cartscreen-eatoor-balance-small': {
     fontSize: FONT.SM,
     color: '#E65C00',
     fontWeight: '600',
     marginTop: verticalScale(2),
   },
-  addMoneyButton: {
+  'cartscreen-eatoor-add-btn': {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: moderateScale(16),
@@ -2178,42 +2130,36 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#E65C00',
   },
-  addMoneyButtonText: {
+  'cartscreen-eatoor-add-btn-text': {
     color: '#E65C00',
     fontSize: FONT.SM,
     fontWeight: '600',
     marginRight: scale(6),
   },
-  sectionCard: {
-    borderRadius: moderateScale(16),
+  'cartscreen-section': {
+    backgroundColor: '#fff',
     padding: moderateScale(16),
     marginBottom: verticalScale(12),
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-      },
-    }),
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
-  sectionHeader: {
+  'cartscreen-section-header': {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: verticalScale(16),
+    marginBottom: verticalScale(14),
   },
-  sectionTitleContainer: {
+  'cartscreen-section-title-wrap': {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  sectionTitle: {
+  'cartscreen-section-title': {
     fontSize: FONT.LG,
     fontWeight: '700',
     color: '#1a1a1a',
     marginLeft: moderateScale(8),
   },
-  itemCountBadge: {
+  'cartscreen-item-count-badge': {
     backgroundColor: '#E65C00',
     paddingHorizontal: moderateScale(8),
     paddingVertical: verticalScale(3),
@@ -2222,12 +2168,12 @@ const styles = StyleSheet.create({
     minWidth: moderateScale(24),
     alignItems: 'center',
   },
-  itemCountText: {
+  'cartscreen-item-count-text': {
     fontSize: FONT.XS,
     color: '#fff',
     fontWeight: '700',
   },
-  clearCartButton: {
+  'cartscreen-clear-btn': {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: moderateScale(12),
@@ -2235,46 +2181,35 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF0E6',
     borderRadius: moderateScale(8),
   },
-  clearCartText: {
+  'cartscreen-clear-text': {
     fontSize: FONT.SM,
     color: '#E65C00',
     fontWeight: '600',
     marginLeft: moderateScale(4),
   },
-  viewAllButton: {
+  'cartscreen-view-all-btn': {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  viewAllText: {
+  'cartscreen-view-all-text': {
     fontSize: FONT.SM,
     color: '#E65C00',
     fontWeight: '600',
   },
-  cartItemCard: {
-    borderRadius: moderateScale(12),
+  'cartscreen-cart-item': {
     marginBottom: verticalScale(8),
     padding: moderateScale(12),
-    backgroundColor: '#fff',
-    ...Platform.select({
-      android: {
-        elevation: 1,
-      },
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
-      },
-    }),
+    backgroundColor: '#F8F9FA',
+    borderRadius: moderateScale(8),
   },
-  cartItemContent: {
+  'cartscreen-cart-item-content': {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  itemTypeContainer: {
+  'cartscreen-item-type-wrap': {
     marginRight: moderateScale(12),
   },
-  itemTypeBadge: {
+  'cartscreen-item-type-badge': {
     width: moderateScale(20),
     height: moderateScale(20),
     borderRadius: moderateScale(4),
@@ -2282,73 +2217,75 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  vegBadge: {
+  'cartscreen-veg-badge': {
     borderColor: '#4CAF50',
     backgroundColor: 'rgba(76, 175, 80, 0.1)',
   },
-  nonVegBadge: {
+  'cartscreen-nonveg-badge': {
     borderColor: '#E65C00',
     backgroundColor: 'rgba(230, 92, 0, 0.1)',
   },
-  itemTypeIndicator: {
+  'cartscreen-item-type-indicator': {
     width: moderateScale(10),
     height: moderateScale(10),
     borderRadius: moderateScale(5),
   },
-  vegIndicator: {
+  'cartscreen-veg-indicator': {
     backgroundColor: '#4CAF50',
   },
-  nonVegIndicator: {
+  'cartscreen-nonveg-indicator': {
     backgroundColor: '#E65C00',
   },
-  itemDetails: {
+  'cartscreen-item-details': {
     flex: 1,
     marginRight: moderateScale(12),
   },
-  itemName: {
+  'cartscreen-item-name': {
     fontSize: FONT.BASE,
     fontWeight: '600',
     color: '#1a1a1a',
     marginBottom: verticalScale(4),
     lineHeight: verticalScale(18),
   },
-  priceRow: {
+  'cartscreen-price-row': {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: verticalScale(4),
     flexWrap: 'wrap',
   },
-  originalPrice: {
+  'cartscreen-original-price': {
     fontSize: FONT.SM,
     color: '#999',
     textDecorationLine: 'line-through',
     marginRight: moderateScale(8),
   },
-  discountBadge: {
+  'cartscreen-discount-badge': {
     backgroundColor: '#FFF0E6',
     paddingHorizontal: moderateScale(6),
     paddingVertical: verticalScale(2),
     borderRadius: moderateScale(4),
   },
-  discountText: {
+  'cartscreen-discount-text': {
     fontSize: FONT.XS,
     color: '#E65C00',
     fontWeight: '700',
   },
-  itemPrice: {
+  'cartscreen-item-price': {
     fontSize: FONT.BASE,
     fontWeight: '700',
     color: '#E65C00',
   },
-  cartQuantityContainer: {
+  'cartscreen-cart-qty-wrap': {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF5F0',
+    backgroundColor: '#fff',
     borderRadius: moderateScale(24),
-    paddingHorizontal: moderateScale(8),
-    paddingVertical: verticalScale(6),
+    paddingHorizontal: moderateScale(6),
+    paddingVertical: verticalScale(4),
+    borderWidth: 1,
+    borderColor: '#eee',
   },
-  cartQuantityButton: {
+  'cartscreen-cart-qty-btn': {
     padding: moderateScale(6),
     borderRadius: moderateScale(16),
     backgroundColor: '#fff',
@@ -2356,19 +2293,8 @@ const styles = StyleSheet.create({
     height: moderateScale(32),
     justifyContent: 'center',
     alignItems: 'center',
-    ...Platform.select({
-      android: {
-        elevation: 1,
-      },
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-      },
-    }),
   },
-  cartQuantityText: {
+  'cartscreen-cart-qty-text': {
     fontSize: FONT.BASE,
     fontWeight: '700',
     color: '#E65C00',
@@ -2376,16 +2302,22 @@ const styles = StyleSheet.create({
     minWidth: moderateScale(28),
     textAlign: 'center',
   },
-  detailCard: {
+  'cartscreen-detail-card': {
     backgroundColor: '#F8F9FA',
-    borderRadius: moderateScale(12),
+    borderRadius: moderateScale(8),
     padding: moderateScale(16),
   },
-  detailRow: {
+  'cartscreen-detail-row': {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  detailIconContainer: {
+  'cartscreen-detail-row-border': {
+    marginTop: verticalScale(8),
+    paddingTop: verticalScale(8),
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  'cartscreen-detail-icon-wrap': {
     width: moderateScale(40),
     height: moderateScale(40),
     borderRadius: moderateScale(20),
@@ -2394,27 +2326,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: moderateScale(12),
   },
-  addressContainer: {
+  'cartscreen-address-wrap': {
     flex: 1,
   },
-  detailLabel: {
+  'cartscreen-detail-label': {
     fontSize: FONT.SM,
     color: '#999',
     fontWeight: '500',
     marginBottom: verticalScale(4),
   },
-  detailText: {
+  'cartscreen-detail-text': {
     fontSize: FONT.SM,
     color: '#1a1a1a',
     lineHeight: verticalScale(18),
     fontWeight: '500',
   },
-  billCard: {
+  'cartscreen-bill-card': {
     backgroundColor: '#F8F9FA',
-    borderRadius: moderateScale(12),
+    borderRadius: moderateScale(8),
     padding: moderateScale(16),
   },
-  billRow: {
+  'cartscreen-bill-row': {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: verticalScale(12),
@@ -2422,86 +2354,86 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E8ECF4',
   },
-  billLabel: {
+  'cartscreen-bill-label': {
     fontSize: FONT.SM,
     color: '#666',
     fontWeight: '500',
   },
-  billValueContainer: {
+  'cartscreen-bill-value-wrap': {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  billValue: {
+  'cartscreen-bill-value': {
     fontSize: FONT.SM,
     color: '#333',
     fontWeight: '600',
   },
-  freeDeliveryBadge: {
+  'cartscreen-free-badge': {
     backgroundColor: '#E8F5E9',
     paddingHorizontal: moderateScale(6),
     paddingVertical: verticalScale(2),
     borderRadius: moderateScale(4),
     marginRight: moderateScale(8),
   },
-  freeDeliveryBadgeText: {
+  'cartscreen-free-badge-text': {
     fontSize: FONT.XS,
     color: '#4CAF50',
     fontWeight: '700',
   },
-  eatoorMoneyDeductionBill: {
+  'cartscreen-eatoor-deduction': {
     color: '#E65C00',
     fontWeight: '700',
   },
-  freeDeliveryValue: {
+  'cartscreen-free-value': {
     color: '#4CAF50',
     fontWeight: '700',
   },
-  totalRow: {
+  'cartscreen-total-row': {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: verticalScale(8),
     paddingTop: verticalScale(12),
     borderTopColor: '#E8ECF4',
   },
-  totalLabel: {
+  'cartscreen-total-label': {
     fontSize: FONT.LG,
     fontWeight: '700',
     color: '#1a1a1a',
   },
-  totalValue: {
+  'cartscreen-total-value': {
     fontSize: FONT.XL,
     fontWeight: '800',
     color: '#E65C00',
   },
-  cartItemsList: {
+  'cartscreen-cart-list': {
     marginTop: verticalScale(4),
   },
-  emptyContainer: {
+  'cartscreen-empty-container': {
     flex: 1,
     backgroundColor: '#F8F9FA',
   },
-  emptyHeader: {
+  'cartscreen-empty-header': {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: moderateScale(16),
     backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: '#eee',
     paddingTop: Platform.OS === 'android' ? verticalScale(16) : verticalScale(12),
   },
-  emptyHeaderTitle: {
+  'cartscreen-empty-header-title': {
     fontSize: FONT.XL,
     fontWeight: '700',
     color: '#1a1a1a',
   },
-  emptyContent: {
+  'cartscreen-empty-content': {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: scale(20),
   },
-  emptyIllustration: {
+  'cartscreen-empty-illustration': {
     width: moderateScale(120),
     height: moderateScale(120),
     borderRadius: moderateScale(60),
@@ -2511,7 +2443,7 @@ const styles = StyleSheet.create({
     marginBottom: verticalScale(24),
     position: 'relative',
   },
-  emptyIconOverlay: {
+  'cartscreen-empty-icon-overlay': {
     position: 'absolute',
     top: 0,
     left: 0,
@@ -2520,14 +2452,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  emptyTitle: {
+  'cartscreen-empty-title': {
     fontSize: FONT.XXL,
     fontWeight: '700',
     color: '#1a1a1a',
     marginBottom: verticalScale(8),
     textAlign: 'center',
   },
-  emptyDescription: {
+  'cartscreen-empty-description': {
     fontSize: FONT.SM,
     color: '#666',
     textAlign: 'center',
@@ -2535,32 +2467,27 @@ const styles = StyleSheet.create({
     lineHeight: verticalScale(20),
     paddingHorizontal: scale(32),
   },
-  exploreButton: {
+  'cartscreen-explore-btn': {
     backgroundColor: '#E65C00',
     borderRadius: moderateScale(12),
     overflow: 'hidden',
-    ...Platform.select({
-      android: {
-        elevation: 2,
-      },
-    }),
   },
-  exploreButtonContent: {
+  'cartscreen-explore-btn-content': {
     paddingHorizontal: moderateScale(32),
     paddingVertical: verticalScale(14),
     flexDirection: 'row',
     alignItems: 'center',
   },
-  exploreButtonText: {
+  'cartscreen-explore-btn-text': {
     color: '#fff',
     fontSize: FONT.LG,
     fontWeight: '700',
     marginRight: moderateScale(8),
   },
-  emptySuggestionsContainer: {
+  'cartscreen-empty-suggestions': {
     marginBottom: verticalScale(16),
   },
-  suggestionTitle: {
+  'cartscreen-suggestion-title': {
     fontSize: FONT.LG,
     fontWeight: '700',
     color: '#1a1a1a',
@@ -2568,181 +2495,156 @@ const styles = StyleSheet.create({
     marginBottom: verticalScale(12),
     paddingHorizontal: scale(16),
   },
-  suggestedItemsHorizontalContainer: {
+  'cartscreen-suggested-horizontal-list': {
     paddingHorizontal: scale(8),
     paddingBottom: verticalScale(8),
   },
-  suggestedItemCard: {
-    width: scale(180),
+  'cartscreen-suggested-item': {
+    width: scale(140),
     backgroundColor: '#fff',
-    borderRadius: moderateScale(16),
+    borderRadius: moderateScale(8),
     overflow: 'hidden',
-    marginHorizontal: scale(8),
-    ...Platform.select({
-      android: {
-        elevation: 3,
-      },
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 6,
-      },
-    }),
+    marginHorizontal: scale(6),
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
   },
-  suggestedItemImageContainer: {
+  'cartscreen-suggested-image-wrap': {
     position: 'relative',
-    height: verticalScale(100),
+    height: verticalScale(80),
   },
-  suggestedItemImage: {
+  'cartscreen-suggested-image': {
     width: '100%',
     height: '100%',
     resizeMode: 'cover',
   },
-  suggestedItemTypeBadge: {
+  'cartscreen-suggested-type-badge': {
     position: 'absolute',
-    top: scale(8),
-    left: scale(8),
-    width: moderateScale(20),
-    height: moderateScale(20),
+    top: scale(6),
+    left: scale(6),
+    width: moderateScale(18),
+    height: moderateScale(18),
     borderRadius: moderateScale(4),
     borderWidth: 2,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#fff',
   },
-  suggestedItemTypeIndicator: {
-    width: moderateScale(10),
-    height: moderateScale(10),
-    borderRadius: moderateScale(5),
+  'cartscreen-suggested-type-indicator': {
+    width: moderateScale(8),
+    height: moderateScale(8),
+    borderRadius: moderateScale(4),
   },
-  discountBadgeAbsolute: {
+  'cartscreen-discount-badge-absolute': {
     position: 'absolute',
-    bottom: scale(8),
-    left: scale(8),
+    bottom: scale(6),
+    left: scale(6),
     backgroundColor: '#E65C00',
-    paddingHorizontal: moderateScale(8),
-    paddingVertical: verticalScale(4),
-    borderRadius: moderateScale(6),
-    ...Platform.select({
-      android: {
-        elevation: 2,
-      },
-    }),
+    paddingHorizontal: moderateScale(6),
+    paddingVertical: verticalScale(2),
+    borderRadius: moderateScale(4),
   },
-  discountBadgeText: {
+  'cartscreen-discount-badge-text': {
     fontSize: FONT.XS,
     color: '#fff',
     fontWeight: '700',
   },
-  suggestedItemContent: {
-    padding: moderateScale(12),
+  'cartscreen-suggested-content': {
+    padding: moderateScale(10),
   },
-  suggestedItemName: {
+  'cartscreen-suggested-name': {
     fontSize: FONT.SM,
     fontWeight: '600',
     color: '#1a1a1a',
-    marginBottom: verticalScale(8),
-    lineHeight: verticalScale(18),
-    minHeight: verticalScale(36),
+    marginBottom: verticalScale(4),
+    lineHeight: verticalScale(16),
+    minHeight: verticalScale(32),
   },
-  suggestedItemPriceContainer: {
+  'cartscreen-suggested-price-wrap': {
     flexDirection: 'row',
     alignItems: 'baseline',
-    marginBottom: verticalScale(12),
+    marginBottom: verticalScale(8),
   },
-  currentPrice: {
+  'cartscreen-current-price': {
     fontSize: FONT.BASE,
     fontWeight: '700',
     color: '#E65C00',
-    marginRight: moderateScale(8),
+    marginRight: moderateScale(6),
   },
-  originalSuggestedPrice: {
-    fontSize: FONT.SM,
+  'cartscreen-original-suggested-price': {
+    fontSize: FONT.XS,
     color: '#999',
     textDecorationLine: 'line-through',
   },
-  suggestedItemFooter: {
+  'cartscreen-suggested-footer': {
     width: '100%',
   },
-  quantityContainerHorizontal: {
+  'cartscreen-quantity-horizontal': {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#FFF5F0',
-    borderRadius: moderateScale(24),
-    paddingHorizontal: moderateScale(6),
-    paddingVertical: verticalScale(4),
+    borderRadius: moderateScale(20),
+    paddingHorizontal: moderateScale(4),
+    paddingVertical: verticalScale(3),
     width: '100%',
   },
-  quantityButtonHorizontal: {
-    padding: moderateScale(8),
-    borderRadius: moderateScale(20),
+  'cartscreen-qty-btn-horizontal': {
+    padding: moderateScale(4),
+    borderRadius: moderateScale(16),
     backgroundColor: '#fff',
-    width: moderateScale(34),
-    height: moderateScale(34),
+    width: moderateScale(28),
+    height: moderateScale(28),
     justifyContent: 'center',
     alignItems: 'center',
-    ...Platform.select({
-      android: {
-        elevation: 1,
-      },
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-      },
-    }),
   },
-  quantityTextHorizontal: {
-    fontSize: FONT.BASE,
+  'cartscreen-qty-text-horizontal': {
+    fontSize: FONT.SM,
     fontWeight: '700',
     color: '#E65C00',
-    marginHorizontal: moderateScale(8),
-    minWidth: moderateScale(28),
+    marginHorizontal: moderateScale(6),
+    minWidth: moderateScale(20),
     textAlign: 'center',
   },
-  addItemButtonHorizontal: {
+  'cartscreen-add-item-btn-horizontal': {
     backgroundColor: '#E65C00',
-    paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(10),
-    borderRadius: moderateScale(24),
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(8),
+    borderRadius: moderateScale(20),
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
   },
-  addItemButtonDisabled: {
+  'cartscreen-add-item-disabled': {
     opacity: 0.7,
   },
-  addItemButtonTextHorizontal: {
+  'cartscreen-add-item-text-horizontal': {
     color: '#fff',
-    fontSize: FONT.SM,
+    fontSize: FONT.XS,
     fontWeight: '700',
     marginLeft: moderateScale(4),
   },
-  disabledButton: {
+  'cartscreen-disabled-btn': {
     opacity: 0.5,
   },
-  errorContainer: {
+  'cartscreen-error-container': {
     flex: 1,
     backgroundColor: '#F8F9FA',
   },
-  errorContent: {
+  'cartscreen-error-content': {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: scale(20),
   },
-  errorText: {
+  'cartscreen-error-text': {
     fontSize: FONT.LG,
     color: '#E65C00',
     marginBottom: verticalScale(20),
     textAlign: 'center',
     fontWeight: '600',
   },
-  primaryButton: {
+  'cartscreen-primary-btn': {
     backgroundColor: '#E65C00',
     paddingHorizontal: moderateScale(32),
     paddingVertical: verticalScale(12),
@@ -2750,18 +2652,13 @@ const styles = StyleSheet.create({
     width: '80%',
     alignItems: 'center',
     marginBottom: verticalScale(12),
-    ...Platform.select({
-      android: {
-        elevation: 2,
-      },
-    }),
   },
-  primaryButtonText: {
+  'cartscreen-primary-btn-text': {
     color: '#fff',
     fontSize: FONT.LG,
     fontWeight: '700',
   },
-  secondaryButton: {
+  'cartscreen-secondary-btn': {
     paddingHorizontal: moderateScale(32),
     paddingVertical: verticalScale(12),
     borderRadius: moderateScale(12),
@@ -2771,38 +2668,27 @@ const styles = StyleSheet.create({
     borderColor: '#E65C00',
     backgroundColor: '#fff',
   },
-  secondaryButtonText: {
+  'cartscreen-secondary-btn-text': {
     color: '#E65C00',
     fontSize: FONT.LG,
     fontWeight: '600',
   },
-  paymentFooter: {
+  'cartscreen-payment-footer': {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     backgroundColor: '#fff',
-    borderTopLeftRadius: moderateScale(20),
-    borderTopRightRadius: moderateScale(20),
-    ...Platform.select({
-      android: {
-        elevation: 10,
-      },
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-      },
-    }),
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
   },
-  // NEW MODAL STYLES
-  modalOverlay: {
+  // Modal styles
+  'cartscreen-modal-overlay': {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
-  modalContent: {
+  'cartscreen-modal-content': {
     backgroundColor: '#fff',
     borderTopLeftRadius: moderateScale(20),
     borderTopRightRadius: moderateScale(20),
@@ -2811,7 +2697,7 @@ const styles = StyleSheet.create({
     paddingTop: verticalScale(20),
     maxHeight: height * 0.8,
   },
-  modalHandle: {
+  'cartscreen-modal-handle': {
     width: moderateScale(40),
     height: verticalScale(4),
     backgroundColor: '#ddd',
@@ -2819,40 +2705,40 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: verticalScale(16),
   },
-  modalTitle: {
+  'cartscreen-modal-title': {
     fontSize: FONT.XL,
     fontWeight: '700',
     color: '#1a1a1a',
     marginBottom: verticalScale(16),
     textAlign: 'center',
   },
-  modalAddressContainer: {
+  'cartscreen-modal-address-wrap': {
     backgroundColor: '#f8f9fa',
     padding: moderateScale(12),
     borderRadius: moderateScale(8),
     marginBottom: verticalScale(16),
   },
-  modalAddressLabel: {
+  'cartscreen-modal-address-label': {
     fontSize: FONT.SM,
     color: '#666',
     fontWeight: '500',
     marginBottom: verticalScale(4),
   },
-  modalAddressText: {
+  'cartscreen-modal-address-text': {
     fontSize: FONT.BASE,
     color: '#1a1a1a',
     fontWeight: '500',
   },
-  modalInputContainer: {
+  'cartscreen-modal-input-wrap': {
     marginBottom: verticalScale(16),
   },
-  modalInputLabel: {
+  'cartscreen-modal-input-label': {
     fontSize: FONT.SM,
     color: '#333',
     fontWeight: '600',
     marginBottom: verticalScale(6),
   },
-  modalInput: {
+  'cartscreen-modal-input': {
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: moderateScale(8),
@@ -2862,32 +2748,32 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
     backgroundColor: '#fff',
   },
-  modalButtonRow: {
+  'cartscreen-modal-btn-row': {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: verticalScale(8),
   },
-  modalButton: {
+  'cartscreen-modal-btn': {
     flex: 1,
     paddingVertical: verticalScale(12),
     borderRadius: moderateScale(8),
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalCancelButton: {
+  'cartscreen-modal-cancel-btn': {
     backgroundColor: '#f0f0f0',
     marginRight: moderateScale(8),
   },
-  modalCancelButtonText: {
+  'cartscreen-modal-cancel-text': {
     color: '#333',
     fontSize: FONT.BASE,
     fontWeight: '600',
   },
-  modalUpdateButton: {
+  'cartscreen-modal-update-btn': {
     backgroundColor: '#E65C00',
     marginLeft: moderateScale(8),
   },
-  modalUpdateButtonText: {
+  'cartscreen-modal-update-text': {
     color: '#fff',
     fontSize: FONT.BASE,
     fontWeight: '700',

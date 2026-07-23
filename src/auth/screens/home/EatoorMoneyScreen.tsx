@@ -11,6 +11,8 @@ import {
   Platform,
   RefreshControl,
   Alert,
+  Animated,
+  Easing,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import {
@@ -28,35 +30,46 @@ const EatoorMoneyScreen = ({ navigation }) => {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isActive, setIsActive] = useState(true);
+  const [animatedValue] = useState(new Animated.Value(0));
+
+  // Animation for balance
+  useEffect(() => {
+    Animated.timing(animatedValue, {
+      toValue: 1,
+      duration: 1000,
+      easing: Easing.ease,
+      useNativeDriver: true,
+    }).start();
+  }, [walletBalance]);
 
   // Fetch wallet data
   const fetchWalletData = async () => {
     try {
       setLoading(true);
-      // Fetch wallet balance
       const balanceResponse = await getWalletBalance();
       if (balanceResponse.data) {
         setWalletBalance(parseFloat(balanceResponse.data.balance));
         setIsActive(balanceResponse.data.is_active);
       }
 
-      // Fetch transactions
       const transactionsResponse = await getWalletTransactions();
       if (transactionsResponse.data) {
-        const formattedTransactions = transactionsResponse?.data.map(transaction => ({
+        const formattedTransactions = transactionsResponse.data.map(transaction => ({
           id: transaction.id.toString(),
-          type: transaction.txn_type, // 'credit' or 'debit'
+          type: transaction.txn_type,
           amount: parseFloat(transaction.amount),
           description: getTransactionDescription(transaction),
           date: formatDate(transaction.created_at),
           time: formatTime(transaction.created_at),
           category: getTransactionCategory(transaction),
           txn_source: transaction.txn_source,
-          status: transaction.status,
+          status: transaction.status || 'success',
           note: transaction.note,
           order_number: transaction.order_number,
           razorpay_payment_id: transaction.razorpay_payment_id,
           created_at: transaction.created_at,
+          balance_before: parseFloat(transaction.balance_before),
+          balance_after: parseFloat(transaction.balance_after),
         }));
         setTransactions(formattedTransactions);
       }
@@ -68,7 +81,6 @@ const EatoorMoneyScreen = ({ navigation }) => {
     }
   };
 
-  // Helper function to get transaction description
   const getTransactionDescription = (transaction) => {
     if (transaction.order_number) {
       return `Order #${transaction.order_number}`;
@@ -76,7 +88,7 @@ const EatoorMoneyScreen = ({ navigation }) => {
     
     switch (transaction.txn_source) {
       case 'add_money':
-        return 'Wallet Recharge';
+        return transaction.note || 'Wallet Recharge';
       case 'order_payment':
         return transaction.order_number ? `Order #${transaction.order_number}` : 'Order Payment';
       case 'refund':
@@ -92,7 +104,6 @@ const EatoorMoneyScreen = ({ navigation }) => {
     }
   };
 
-  // Helper function to get transaction category
   const getTransactionCategory = (transaction) => {
     switch (transaction.txn_source) {
       case 'add_money':
@@ -111,17 +122,15 @@ const EatoorMoneyScreen = ({ navigation }) => {
     }
   };
 
-  // Helper function to format date
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-IN', {
       year: 'numeric',
-      month: '2-digit',
+      month: 'short',
       day: '2-digit'
     });
   };
 
-  // Helper function to format time
   const formatTime = (dateString) => {
     const date = new Date(dateString);
     return date.toLocaleTimeString('en-IN', {
@@ -131,7 +140,6 @@ const EatoorMoneyScreen = ({ navigation }) => {
     });
   };
 
-  // Initial load
   useEffect(() => {
     fetchWalletData();
   }, []);
@@ -142,9 +150,7 @@ const EatoorMoneyScreen = ({ navigation }) => {
     setRefreshing(false);
   };
 
-  // Handle successful money addition (called from Add Money screen)
   const handleAddMoneySuccess = (amount) => {
-    // Refresh data to get latest transactions
     fetchWalletData();
   };
 
@@ -159,103 +165,145 @@ const EatoorMoneyScreen = ({ navigation }) => {
   const getCategoryIcon = (category) => {
     switch(category) {
       case 'food':
-        return 'fast-food-outline';
-      case 'beverage':
-        return 'cafe-outline';
-      case 'entertainment':
-        return 'film-outline';
-      case 'dining':
         return 'restaurant-outline';
-      case 'grocery':
-        return 'cart-outline';
       case 'recharge':
-        return 'phone-portrait-outline';
-      case 'transfer':
-        return 'swap-horizontal-outline';
+        return 'cash-outline';
+      case 'refund':
+        return 'refresh-outline';
       case 'cashback':
       case 'bonus':
         return 'gift-outline';
-      case 'refund':
-        return 'arrow-undo-outline';
       default:
         return 'card-outline';
     }
   };
 
-  const renderTransactionItem = ({ item }) => (
-    <TouchableOpacity 
-      style={styles.transactionItem}
-      activeOpacity={0.7}
-      onPress={() => {
-        // Show transaction details if needed
-        Alert.alert(
-          'Transaction Details',
-          `Amount: ${item.type === 'credit' ? '+' : '-'}₹${item.amount.toFixed(2)}\n` +
-          `Description: ${item.description}\n` +
-          `Date: ${item.date}\n` +
-          `Time: ${item.time}\n` +
-          `Status: ${item.status}\n` +
-          `Type: ${item.type === 'credit' ? 'Credit' : 'Debit'}\n` +
-          `${item.order_number ? `Order #: ${item.order_number}\n` : ''}` +
-          `${item.razorpay_payment_id ? `Payment ID: ${item.razorpay_payment_id}\n` : ''}`
-        );
-      }}
-    >
-      <View style={styles.transactionIconContainer}>
-        <View style={[
-          styles.transactionIcon,
-          { backgroundColor: item.type === 'credit' ? 'rgba(76, 175, 80, 0.1)' : 'rgba(255, 107, 53, 0.1)' }
-        ]}>
-          <Icon 
-            name={getCategoryIcon(item.category)} 
-            size={22} 
-            color={item.type === 'credit' ? '#4CAF50' : '#FF6B35'} 
-          />
-        </View>
-        <View style={styles.transactionDetails}>
-          <Text style={styles.transactionDescription} numberOfLines={1}>
-            {item.description}
-          </Text>
-          <View style={styles.transactionMeta}>
-            <View style={styles.transactionDateContainer}>
-              <Icon name="calendar-outline" size={12} color="#666" />
-              <Text style={styles.transactionDate}> {item.date} • {item.time}</Text>
+  const getStatusColor = (status) => {
+    switch(status) {
+      case 'success':
+        return '#4CAF50';
+      case 'pending':
+        return '#FFA726';
+      case 'failed':
+        return '#EF5350';
+      default:
+        return '#999';
+    }
+  };
+
+  const getStatusIcon = (status) => {
+    switch(status) {
+      case 'success':
+        return 'checkmark-circle';
+      case 'pending':
+        return 'time-outline';
+      case 'failed':
+        return 'close-circle';
+      default:
+        return 'alert-circle';
+    }
+  };
+
+  const getStatusText = (status) => {
+    switch(status) {
+      case 'success':
+        return 'Success';
+      case 'pending':
+        return 'Pending';
+      case 'failed':
+        return 'Failed';
+      default:
+        return status;
+    }
+  };
+
+  const getStatusBackground = (status) => {
+    switch(status) {
+      case 'success':
+        return 'rgba(76, 175, 80, 0.12)';
+      case 'pending':
+        return 'rgba(255, 167, 38, 0.12)';
+      case 'failed':
+        return 'rgba(239, 83, 80, 0.12)';
+      default:
+        return 'rgba(153, 153, 153, 0.12)';
+    }
+  };
+
+  const renderTransactionItem = ({ item }) => {
+    const statusColor = getStatusColor(item.status);
+    const statusIcon = getStatusIcon(item.status);
+    const statusBg = getStatusBackground(item.status);
+
+    return (
+      <TouchableOpacity 
+        style={styles.transactionItem}
+        activeOpacity={0.7}
+        onPress={() => {
+          Alert.alert(
+            'Transaction Details',
+            `Amount: ${item.type === 'credit' ? '+' : '-'}₹${item.amount.toFixed(2)}\n` +
+            `Description: ${item.description}\n` +
+            `Date: ${item.date} ${item.time}\n` +
+            `Status: ${getStatusText(item.status)}\n` +
+            `Type: ${item.type === 'credit' ? 'Credit' : 'Debit'}\n` +
+            `${item.order_number ? `Order #: ${item.order_number}\n` : ''}` +
+            `${item.razorpay_payment_id ? `Payment ID: ${item.razorpay_payment_id}\n` : ''}` +
+            `Balance Before: ₹${item.balance_before?.toFixed(2) || 'N/A'}\n` +
+            `Balance After: ₹${item.balance_after?.toFixed(2) || 'N/A'}`
+          );
+        }}
+      >
+        <View style={styles.transactionLeft}>
+          <View style={[
+            styles.transactionIcon,
+            { backgroundColor: item.type === 'credit' ? 'rgba(76, 175, 80, 0.15)' : 'rgba(239, 83, 80, 0.15)' }
+          ]}>
+            <Icon 
+              name={getCategoryIcon(item.category)} 
+              size={22} 
+              color={item.type === 'credit' ? '#4CAF50' : '#EF5350'} 
+            />
+          </View>
+          <View style={styles.transactionInfo}>
+            <Text style={styles.transactionDescription} numberOfLines={1}>
+              {item.description}
+            </Text>
+            <View style={styles.transactionMeta}>
+              <Icon name="calendar-outline" size={12} color="#999" />
+              <Text style={styles.transactionDate}> {item.date}</Text>
+              <Text style={styles.transactionDot}>•</Text>
+              <Icon name="time-outline" size={12} color="#999" />
+              <Text style={styles.transactionTime}> {item.time}</Text>
             </View>
           </View>
         </View>
-      </View>
-      <View style={styles.transactionAmountContainer}>
-        <Text style={[
-          styles.transactionAmount,
-          { color: item.type === 'credit' ? '#4CAF50' : '#FF6B35' }
-        ]}>
-          {item.type === 'credit' ? '+' : '-'}₹{item.amount.toFixed(2)}
-        </Text>
-        <View style={[
-          styles.transactionTypeBadge,
-          { backgroundColor: item.type === 'credit' ? 'rgba(76, 175, 80, 0.1)' : 'rgba(255, 107, 53, 0.1)' }
-        ]}>
-          <Icon 
-            name={item.type === 'credit' ? 'trending-up' : 'trending-down'} 
-            size={10} 
-            color={item.type === 'credit' ? '#4CAF50' : '#FF6B35'} 
-          />
+        
+        <View style={styles.transactionRight}>
           <Text style={[
-            styles.transactionTypeText,
-            { color: item.type === 'credit' ? '#4CAF50' : '#FF6B35' }
+            styles.transactionAmount,
+            { color: item.type === 'credit' ? '#4CAF50' : '#EF5350' }
           ]}>
-            {item.type === 'credit' ? 'Credit' : 'Debit'}
+            {item.type === 'credit' ? '+' : '-'}₹{item.amount.toFixed(2)}
           </Text>
+          <View style={[styles.statusBadge, { backgroundColor: statusBg }]}>
+            <Icon name={statusIcon} size={12} color={statusColor} />
+            <Text style={[styles.statusText, { color: statusColor }]}>
+              {getStatusText(item.status)}
+            </Text>
+          </View>
         </View>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   const renderEmptyState = () => (
     <View style={styles.emptyState}>
-      <Icon name="receipt-outline" size={80} color="#E0E0E0" />
+      <View style={styles.emptyIconContainer}>
+        <Icon name="receipt-outline" size={80} color="#E0E0E0" />
+      </View>
       <Text style={styles.emptyStateText}>
-        {loading ? 'Loading transactions...' : 'No transactions found'}
+        {loading ? 'Loading transactions...' : 'No transactions yet'}
       </Text>
       <Text style={styles.emptyStateSubText}>
         {selectedFilter === 'all' 
@@ -267,12 +315,16 @@ const EatoorMoneyScreen = ({ navigation }) => {
 
   const renderHeader = () => (
     <>
-      {/* Balance Section */}
-      <View style={styles.balanceContainer}>
-        <View style={styles.balanceLabelContainer}>
-          <Icon name="wallet-outline" size={22} color="#666" />
-          <Text style={styles.balanceLabel}>Wallet Balance</Text>
-          <View style={styles.balanceHeaderRight}>
+      {/* Balance Card */}
+      <View style={styles.balanceCard}>
+        <View style={styles.balanceHeader}>
+          <View style={styles.balanceTitleContainer}>
+            <View style={styles.balanceIconContainer}>
+              <Icon name="wallet-outline" size={24} color="#FFFFFF" />
+            </View>
+            <Text style={styles.balanceLabel}>Wallet Balance</Text>
+          </View>
+          <View style={styles.balanceActions}>
             {!isActive && (
               <View style={styles.inactiveBadge}>
                 <Icon name="warning-outline" size={14} color="#FF6B35" />
@@ -282,28 +334,38 @@ const EatoorMoneyScreen = ({ navigation }) => {
             <TouchableOpacity 
               style={styles.eyeButton}
               onPress={() => setBalanceVisible(!balanceVisible)}
-              activeOpacity={0.7}
             >
               <Icon 
                 name={balanceVisible ? 'eye-off-outline' : 'eye-outline'} 
-                size={22} 
-                color="#666" 
+                size={24} 
+                color="#FFFFFF" 
               />
             </TouchableOpacity>
           </View>
         </View>
         
-        <View style={styles.balanceAmountContainer}>
+        <Animated.View style={[
+          styles.balanceAmountContainer,
+          {
+            opacity: animatedValue,
+            transform: [{
+              scale: animatedValue.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.8, 1]
+              })
+            }]
+          }
+        ]}>
           <Text style={styles.currencySymbol}>₹</Text>
           <Text style={styles.balanceAmount}>
             {balanceVisible ? walletBalance.toFixed(2) : '••••••'}
           </Text>
-        </View>
+        </Animated.View>
         
         <View style={styles.balanceFooter}>
-          <Icon name="information-circle-outline" size={16} color="#666" />
+          <Icon name="shield-checkmark-outline" size={16} color="rgba(255,255,255,0.8)" />
           <Text style={styles.balanceFooterText}>
-            {balanceVisible ? 'Your current wallet balance' : 'Tap eye icon to view balance'}
+            {balanceVisible ? 'Balance is secure and up to date' : 'Tap 👁️ to view balance'}
           </Text>
         </View>
       </View>
@@ -317,57 +379,52 @@ const EatoorMoneyScreen = ({ navigation }) => {
           onAddMoney: handleAddMoneySuccess
         })}
       >
-        <Icon name="add-circle" size={26} color="#FFFFFF" />
-        <Text style={styles.addMoneyButtonText}>Add Money to Wallet</Text>
+        <View style={styles.addMoneyContent}>
+          <Icon name="add-circle" size={26} color="#FFFFFF" />
+          <Text style={styles.addMoneyButtonText}>Add Money to Wallet</Text>
+          <Icon name="chevron-forward" size={24} color="#FFFFFF" />
+        </View>
       </TouchableOpacity>
 
-      {/* Stats Card */}
-      <View style={styles.statsCard}>
-        <View style={styles.statsHeader}>
-          <Icon name="stats-chart" size={20} color="#FF6B35" />
-          <Text style={styles.statsTitle}>Transaction Summary</Text>
+      {/* Stats Cards */}
+      <View style={styles.statsContainer}>
+        <View style={[styles.statCard, { backgroundColor: '#FFF5F0' }]}>
+          <View style={[styles.statIconContainer, { backgroundColor: 'rgba(255, 107, 53, 0.15)' }]}>
+            <Icon name="swap-horizontal" size={24} color="#FF6B35" />
+          </View>
+          <Text style={styles.statValue}>{totalTransactions}</Text>
+          <Text style={styles.statLabel}>Total</Text>
         </View>
         
-        <View style={styles.statsRow}>
-          <View style={styles.statItem}>
-            <View style={[styles.statIcon, { backgroundColor: 'rgba(255, 107, 53, 0.1)' }]}>
-              <Icon name="swap-horizontal" size={26} color="#FF6B35" />
-            </View>
-            <Text style={styles.statValue}>{totalTransactions}</Text>
-            <Text style={styles.statLabel}>Total</Text>
+        <View style={[styles.statCard, { backgroundColor: '#F0FFF4' }]}>
+          <View style={[styles.statIconContainer, { backgroundColor: 'rgba(76, 175, 80, 0.15)' }]}>
+            <Icon name="trending-up" size={24} color="#4CAF50" />
           </View>
-          
-          <View style={styles.statDivider} />
-          
-          <View style={styles.statItem}>
-            <View style={[styles.statIcon, { backgroundColor: 'rgba(76, 175, 80, 0.1)' }]}>
-              <Icon name="trending-up" size={26} color="#4CAF50" />
-            </View>
-            <Text style={[styles.statValue, { color: '#4CAF50' }]}>{creditCount}</Text>
-            <Text style={styles.statLabel}>Credits</Text>
+          <Text style={[styles.statValue, { color: '#4CAF50' }]}>{creditCount}</Text>
+          <Text style={styles.statLabel}>Credits</Text>
+        </View>
+        
+        <View style={[styles.statCard, { backgroundColor: '#FFF0F0' }]}>
+          <View style={[styles.statIconContainer, { backgroundColor: 'rgba(239, 83, 80, 0.15)' }]}>
+            <Icon name="trending-down" size={24} color="#EF5350" />
           </View>
-          
-          <View style={styles.statDivider} />
-          
-          <View style={styles.statItem}>
-            <View style={[styles.statIcon, { backgroundColor: 'rgba(244, 67, 54, 0.1)' }]}>
-              <Icon name="trending-down" size={26} color="#FF6B35" />
-            </View>
-            <Text style={[styles.statValue, { color: '#FF6B35' }]}>{debitCount}</Text>
-            <Text style={styles.statLabel}>Debits</Text>
-          </View>
+          <Text style={[styles.statValue, { color: '#EF5350' }]}>{debitCount}</Text>
+          <Text style={styles.statLabel}>Debits</Text>
         </View>
       </View>
 
       {/* Filter Section */}
       <View style={styles.filterContainer}>
         <View style={styles.filterHeader}>
-          <Icon name="filter" size={20} color="#FF6B35" />
-          <Text style={styles.filterTitle}>Filter Transactions</Text>
+          <View style={styles.filterTitleContainer}>
+            <Icon name="filter-outline" size={20} color="#FF6B35" />
+            <Text style={styles.filterTitle}>Transactions</Text>
+          </View>
           <Text style={styles.transactionCount}>
-            ({filteredTransactions.length} transactions)
+            {filteredTransactions.length}
           </Text>
         </View>
+        
         <View style={styles.filterButtons}>
           <TouchableOpacity 
             style={[
@@ -375,13 +432,7 @@ const EatoorMoneyScreen = ({ navigation }) => {
               selectedFilter === 'all' && styles.filterButtonActive
             ]}
             onPress={() => setSelectedFilter('all')}
-            activeOpacity={0.7}
           >
-            <Icon 
-              name="apps" 
-              size={18} 
-              color={selectedFilter === 'all' ? '#FFFFFF' : '#666'} 
-            />
             <Text style={[
               styles.filterButtonText,
               selectedFilter === 'all' && styles.filterButtonTextActive
@@ -396,21 +447,13 @@ const EatoorMoneyScreen = ({ navigation }) => {
               selectedFilter === 'credit' && styles.filterButtonActive
             ]}
             onPress={() => setSelectedFilter('credit')}
-            activeOpacity={0.7}
           >
-            <View style={styles.filterButtonContent}>
-              <Icon 
-                name="trending-up" 
-                size={18} 
-                color={selectedFilter === 'credit' ? '#FFFFFF' : '#4CAF50'} 
-              />
-              <Text style={[
-                styles.filterButtonText,
-                selectedFilter === 'credit' && styles.filterButtonTextActive
-              ]}>
-                Credit
-              </Text>
-            </View>
+            <Text style={[
+              styles.filterButtonText,
+              selectedFilter === 'credit' && styles.filterButtonTextActive
+            ]}>
+              Credit
+            </Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
@@ -419,21 +462,13 @@ const EatoorMoneyScreen = ({ navigation }) => {
               selectedFilter === 'debit' && styles.filterButtonActive
             ]}
             onPress={() => setSelectedFilter('debit')}
-            activeOpacity={0.7}
           >
-            <View style={styles.filterButtonContent}>
-              <Icon 
-                name="trending-down" 
-                size={18} 
-                color={selectedFilter === 'debit' ? '#FFFFFF' : '#FF6B35'} 
-              />
-              <Text style={[
-                styles.filterButtonText,
-                selectedFilter === 'debit' && styles.filterButtonTextActive
-              ]}>
-                Debit
-              </Text>
-            </View>
+            <Text style={[
+              styles.filterButtonText,
+              selectedFilter === 'debit' && styles.filterButtonTextActive
+            ]}>
+              Debit
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -444,7 +479,7 @@ const EatoorMoneyScreen = ({ navigation }) => {
     <SafeAreaView style={styles.container}>
       <StatusBar 
         barStyle="dark-content" 
-        backgroundColor="#FFFFFF" 
+        backgroundColor="#F8F9FA" 
       />
       
       {/* Header */}
@@ -452,23 +487,20 @@ const EatoorMoneyScreen = ({ navigation }) => {
         <TouchableOpacity 
           style={styles.backButton}
           onPress={() => navigation.goBack()}
-          activeOpacity={0.7}
         >
           <Icon name="chevron-back" size={28} color="#000000" />
         </TouchableOpacity>
-        <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitle}>Eatoor Money</Text>
-        </View>
+        <Text style={styles.headerTitle}>Eatoor Money</Text>
         <TouchableOpacity 
           style={styles.menuButton}
           onPress={() => {
             Alert.alert(
-              'Wallet Info',
-              `Status: ${isActive ? 'Active' : 'Inactive'}\n` +
+              'Wallet Summary',
+              `Status: ${isActive ? '🟢 Active' : '🔴 Inactive'}\n` +
+              `Balance: ₹${walletBalance.toFixed(2)}\n` +
               `Total Transactions: ${totalTransactions}`
             );
           }}
-          activeOpacity={0.7}
         >
           <Icon name="ellipsis-vertical" size={24} color="#000000" />
         </TouchableOpacity>
@@ -509,33 +541,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: Platform.OS === 'ios' ? 8 : 12,
     paddingBottom: Platform.OS === 'ios' ? 12 : 16,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
+    borderBottomColor: '#F0F0F0',
   },
   backButton: {
     padding: 4,
-  },
-  headerTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: '#000000',
-    marginLeft: 8,
   },
   menuButton: {
     padding: 4,
@@ -543,46 +559,56 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: 20,
   },
-  balanceContainer: {
+  balanceCard: {
     margin: 16,
     marginTop: 20,
-    padding: 20,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E9ECEF',
+    padding: 24,
+    borderRadius: 20,
+    backgroundColor: '#FF6B35',
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
+        shadowColor: '#FF6B35',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 12,
       },
       android: {
-        elevation: 4,
+        elevation: 8,
       },
     }),
   },
-  balanceLabelContainer: {
+  balanceHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  balanceTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+  },
+  balanceIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   balanceLabel: {
-    fontSize: 15,
-    color: '#666',
-    marginLeft: 8,
-    marginRight: 'auto',
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.9)',
+    marginLeft: 10,
     fontWeight: '500',
   },
-  balanceHeaderRight: {
+  balanceActions: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   inactiveBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 107, 53, 0.1)',
+    backgroundColor: 'rgba(255,255,255,0.2)',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
@@ -590,7 +616,7 @@ const styles = StyleSheet.create({
   },
   inactiveText: {
     fontSize: 11,
-    color: '#FF6B35',
+    color: '#FFFFFF',
     fontWeight: '600',
     marginLeft: 4,
   },
@@ -600,46 +626,44 @@ const styles = StyleSheet.create({
   balanceAmountContainer: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   currencySymbol: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '700',
-    color: '#000000',
+    color: '#FFFFFF',
     marginRight: 4,
   },
   balanceAmount: {
-    fontSize: 36,
+    fontSize: 44,
     fontWeight: '800',
-    color: '#000000',
+    color: '#FFFFFF',
+    letterSpacing: 1,
   },
   balanceFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 12,
+    paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
+    borderTopColor: 'rgba(255,255,255,0.2)',
   },
   balanceFooterText: {
     fontSize: 13,
-    color: '#666',
-    marginLeft: 6,
+    color: 'rgba(255,255,255,0.8)',
+    marginLeft: 8,
     fontStyle: 'italic',
   },
   addMoneyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FF6B35',
     marginHorizontal: 16,
-    paddingVertical: 18,
-    borderRadius: 14,
     marginBottom: 20,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#FF6B35',
     ...Platform.select({
       ios: {
         shadowColor: '#FF6B35',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
+        shadowOpacity: 0.2,
         shadowRadius: 8,
       },
       android: {
@@ -647,76 +671,54 @@ const styles = StyleSheet.create({
       },
     }),
   },
+  addMoneyContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+  },
   addMoneyButtonText: {
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '700',
-    marginLeft: 10,
+    marginHorizontal: 12,
   },
-  statsCard: {
-    marginHorizontal: 16,
-    marginBottom: 20,
-    padding: 20,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  statsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  statsTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000000',
-    marginLeft: 8,
-  },
-  statsRow: {
+  statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 20,
   },
-  statItem: {
-    alignItems: 'center',
+  statCard: {
     flex: 1,
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    borderRadius: 16,
+    marginHorizontal: 4,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
   },
-  statIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  statIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   statValue: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
     color: '#000000',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   statLabel: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#666',
-    textAlign: 'center',
     fontWeight: '500',
-  },
-  statDivider: {
-    width: 1,
-    height: 50,
-    backgroundColor: '#E0E0E0',
   },
   filterContainer: {
     marginHorizontal: 16,
@@ -740,8 +742,13 @@ const styles = StyleSheet.create({
   },
   filterHeader: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
+  },
+  filterTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   filterTitle: {
     fontSize: 16,
@@ -750,39 +757,44 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   transactionCount: {
-    marginLeft: 'auto',
     fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
+    color: '#FF6B35',
+    fontWeight: '700',
+    backgroundColor: 'rgba(255, 107, 53, 0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
   filterButtons: {
     flexDirection: 'row',
     backgroundColor: '#F8F9FA',
     borderRadius: 12,
-    padding: 6,
+    padding: 4,
   },
   filterButton: {
     flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
+    paddingVertical: 10,
     borderRadius: 8,
   },
   filterButtonActive: {
     backgroundColor: '#FF6B35',
-  },
-  filterButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#FF6B35',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   filterButtonText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
     color: '#666',
-    marginLeft: 6,
   },
   filterButtonTextActive: {
     color: '#FFFFFF',
@@ -791,15 +803,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 16,
+    paddingVertical: 14,
     paddingHorizontal: 16,
     backgroundColor: '#FFFFFF',
     marginHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#F0F0F0',
   },
-  transactionIconContainer: {
+  transactionLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
@@ -811,56 +823,52 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  transactionDetails: {
+  transactionInfo: {
     marginLeft: 14,
     flex: 1,
   },
   transactionDescription: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
     color: '#000000',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   transactionMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  transactionDateContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   transactionDate: {
     fontSize: 12,
-    color: '#666',
+    color: '#999',
+    marginRight: 4,
   },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+  transactionDot: {
+    fontSize: 12,
+    color: '#999',
+    marginHorizontal: 4,
   },
-  statusText: {
-    fontSize: 10,
-    fontWeight: '600',
+  transactionTime: {
+    fontSize: 12,
+    color: '#999',
   },
-  transactionAmountContainer: {
+  transactionRight: {
     alignItems: 'flex-end',
   },
   transactionAmount: {
-    fontSize: 12,
+    fontSize: 15,
     fontWeight: '700',
-    marginBottom: 6,
+    marginBottom: 4,
   },
-  transactionTypeBadge: {
+  statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
   },
-  transactionTypeText: {
-    fontSize: 8,
-    fontWeight: '700',
+  statusText: {
+    fontSize: 11,
+    fontWeight: '600',
     marginLeft: 4,
   },
   separator: {
@@ -876,15 +884,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#F0F0F0',
   },
+  emptyIconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#F8F9FA',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
   emptyStateText: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#666',
-    marginTop: 20,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
     marginBottom: 8,
   },
   emptyStateSubText: {
-    fontSize: 15,
+    fontSize: 14,
     color: '#999',
     textAlign: 'center',
     paddingHorizontal: 40,

@@ -42,10 +42,22 @@ export const verifyPayment = (txnid, payment_method, order_id) =>
     }
   });
 
-  
-export const getPaymentMethods = (user_id) =>
+
+export const validate_payment = (txnid, payment_method, payment_page) =>
+  API.get('/customer/payment/verify/', {
+    params: {
+      txnid: txnid,
+      payment_method: payment_method,
+      payment_page: payment_page
+    }
+  });
+
+export const getPaymentMethods = (user_id, payment_page) =>
   API.get('/payment/methods/', {
-    params: user_id ? { user_id } : {},
+    params: {
+      ...(user_id && { user_id }),
+      payment_page: payment_page,
+    },
   });
 
 export const validateVpa = (vpa, user_id) =>

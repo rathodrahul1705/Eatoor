@@ -34,6 +34,7 @@ interface PaymentModalProps {
   orderNumber?: string;
   orderId?: number | null;
   orderTotal?: string;
+  paymentPage?: string; // Add payment page prop
 }
 
 export const PaymentModal: React.FC<PaymentModalProps> = ({
@@ -51,40 +52,46 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   orderNumber,
   orderId,
   orderTotal,
+  paymentPage = '', // Default to empty string
 }) => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const hasNavigated = useRef(false);
   const autoDismissTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // Auto-dismiss success modal and navigate to TrackOrder after 3 seconds
+  // Check if this is eatoor_money payment page
+  const isEatoorMoneyPayment = paymentPage === 'eatoor_money';
+
+  // Auto-dismiss success modal and navigate/close after 3 seconds
   useEffect(() => {
-    if (status === 'success' && orderNumber && !hasNavigated.current) {
+    if (status === 'success' && !hasNavigated.current) {
       hasNavigated.current = true;
       
-      // Show success screen for 3 seconds before auto-dismiss and navigation
+      // Show success screen for 3 seconds before auto-dismiss
       autoDismissTimer.current = setTimeout(() => {
-        // Close modal first
+        // Close modal
         if (onDismiss) {
           onDismiss();
         }
         
-        // Navigate to TrackOrder screen after modal is closed
-        setTimeout(() => {
-          try {
-            navigation.navigate('TrackOrder', {
-              order: { 
-                order_number: orderNumber, 
-                prev_location: "HomeTabs" 
+        // For eatoor_money, just close the modal and let the parent handle navigation
+        // For other pages, navigate to TrackOrder
+        if (!isEatoorMoneyPayment && orderNumber) {
+          setTimeout(() => {
+            try {
+              navigation.navigate('TrackOrder', {
+                order: { 
+                  order_number: orderNumber, 
+                  prev_location: "HomeTabs" 
+                }
+              });
+            } catch (error) {
+              console.error('Navigation error:', error);
+              if (onViewOrder) {
+                onViewOrder(orderNumber);
               }
-            });
-          } catch (error) {
-            console.error('Navigation error:', error);
-            // Fallback to callback if navigation fails
-            if (onViewOrder) {
-              onViewOrder(orderNumber);
             }
-          }
-        }, 300);
+          }, 300);
+        }
       }, 3000); // 3 seconds delay
     }
     
@@ -99,32 +106,17 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       }, 500);
       return () => clearTimeout(resetTimer);
     }
-  }, [status, orderNumber, navigation, onDismiss, visible, onViewOrder]);
+  }, [status, orderNumber, navigation, onDismiss, visible, onViewOrder, isEatoorMoneyPayment]);
 
-  const handleViewOrder = () => {
+  const handleClose = () => {
     // Clear auto-dismiss timer if user clicks manually
     if (autoDismissTimer.current) {
       clearTimeout(autoDismissTimer.current);
       autoDismissTimer.current = null;
     }
     
-    if (orderNumber) {
-      if (onDismiss) {
-        onDismiss();
-      }
-
-      setTimeout(() => {
-        try {
-          navigation.navigate('TrackOrder', {
-            order: { order_number: orderNumber, prev_location: "HomeTabs" }
-          });
-        } catch (error) {
-          console.error('Navigation error:', error);
-          if (onViewOrder) {
-            onViewOrder(orderNumber);
-          }
-        }
-      }, 100);
+    if (onDismiss) {
+      onDismiss();
     }
   };
 
@@ -160,28 +152,57 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             </View>
             <Text style={styles.successTitle}>Payment Successful!</Text>
             <Text style={styles.message}>
-              Your order has been placed successfully
+              {isEatoorMoneyPayment 
+                ? `₹${amount.toFixed(2)} has been added to your wallet` 
+                : 'Your order has been placed successfully'}
             </Text>
-            {/* <View style={styles.orderDetailsContainer}>
-              <Text style={styles.orderDetailsText}>
-                Order ID: {orderNumber || 'Processing...'}
-              </Text>
-              {orderTotal && (
-                <Text style={styles.orderAmountText}>
-                  Amount Paid: ₹{parseFloat(orderTotal).toFixed(2)}
+            
+            {isEatoorMoneyPayment ? (
+              // Show wallet balance updated message for eatoor_money
+              <View style={styles.walletDetailsContainer}>
+                <Icon name="wallet-outline" size={24} color="#4CAF50" />
+                <Text style={styles.walletUpdateText}>
+                  Wallet balance updated successfully
                 </Text>
-              )}
-            </View> */}
+              </View>
+            ) : (
+              // Show order details for other payment pages
+              <View style={styles.orderDetailsContainer}>
+                <Text style={styles.orderDetailsText}>
+                  Order ID: {orderNumber || 'Processing...'}
+                </Text>
+                {orderTotal && (
+                  <Text style={styles.orderAmountText}>
+                    Amount Paid: ₹{parseFloat(orderTotal).toFixed(2)}
+                  </Text>
+                )}
+              </View>
+            )}
+            
             <Text style={styles.autoRedirectText}>
-              Redirecting to order tracking in a moment...
+              {isEatoorMoneyPayment 
+                ? 'Redirecting back...' 
+                : 'Redirecting to order tracking in a moment...'}
             </Text>
-            <TouchableOpacity
-              style={styles.viewOrderButton}
-              onPress={handleViewOrder}
-            >
-              <Text style={styles.viewOrderButtonText}>Track Your Order Now</Text>
-              <Icon name="arrow-forward" size={18} color="#FFFFFF" style={styles.buttonIcon} />
-            </TouchableOpacity>
+
+            {!isEatoorMoneyPayment && (
+              <TouchableOpacity
+                style={styles.viewOrderButton}
+                onPress={handleClose}
+              >
+                <Text style={styles.viewOrderButtonText}>Track Your Order Now</Text>
+                <Icon name="arrow-forward" size={18} color="#FFFFFF" style={styles.buttonIcon} />
+              </TouchableOpacity>
+            )}
+
+            {isEatoorMoneyPayment && (
+              <TouchableOpacity
+                style={styles.dismissButton}
+                onPress={handleClose}
+              >
+                <Text style={styles.dismissButtonText}>Close</Text>
+              </TouchableOpacity>
+            )}
           </View>
         );
 
@@ -408,5 +429,35 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 12,
     fontStyle: 'italic',
+  },
+  walletDetailsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E9',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 8,
+    marginBottom: 12,
+    width: '100%',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  walletUpdateText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2E7D32',
+  },
+  dismissButton: {
+    backgroundColor: '#E55C18',
+    paddingVertical: 14,
+    borderRadius: 12,
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  dismissButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

@@ -1,5 +1,5 @@
 // services/UPIPaymentService.js
-import { Platform, Linking, Alert } from 'react-native';
+import { Platform, Linking } from 'react-native';
 import { getPaymentMethods } from '../../../../api/payment';
 
 /**
@@ -94,9 +94,9 @@ let currentUserId = null;
  * @param {string|number} userId - User ID to fetch payment methods for
  * @returns {Promise<Object>} - Returns payment methods data
  */
-export const fetchPaymentMethods = async (userId) => {
+export const fetchPaymentMethods = async (userId, payment_page) => {
   try {
-    const response = await getPaymentMethods(userId);
+    const response = await getPaymentMethods(userId, payment_page);
     if (response?.status == 200 && response?.data) {
       cachedPaymentMethods = response.data;
       currentUserId = userId;
@@ -476,7 +476,7 @@ export const validateIntentData = (intentData) => {
  * @param {string|number} userId - User ID to fetch payment methods for
  * @returns {Promise<Object>} - Returns all payment methods with their data
  */
-export const getAllPaymentMethods = async (userId) => {
+export const getAllPaymentMethods = async (userId, payment_page) => {
 
   try {
 
@@ -484,7 +484,9 @@ export const getAllPaymentMethods = async (userId) => {
       userId = currentUserId;
     }
     
-    const methods = await fetchPaymentMethods(userId);
+    console.log("payment_page===",payment_page)
+
+    const methods = await fetchPaymentMethods(userId,payment_page);
     const installedUPIApps = await getInstalledUPIApps();
 
     const savedUPIs = getSavedUPIsFromAPI();

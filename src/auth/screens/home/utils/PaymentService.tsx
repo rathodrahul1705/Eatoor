@@ -1,7 +1,7 @@
 // services/PaymentService.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { initiateUPIPayment, getInstalledUPIApps } from './UPIPaymentService';
-import { initiatePayment, verifyPayment } from '../../../../api/payment';
+import { initiatePayment, validate_payment } from '../../../../api/payment';
 import { Linking, Platform } from 'react-native';
 
 /**
@@ -190,6 +190,7 @@ export const processVPAPayment = async (paymentData: any): Promise<{ success: bo
       formData: formData,
       transactionId: paymentData.txnid,
       orderId: paymentData.order_id,
+      paymentPage: paymentData.payment_page, // Store payment_page
       timestamp: Date.now()
     }));
     
@@ -212,7 +213,8 @@ export const processVPAPayment = async (paymentData: any): Promise<{ success: bo
           data: {
             message: 'UPI app opened for VPA payment',
             intentUrl: upiIntentUrl,
-            vpa: vpa
+            vpa: vpa,
+            payment_page: paymentData.payment_page
           }
         };
       }
@@ -226,7 +228,8 @@ export const processVPAPayment = async (paymentData: any): Promise<{ success: bo
         message: 'VPA payment initiated. Please check your UPI app.',
         requiresWebview: true,
         html: decodedHtml,
-        actionUrl: actionUrl
+        actionUrl: actionUrl,
+        payment_page: paymentData.payment_page
       }
     };
     
@@ -246,14 +249,44 @@ export const processVPAPayment = async (paymentData: any): Promise<{ success: bo
  */
 export const initiateBackendPayment = async (orderData: any) => {
   try {
-    // Validate required fields
-
-    const requiredFields = [
-      'user_id', 'restaurant_id', 'delivery_address_id', 'payment_method',
-      'payment_type', 'payment_status', 'status', 'subtotal', 'tax',
-      'delivery_fee', 'total_amount', 'quantity', 'amount', 'productinfo',
-      'firstname', 'email', 'phone'
-    ];
+    // Extract payment_page from orderData
+    const paymentPage = orderData?.payment_page || 'restaurant';
+    
+    // Validate required fields based on payment_page
+    const requiredFields = paymentPage === "eatoor_money"
+      ? [
+          'amount',
+          'productinfo',
+          'firstname',
+          'email',
+          'phone',
+          'user_id',
+          'payment_method',
+          'payment_type',
+          'payment_status',
+          'payment_gateway',
+          'payment_page'
+        ]
+      : [
+          'user_id',
+          'restaurant_id',
+          'delivery_address_id',
+          'payment_method',
+          'payment_type',
+          'payment_status',
+          'status',
+          'subtotal',
+          'tax',
+          'delivery_fee',
+          'total_amount',
+          'quantity',
+          'amount',
+          'productinfo',
+          'firstname',
+          'email',
+          'phone',
+          'payment_page'
+        ];
     
     for (const field of requiredFields) {
       if (orderData[field] === undefined || orderData[field] === null) {
@@ -262,6 +295,7 @@ export const initiateBackendPayment = async (orderData: any) => {
     }
     
     console.log('Initiating backend payment with order data:', orderData);
+    console.log('Payment page:', paymentPage);
     
     // Using the imported initiatePayment function with complete order data
     const response = await initiatePayment(orderData);
@@ -272,6 +306,9 @@ export const initiateBackendPayment = async (orderData: any) => {
     if (!response.data || response.status !== 200) {
       throw new Error(response?.message || "Failed to initiate payment");
     }
+
+    // Get payment_page from response or fallback to orderData
+    const responsePaymentPage = response?.data?.payment_page || paymentPage;
     
     // Extract payment data from response - handle multiple response structures
     let intentData = null;
@@ -282,43 +319,60 @@ export const initiateBackendPayment = async (orderData: any) => {
     let orderId = null;
     let orderNumber = null;
     let orderTotal = null;
+    let paymentMethod = null;
+    let paymentStatus = null;
     
-    // Check for VPA payment response structure (with metaData and result)
-    if (response.data.metaData && response.data.result) {
-      // New VPA response structure
-      acsTemplate = response.data.result.acsTemplate;
-      otpPostUrl = response.data.result.otpPostUrl;
-      txnIdValue = response.data.metaData.txnId;
-      orderId = response.data.order_id;
-      orderNumber = response.data.order_number;
-      orderTotal = response.data.amount;
+    // Helper function to get nested values safely
+    const getNestedValue = (obj: any, path: string) => {
+      return path.split('.').reduce((current, key) => current?.[key], obj);
+    };
+    
+    // Try to extract data from various response structures
+    
+    // 1. Check for payu_response structure (most common)
+    if (response.data.payu_response) {
+      const payuResponse = response.data.payu_response;
       
-      return {
-        payment_id: paymentIdValue,
-        txnid: txnIdValue,
-        amount: parseFloat(orderTotal),
-        order_id: orderId,
-        order_number: orderNumber,
-        order_total: orderTotal,
-        acs_template: acsTemplate,
-        otpPostUrl: otpPostUrl,
-        full_response: response.data,
-        status: response.data.metaData?.txnStatus || 'pending',
-        isVPA: true
-      };
-    }
-    
-    // Check for payu_response structure
-    if (response.data.payu_response && response.data.payu_response.result) {
-      intentData = response.data.payu_response.result.intentURIData;
-      acsTemplate = response.data.payu_response.result.acsTemplate;
-      paymentIdValue = response.data.payu_response.result.paymentId;
-      txnIdValue = response.data.txnid;
+      // Get intent data from payu_response
+      intentData = getNestedValue(payuResponse, 'result.intentURIData');
+      acsTemplate = getNestedValue(payuResponse, 'result.acsTemplate');
+      otpPostUrl = getNestedValue(payuResponse, 'result.otpPostUrl');
+      paymentIdValue = getNestedValue(payuResponse, 'result.paymentId');
+      
+      // Get meta data
+      txnIdValue = getNestedValue(payuResponse, 'metaData.txnId') || response.data.txnid;
+      paymentMethod = getNestedValue(payuResponse, 'metaData.paymentMethod');
+      paymentStatus = getNestedValue(payuResponse, 'metaData.txnStatus') || response.data.status;
+      
+      // Get order details
       orderId = response.data.order_id;
       orderNumber = response.data.order_number;
       orderTotal = response.data.amount;
-    } 
-    // Alternative response structure with intentURIData
+    }
+    // 2. Check for direct result structure
+    else if (response.data.result) {
+      const result = response.data.result;
+      
+      intentData = result.intentURIData;
+      acsTemplate = result.acsTemplate;
+      otpPostUrl = result.otpPostUrl;
+      paymentIdValue = result.paymentId;
+      
+      // Get from metaData if available
+      if (response.data.metaData) {
+        txnIdValue = response.data.metaData.txnId || response.data.txnid;
+        paymentMethod = response.data.metaData.paymentMethod;
+        paymentStatus = response.data.metaData.txnStatus || response.data.status;
+      } else {
+        txnIdValue = response.data.txnid;
+        paymentStatus = response.data.status;
+      }
+      
+      orderId = response.data.order_id;
+      orderNumber = response.data.order_number;
+      orderTotal = response.data.amount;
+    }
+    // 3. Check for direct intentURIData
     else if (response.data.intentURIData) {
       intentData = response.data.intentURIData;
       paymentIdValue = response.data.paymentId;
@@ -326,17 +380,9 @@ export const initiateBackendPayment = async (orderData: any) => {
       orderId = response.data.order_id;
       orderNumber = response.data.order_number;
       orderTotal = response.data.amount;
+      paymentStatus = response.data.status;
     }
-    // Check for result with intentURIData
-    else if (response.data.result && response.data.result.intentURIData) {
-      intentData = response.data.result.intentURIData;
-      paymentIdValue = response.data.result.paymentId;
-      txnIdValue = response.data.txnid;
-      orderId = response.data.order_id;
-      orderNumber = response.data.order_number;
-      orderTotal = response.data.amount;
-    }
-    // Check for direct acsTemplate (VPA response without metaData wrapper)
+    // 4. Check for direct acsTemplate (VPA response)
     else if (response.data.acsTemplate) {
       acsTemplate = response.data.acsTemplate;
       otpPostUrl = response.data.otpPostUrl;
@@ -344,40 +390,37 @@ export const initiateBackendPayment = async (orderData: any) => {
       orderId = response.data.order_id;
       orderNumber = response.data.order_number;
       orderTotal = response.data.amount;
-      
-      return {
-        payment_id: paymentIdValue,
-        txnid: txnIdValue,
-        amount: parseFloat(orderTotal),
-        order_id: orderId,
-        order_number: orderNumber,
-        order_total: orderTotal,
-        acs_template: acsTemplate,
-        otpPostUrl: otpPostUrl,
-        full_response: response.data,
-        status: response.data.status || 'pending',
-        isVPA: true
-      };
-    }
-    else {
-      // Try to extract from response directly
-      intentData = response.data.intentURIData;
-      paymentIdValue = response.data.paymentId || response.data.payment_id;
-      txnIdValue = response.data.txnid;
-      orderId = response.data.order_id;
-      orderNumber = response.data.order_number;
-      orderTotal = response.data.amount;
+      paymentStatus = response.data.status;
     }
     
+    // If we still don't have data, try to extract from response.data directly
+    if (!intentData && !acsTemplate) {
+      // Try to find any data in the response
+      const possibleData = Object.keys(response.data).find(key => 
+        key.includes('intent') || key.includes('acs') || key.includes('payment')
+      );
+      
+      if (possibleData && response.data[possibleData]) {
+        if (response.data[possibleData].intentURIData) {
+          intentData = response.data[possibleData].intentURIData;
+        }
+        if (response.data[possibleData].acsTemplate) {
+          acsTemplate = response.data[possibleData].acsTemplate;
+        }
+      }
+    }
+    
+    // Ensure we have at least one payment data type
     if (!intentData && !acsTemplate) {
       console.error("Response structure:", JSON.stringify(response.data, null, 2));
       throw new Error("No payment data received from the server");
     }
     
-    return {
+    // Construct the return object with all data
+    const result = {
       payment_id: paymentIdValue,
       txnid: txnIdValue,
-      amount: parseFloat(orderTotal),
+      amount: parseFloat(orderTotal) || 0,
       order_id: orderId,
       order_number: orderNumber,
       order_total: orderTotal,
@@ -385,9 +428,16 @@ export const initiateBackendPayment = async (orderData: any) => {
       acs_template: acsTemplate,
       otpPostUrl: otpPostUrl,
       full_response: response.data,
-      status: response.data.status || 'pending',
-      isVPA: !!acsTemplate
+      status: paymentStatus || 'pending',
+      isVPA: !!acsTemplate,
+      payment_page: responsePaymentPage,
+      payment_method: paymentMethod,
+      isEatoorMoney: responsePaymentPage === 'eatoor_money'
     };
+    
+    console.log('Payment initiation result:', result);
+    return result;
+    
   } catch (error) {
     console.error("Payment initiation error:", error);
     throw error;
@@ -395,94 +445,265 @@ export const initiateBackendPayment = async (orderData: any) => {
 };
 
 /**
- * Verify payment status from backend using payment/verify endpoint
+ * Verify payment status from backend using validate_payment endpoint
  * @param {string} txnId - Transaction ID
  * @param {number} paymentMethodId - Payment method ID (1: Credit Card, 2: Debit Card, 3: UPI, 4: Netbanking, 5: COD, 6: Eatoor Money)
- * @param {number} orderId - Order ID (required for verification)
+ * @param {string} paymentPage - Payment page identifier (e.g., 'eatoor_money', 'restaurant')
  * @returns {Promise<Object>} - Payment verification result with order details
  */
-export const verifyPaymentStatus = async (txnId: string, paymentMethodId: number | null = null, orderId: number | null = null) => {
+export const verifyPaymentStatus = async (txnId: string, paymentMethodId: number | null = null, paymentPage: string | null = null) => {
   try {
-    if (!orderId) {
-      console.warn("Order ID is required for payment verification");
+    if (!txnId) {
+      console.warn("Transaction ID is required for payment verification");
       return null;
     }
     
-    console.log(`Verifying payment for txnId: ${txnId}, orderId: ${orderId}`);
+    console.log(`Validating payment for txnId: ${txnId}, paymentMethod: ${paymentMethodId}, paymentPage: ${paymentPage}`);
     
-    // Using the imported verifyPayment function with params
-    const response = await verifyPayment(txnId, paymentMethodId, orderId);
+    // Using validate_payment with required parameters
+    const response = await validate_payment(txnId, paymentMethodId, paymentPage);
     
-    console.log('Payment verification response:', response);
+    console.log('Payment validation response:', response);
     
     // Check if API response is successful
-    if (!response.data || response.status !== 200) {
-      console.error("Payment verification API error:", response);
+    if (!response.data || response.data.status == "error") {
+      console.error("Payment validation API error:", response);
       return null;
     }
 
-    // Extract transaction details - handle different response structures
-    let transactionDetails = null;
+    // Extract the payment status from response
+    let transaction = null;
+    let paymentStatus = null;
+    let unmappedStatus = null;
+    let message = null;
+    let transactionId = null;
+    let amount = 0;
+    let paymentMode = null;
+    let bankRefNum = null;
+    let addedon = null;
+    let mihpayid = null;
     
-    // Check for data.transaction_details structure
+    // Handle the new response structure
     if (response.data?.data?.transaction_details) {
-      transactionDetails = response.data.data.transaction_details;
-    } 
-    // Check for direct transaction_details
-    else if (response.data?.transaction_details) {
-      transactionDetails = response.data.transaction_details;
-    }
-    // Check for payu_response structure
-    else if (response.data?.payu_response?.transaction_details) {
-      transactionDetails = response.data.payu_response.transaction_details;
+      // If transaction_details is an object with txnId as key
+      const details = response.data.data.transaction_details;
+      transaction = details[txnId] || details;
+      
+      // Extract status from the transaction
+      if (transaction) {
+        paymentStatus = transaction.status || transaction.payment_status;
+        unmappedStatus = transaction.unmappedstatus || transaction.unmapped_status;
+        message = transaction.error_Message || transaction.error_message || transaction.msg;
+        transactionId = transaction.txnid || transaction.transaction_id;
+        amount = parseFloat(transaction.amt || transaction.transaction_amount || transaction.amount || 0);
+        paymentMode = transaction.mode || transaction.payment_mode || transaction.method;
+        bankRefNum = transaction.bank_ref_num || transaction.bank_ref_number;
+        addedon = transaction.addedon || transaction.created_at;
+        mihpayid = transaction.mihpayid;
+      }
+    } else if (response.data?.transaction_details) {
+      const details = response.data.transaction_details;
+      transaction = details[txnId] || details;
+      
+      if (transaction) {
+        paymentStatus = transaction.status || transaction.payment_status;
+        unmappedStatus = transaction.unmappedstatus || transaction.unmapped_status;
+        message = transaction.error_Message || transaction.error_message || transaction.msg;
+        transactionId = transaction.txnid || transaction.transaction_id;
+        amount = parseFloat(transaction.amt || transaction.transaction_amount || transaction.amount || 0);
+        paymentMode = transaction.mode || transaction.payment_mode || transaction.method;
+        bankRefNum = transaction.bank_ref_num || transaction.bank_ref_number;
+        addedon = transaction.addedon || transaction.created_at;
+        mihpayid = transaction.mihpayid;
+      }
+    } else if (response.data?.payu_response?.transaction_details) {
+      const details = response.data.payu_response.transaction_details;
+      transaction = details[txnId] || details;
+      
+      if (transaction) {
+        paymentStatus = transaction.status || transaction.payment_status;
+        unmappedStatus = transaction.unmappedstatus || transaction.unmapped_status;
+        message = transaction.error_Message || transaction.error_message || transaction.msg;
+        transactionId = transaction.txnid || transaction.transaction_id;
+        amount = parseFloat(transaction.amt || transaction.transaction_amount || transaction.amount || 0);
+        paymentMode = transaction.mode || transaction.payment_mode || transaction.method;
+        bankRefNum = transaction.bank_ref_num || transaction.bank_ref_number;
+        addedon = transaction.addedon || transaction.created_at;
+        mihpayid = transaction.mihpayid;
+      }
     }
     
-    if (!transactionDetails || Object.keys(transactionDetails).length === 0) {
-      console.error("No transaction details found");
-      return null;
+    // If transaction not found in details, check if response.data itself has the status
+    if (!transaction || Object.keys(transaction).length === 0) {
+      // Check if response.data has direct status fields
+      if (response.data.status || response.data.payment_status) {
+        transaction = {
+          status: response.data.status,
+          payment_status: response.data.payment_status,
+          unmappedstatus: response.data.unmapped_status || response.data.unmappedstatus,
+          message: response.data.message,
+          transaction_id: response.data.transaction_id || txnId,
+          amount: response.data.amount || 0,
+          mode: response.data.payment_mode || response.data.mode,
+          bank_ref_num: response.data.bank_ref_num,
+          addedon: response.data.addedon
+        };
+        paymentStatus = response.data.status || response.data.payment_status;
+        unmappedStatus = response.data.unmapped_status || response.data.unmappedstatus;
+        message = response.data.message;
+        transactionId = response.data.transaction_id || txnId;
+        amount = parseFloat(response.data.amount || 0);
+        paymentMode = response.data.payment_mode || response.data.mode;
+        bankRefNum = response.data.bank_ref_num;
+        addedon = response.data.addedon;
+      }
     }
-
-    // Get the transaction object (key is the txnId)
-    const transaction = transactionDetails[txnId];
-    if (!transaction) {
-      console.error(`Transaction not found for ID: ${txnId}`);
-      return null;
+    
+    // If we have a transaction but it's not the direct transaction, try to find it
+    if (transaction && typeof transaction === 'object' && !transaction.status && !transaction.payment_status) {
+      // If transaction has the txnId as a property
+      if (transaction[txnId]) {
+        const nestedTxn = transaction[txnId];
+        transaction = nestedTxn;
+        paymentStatus = nestedTxn.status || nestedTxn.payment_status;
+        unmappedStatus = nestedTxn.unmappedstatus || nestedTxn.unmapped_status;
+        message = nestedTxn.error_Message || nestedTxn.error_message || nestedTxn.msg;
+        transactionId = nestedTxn.txnid || nestedTxn.transaction_id;
+        amount = parseFloat(nestedTxn.amt || nestedTxn.transaction_amount || nestedTxn.amount || 0);
+        paymentMode = nestedTxn.mode || nestedTxn.payment_mode || nestedTxn.method;
+        bankRefNum = nestedTxn.bank_ref_num || nestedTxn.bank_ref_number;
+        addedon = nestedTxn.addedon || nestedTxn.created_at;
+        mihpayid = nestedTxn.mihpayid;
+      }
     }
-
+    
+    // If no transaction found, try to use the whole response
+    if (!transaction || Object.keys(transaction).length === 0) {
+      transaction = response.data;
+      paymentStatus = transaction.status || transaction.payment_status;
+      unmappedStatus = transaction.unmapped_status || transaction.unmappedstatus;
+      message = transaction.message;
+      transactionId = transaction.transaction_id || txnId;
+      amount = parseFloat(transaction.amount || 0);
+      paymentMode = transaction.payment_mode || transaction.mode;
+      bankRefNum = transaction.bank_ref_num;
+      addedon = transaction.addedon;
+    }
+    
+    console.log('Extracted transaction:', transaction);
+    
     // Normalize status response based on transaction status
-    const transactionStatus = transaction.status?.toLowerCase();
+    const transactionStatus = (paymentStatus || transaction?.status || transaction?.payment_status || 'pending').toLowerCase();
+    const unmappedStatusLower = (unmappedStatus || '').toLowerCase();
     
-    // Check if payment is successful
-    const isSuccess = transactionStatus === "success";
+    // Check payment status with more accurate mapping
+    const isSuccess = transactionStatus === "success" || 
+                      transactionStatus === "completed" || 
+                      transactionStatus === "captured" ||
+                      transactionStatus === "approved" ||
+                      (unmappedStatusLower === "completed" || unmappedStatusLower === "success" || unmappedStatusLower === "captured");
     
-    // Check if payment is pending
-    const isPending = transactionStatus === "pending";
+    const isPending = transactionStatus === "pending" || 
+                      transactionStatus === "processing" || 
+                      transactionStatus === "initiated" ||
+                      unmappedStatusLower === "in progress" ||
+                      unmappedStatusLower === "pending" ||
+                      unmappedStatusLower === "processing" ||
+                      unmappedStatusLower === "initiated";
     
-    // Check if payment failed
-    const isFailed = transactionStatus === "failure" || transactionStatus === "failed";
-
-    return {
+    const isFailed = transactionStatus === "failure" || 
+                     transactionStatus === "failed" || 
+                     transactionStatus === "declined" ||
+                     transactionStatus === "rejected" ||
+                     unmappedStatusLower === "failure" ||
+                     unmappedStatusLower === "failed" ||
+                     unmappedStatusLower === "declined" ||
+                     unmappedStatusLower === "rejected";
+    
+    // If it's Eatoor Money, check the payment status specifically
+    if (paymentPage === 'eatoor_money') {
+      const eatoorStatus = transaction?.payment_status?.toLowerCase() || transactionStatus;
+      if (eatoorStatus === 'completed' || eatoorStatus === 'success' || isSuccess) {
+        return {
+          success: true,
+          pending: false,
+          failed: false,
+          status: transaction.payment_status || eatoorStatus || 'completed',
+          unmappedstatus: unmappedStatus || transaction.unmappedstatus || 'completed',
+          message: transaction.message || 'Payment completed successfully',
+          amount: amount || parseFloat(transaction.amount) || 0,
+          transaction_id: transactionId || transaction.transaction_id || txnId,
+          payment_mode: paymentMode || transaction.payment_mode,
+          payment_page: paymentPage,
+          mihpayid: mihpayid || transaction.mihpayid,
+          bank_ref_num: bankRefNum || transaction.bank_ref_num,
+          addedon: addedon || transaction.addedon,
+          raw_data: transaction
+        };
+      }
+      
+      if (eatoorStatus === 'pending' || eatoorStatus === 'processing' || eatoorStatus === 'initiated' || isPending) {
+        return {
+          success: false,
+          pending: true,
+          failed: false,
+          status: transaction.payment_status || eatoorStatus || 'pending',
+          unmappedstatus: unmappedStatus || transaction.unmappedstatus || 'in progress',
+          message: transaction.message || 'Payment is being processed. Please check again after some time.',
+          amount: amount || parseFloat(transaction.amount) || 0,
+          transaction_id: transactionId || transaction.transaction_id || txnId,
+          payment_mode: paymentMode || transaction.payment_mode,
+          payment_page: paymentPage,
+          mihpayid: mihpayid || transaction.mihpayid,
+          bank_ref_num: bankRefNum || transaction.bank_ref_num,
+          addedon: addedon || transaction.addedon,
+          raw_data: transaction
+        };
+      }
+    }
+    
+    // Build the result object
+    const result = {
       success: isSuccess,
       pending: isPending,
       failed: isFailed,
-      status: transaction.status,
-      unmappedstatus: transaction.unmappedstatus,
-      message: transaction.error_Message || transaction.error_message || "NO ERROR",
-      error_code: transaction.error_code,
-      amount: parseFloat(transaction.amt) || parseFloat(transaction.transaction_amount) || 0,
-      net_amount: parseFloat(transaction.net_amount_debit) || 0,
-      transaction_id: transaction.mihpayid,
-      bank_ref_num: transaction.bank_ref_num,
-      payment_mode: transaction.mode,
-      app_name: transaction.App_Name,
-      txnid: transaction.txnid,
-      addedon: transaction.addedon,
-      productinfo: transaction.productinfo,
-      firstname: transaction.firstname,
-      bankcode: transaction.bankcode,
-      order_id: orderId,
-      raw_data: transaction
+      status: paymentStatus || transaction.status || transaction.payment_status || transactionStatus,
+      unmappedstatus: unmappedStatus || transaction.unmappedstatus || transaction.unmapped_status || transactionStatus,
+      message: message || 
+               transaction?.error_Message || 
+               transaction?.error_message || 
+               transaction?.msg || 
+               transaction?.message || 
+               "NO ERROR",
+      error_code: transaction?.error_code || transaction?.code,
+      amount: amount || 
+              parseFloat(transaction?.amt) || 
+              parseFloat(transaction?.transaction_amount) || 
+              parseFloat(transaction?.amount) || 0,
+      net_amount: parseFloat(transaction?.net_amount_debit) || 0,
+      transaction_id: transactionId || 
+                      transaction?.mihpayid || 
+                      transaction?.transaction_id || 
+                      transaction?.txnid || 
+                      txnId,
+      mihpayid: mihpayid || transaction?.mihpayid,
+      bank_ref_num: bankRefNum || transaction?.bank_ref_num || transaction?.bank_ref_number,
+      payment_mode: paymentMode || transaction?.mode || transaction?.payment_mode || transaction?.method,
+      app_name: transaction?.App_Name || transaction?.app_name,
+      txnid: transaction?.txnid || txnId,
+      addedon: addedon || transaction?.addedon || transaction?.created_at || transaction?.createdAt,
+      productinfo: transaction?.productinfo || transaction?.product_info,
+      firstname: transaction?.firstname || transaction?.first_name,
+      bankcode: transaction?.bankcode || transaction?.bank_code,
+      payment_page: paymentPage,
+      payment_method: transaction?.payment_method,
+      order_id: transaction?.order_id,
+      raw_data: transaction || response.data
     };
+    
+    console.log('Payment verification result:', result);
+    return result;
+    
   } catch (error) {
     console.error("Payment verification error:", error);
     return null;
@@ -503,14 +724,16 @@ export const updateOrderAfterPayment = async (orderId: number, paymentData: any)
       transaction_id: paymentData.transaction_id,
       payment_id: paymentData.payment_id,
       payment_mode: paymentData.payment_mode,
-      bank_ref_num: paymentData.bank_ref_num
+      bank_ref_num: paymentData.bank_ref_num,
+      payment_page: paymentData.payment_page
     };
     
     // Return success for now
     return {
       success: true,
       order_id: orderId,
-      message: "Order updated successfully"
+      message: "Order updated successfully",
+      data: params
     };
   } catch (error) {
     console.error("Error updating order:", error);
@@ -522,11 +745,11 @@ export const updateOrderAfterPayment = async (orderId: number, paymentData: any)
  * Check payment status from backend (legacy method - kept for compatibility)
  * @param {string} txnId - Transaction ID
  * @param {number} paymentMethodId - Payment method ID
- * @param {number} orderId - Order ID
+ * @param {string} paymentPage - Payment page identifier
  * @returns {Promise<Object>} - Payment status
  */
-export const checkPaymentStatus = async (txnId: string, paymentMethodId: number | null = null, orderId: number | null = null) => {
-  return await verifyPaymentStatus(txnId, paymentMethodId, orderId);
+export const checkPaymentStatus = async (txnId: string, paymentMethodId: number | null = null, paymentPage: string | null = null) => {
+  return await verifyPaymentStatus(txnId, paymentMethodId, paymentPage);
 };
 
 /**
@@ -558,7 +781,10 @@ export const processUPIPayment = async (paymentData: any, preferredApp: string |
       success: result.success,
       appUsed: result.app,
       error: result.error,
-      paymentData: paymentData
+      paymentData: {
+        ...paymentData,
+        payment_page: paymentData.payment_page
+      }
     };
   } catch (error: any) {
     console.error("Payment processing error:", error);
@@ -571,10 +797,10 @@ export const processUPIPayment = async (paymentData: any, preferredApp: string |
 };
 
 /**
- * Start polling for payment status using the new verify endpoint
+ * Start polling for payment status using the validate_payment endpoint
  * @param {string} txnId - Transaction ID
  * @param {number} paymentMethodId - Payment method ID
- * @param {number} orderId - Order ID (required)
+ * @param {string} paymentPage - Payment page identifier
  * @param {Function} onStatusUpdate - Callback for status updates
  * @param {Function} onComplete - Callback when payment completes
  * @param {Object} options - Polling options
@@ -583,7 +809,7 @@ export const processUPIPayment = async (paymentData: any, preferredApp: string |
 export const startPaymentPolling = (
   txnId: string, 
   paymentMethodId: number | null, 
-  orderId: number | null, 
+  paymentPage: string | null, 
   onStatusUpdate: (status: any) => void, 
   onComplete: (result: any) => void, 
   options: any = {}
@@ -599,12 +825,19 @@ export const startPaymentPolling = (
   let intervalId: NodeJS.Timeout | null = null;
   let timeoutId: NodeJS.Timeout | null = null;
   let isCompleted = false;
-  let currentOrderId = orderId;
+  let currentPaymentPage = paymentPage;
   
-  const updateOrderId = (newOrderId: number | null) => {
-    if (newOrderId && !currentOrderId) {
-      currentOrderId = newOrderId;
-      console.log(`Order ID updated to ${currentOrderId} for transaction ${txnId}`);
+  const updatePaymentPage = (newPaymentPage: string | null) => {
+    if (newPaymentPage) {
+      currentPaymentPage = newPaymentPage;
+      console.log(`Payment page updated to ${currentPaymentPage} for transaction ${txnId}`);
+    }
+  };
+  
+  const updatePaymentMethod = (newPaymentMethod: number | null) => {
+    if (newPaymentMethod) {
+      paymentMethodId = newPaymentMethod;
+      console.log(`Payment method updated to ${paymentMethodId} for transaction ${txnId}`);
     }
   };
   
@@ -617,17 +850,18 @@ export const startPaymentPolling = (
       onStatusUpdate({
         attempts: attempts,
         maxAttempts: maxAttempts,
-        percentage: (attempts / maxAttempts) * 100
+        percentage: (attempts / maxAttempts) * 100,
+        payment_page: currentPaymentPage
       });
     }
     
-    console.log(`Polling payment status for txnId: ${txnId}, attempt: ${attempts}/${maxAttempts}`);
+    console.log(`Polling payment status for txnId: ${txnId}, attempt: ${attempts}/${maxAttempts}, payment_page: ${currentPaymentPage}`);
     
-    const status = await verifyPaymentStatus(txnId, paymentMethodId, currentOrderId);
+    const status = await verifyPaymentStatus(txnId, paymentMethodId, currentPaymentPage);
     
     if (status) {
       if (status.success) {
-        console.log(`Payment successful for transaction ${txnId}, order ${currentOrderId}`);
+        console.log(`Payment successful for transaction ${txnId}`);
         isCompleted = true;
         stopPolling();
         if (onComplete) {
@@ -635,10 +869,9 @@ export const startPaymentPolling = (
             success: true, 
             status: 'success',
             data: status,
-            order_id: currentOrderId,
             transaction_id: status.transaction_id,
             payment_id: status.payment_id,
-            order_number: status.order_number,
+            payment_page: currentPaymentPage,
             message: 'Payment completed successfully'
           });
         }
@@ -654,7 +887,7 @@ export const startPaymentPolling = (
             status: 'failed',
             error: status.message || "Payment failed",
             data: status,
-            order_id: currentOrderId
+            payment_page: currentPaymentPage
           });
         }
         return;
@@ -667,7 +900,7 @@ export const startPaymentPolling = (
             attempts: attempts,
             maxAttempts: maxAttempts,
             data: status,
-            order_id: currentOrderId
+            payment_page: currentPaymentPage
           });
         }
       }
@@ -678,7 +911,7 @@ export const startPaymentPolling = (
       isCompleted = true;
       stopPolling();
       
-      const finalStatus = await verifyPaymentStatus(txnId, paymentMethodId, currentOrderId);
+      const finalStatus = await verifyPaymentStatus(txnId, paymentMethodId, currentPaymentPage);
       if (finalStatus && finalStatus.pending) {
         if (onComplete) {
           onComplete({ 
@@ -686,7 +919,18 @@ export const startPaymentPolling = (
             status: 'pending',
             error: "Payment is still pending. Please check your bank app or contact support.",
             data: finalStatus,
-            order_id: currentOrderId
+            payment_page: currentPaymentPage
+          });
+        }
+      } else if (finalStatus && finalStatus.success) {
+        if (onComplete) {
+          onComplete({ 
+            success: true, 
+            status: 'success',
+            data: finalStatus,
+            transaction_id: finalStatus.transaction_id,
+            payment_page: currentPaymentPage,
+            message: 'Payment completed successfully'
           });
         }
       } else {
@@ -696,7 +940,7 @@ export const startPaymentPolling = (
             status: 'timeout',
             error: "Payment verification timeout. Please check your payment status in order history.",
             attempts: attempts,
-            order_id: currentOrderId
+            payment_page: currentPaymentPage
           });
         }
       }
@@ -712,8 +956,10 @@ export const startPaymentPolling = (
       clearTimeout(timeoutId);
       timeoutId = null;
     }
+    console.log(`Polling stopped for transaction ${txnId}`);
   };
   
+  // Start polling
   intervalId = setInterval(checkStatus, interval);
   
   timeoutId = setTimeout(() => {
@@ -726,17 +972,20 @@ export const startPaymentPolling = (
           success: false, 
           status: 'timeout',
           error: "Payment timeout. Please check your payment status in order history.",
-          order_id: currentOrderId
+          payment_page: currentPaymentPage
         });
       }
     }
   }, timeout);
   
+  // Return control object
   return {
     stop: stopPolling,
     getAttempts: () => attempts,
     isRunning: () => intervalId !== null,
-    updateOrderId: updateOrderId
+    updatePaymentPage: updatePaymentPage,
+    updatePaymentMethod: updatePaymentMethod,
+    getPaymentPage: () => currentPaymentPage
   };
 };
 
@@ -744,17 +993,18 @@ export const startPaymentPolling = (
  * Get detailed payment status (one-time check)
  * @param {string} txnId - Transaction ID
  * @param {number} paymentMethodId - Payment method ID
- * @param {number} orderId - Order ID
+ * @param {string} paymentPage - Payment page identifier
  * @returns {Promise<Object>} - Detailed payment status
  */
-export const getDetailedPaymentStatus = async (txnId: string, paymentMethodId: number | null = null, orderId: number | null = null) => {
+export const getDetailedPaymentStatus = async (txnId: string, paymentMethodId: number | null = null, paymentPage: string | null = null) => {
   try {
-    const status = await verifyPaymentStatus(txnId, paymentMethodId, orderId);
+    const status = await verifyPaymentStatus(txnId, paymentMethodId, paymentPage);
     
     if (!status) {
       return {
         success: false,
-        error: "Unable to fetch payment status"
+        error: "Unable to fetch payment status",
+        payment_page: paymentPage
       };
     }
     
@@ -770,13 +1020,17 @@ export const getDetailedPaymentStatus = async (txnId: string, paymentMethodId: n
       bank_ref_num: status.bank_ref_num,
       addedon: status.addedon,
       message: status.message,
-      order_id: orderId
+      payment_page: paymentPage,
+      payment_method: status.payment_method,
+      order_id: status.order_id,
+      raw_data: status.raw_data
     };
   } catch (error: any) {
     console.error("Error getting detailed payment status:", error);
     return {
       success: false,
-      error: error.message
+      error: error.message,
+      payment_page: paymentPage
     };
   }
 };
@@ -788,6 +1042,10 @@ export const getDetailedPaymentStatus = async (txnId: string, paymentMethodId: n
  */
 export const canRetryPayment = (paymentStatus: any) => {
   if (!paymentStatus) return true;
+  // Can retry if payment failed or is pending (but not if it's a COD or Eatoor Money payment)
+  if (paymentStatus.payment_page === 'eatoor_money' || paymentStatus.payment_page === 'cod') {
+    return false;
+  }
   return !paymentStatus.success && (paymentStatus.failed || paymentStatus.pending);
 };
 
@@ -802,42 +1060,53 @@ export const formatPaymentStatusForDisplay = (paymentStatus: any) => {
       title: "Unknown",
       message: "Unable to determine payment status",
       color: "#FF9800",
-      icon: "help-circle"
+      icon: "help-circle",
+      shouldRetry: false
     };
   }
   
+  // Check if it's Eatoor Money payment
+  const isEatoorMoney = paymentStatus.payment_page === 'eatoor_money';
+  
   if (paymentStatus.success) {
     return {
-      title: "Payment Successful",
-      message: `Amount ₹${paymentStatus.amount?.toFixed(2)} has been debited successfully`,
+      title: isEatoorMoney ? "Payment Successful via Eatoor Money" : "Payment Successful",
+      message: isEatoorMoney 
+        ? `Amount ₹${paymentStatus.amount?.toFixed(2)} has been debited from your Eatoor Money wallet`
+        : `Amount ₹${paymentStatus.amount?.toFixed(2)} has been debited successfully`,
       color: "#4CAF50",
       icon: "check-circle",
       transactionId: paymentStatus.transaction_id,
       paymentMode: paymentStatus.payment_mode,
       bankRef: paymentStatus.bank_ref_num,
-      orderId: paymentStatus.order_id
+      paymentPage: paymentStatus.payment_page,
+      shouldRetry: false
     };
   }
   
   if (paymentStatus.pending) {
     return {
-      title: "Payment Pending",
-      message: "Your payment is being processed. Please check your bank app or order history for updates.",
+      title: isEatoorMoney ? "Eatoor Money Payment Pending" : "Payment Pending",
+      message: isEatoorMoney 
+        ? "Your Eatoor Money payment is being processed. Please check your wallet balance."
+        : "Your payment is being processed. Please check your bank app or order history for updates.",
       color: "#FF9800",
       icon: "clock",
       shouldRetry: false,
-      orderId: paymentStatus.order_id
+      paymentPage: paymentStatus.payment_page
     };
   }
   
   if (paymentStatus.failed) {
     return {
-      title: "Payment Failed",
-      message: paymentStatus.message || "Payment could not be completed. Please try again.",
+      title: isEatoorMoney ? "Eatoor Money Payment Failed" : "Payment Failed",
+      message: isEatoorMoney
+        ? paymentStatus.message || "Insufficient balance or transaction failed. Please try again or use another payment method."
+        : paymentStatus.message || "Payment could not be completed. Please try again.",
       color: "#F44336",
       icon: "alert-circle",
-      shouldRetry: true,
-      orderId: paymentStatus.order_id
+      shouldRetry: !isEatoorMoney,
+      paymentPage: paymentStatus.payment_page
     };
   }
   
@@ -846,7 +1115,8 @@ export const formatPaymentStatusForDisplay = (paymentStatus: any) => {
     message: "Unable to determine payment status. Please check order history.",
     color: "#9E9E9E",
     icon: "help-circle",
-    shouldRetry: true
+    shouldRetry: true,
+    paymentPage: paymentStatus.payment_page
   };
 };
 

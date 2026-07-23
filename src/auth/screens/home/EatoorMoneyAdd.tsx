@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,62 +19,119 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import RazorpayCheckout from 'react-native-razorpay';
+
+// Import payment components and services
+import { PaymentModal } from './utils/PaymentModal';
 import {
-  createWalletOrder,
-  walletAddMoneySuccess
-} from '../../../api/wallet';
+  getAllPaymentMethods,
+} from './utils/UPIPaymentService';
+import {
+  initiateBackendPayment,
+  processUPIPayment,
+  startPaymentPolling,
+  getCustomerDetails,
+} from './utils/PaymentService';
+import { PaymentMethodModal } from './utils/PaymentMethodModal';
 
 const { width, height } = Dimensions.get('window');
+
+// Constants
+const PAYMENT_METHODS = {
+  UPI: 3,
+  COD: 5,
+  EATOOR_MONEY: 6,
+} as const;
+
+const PAYMENT_TYPES = {
+  ONLINE: 1,
+  COD: 2,
+} as const;
+
+const PAYMENT_STATUS = {
+  IN_PROGRESS: 1,
+  COMPLETED: 5,
+  FAILED: 6,
+  PENDING: 7,
+} as const;
+
+const PAYMENT_PAGE = "eatoor_money";
 
 const EatoorMoneyAdd = () => {
   const navigation = useNavigation();
   const route = useRoute();
+
+  // Amount states
   const [amount, setAmount] = useState('');
   const [selectedDefaultAmount, setSelectedDefaultAmount] = useState(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [processingPayment, setProcessingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState(null);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+
+  // User state
   const [user, setUser] = useState({
     name: '',
     email: '',
     contact: '',
     id: '',
+    wallet_balance: '0',
   });
-  const [paymentError, setPaymentError] = useState(null);
-  const [paymentSuccess, setPaymentSuccess] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
+
+  // Refs
   const amountInputRef = useRef(null);
   const scrollViewRef = useRef(null);
-  const amountContainerRef = useRef(null); // New ref for the container
+  const amountContainerRef = useRef(null);
+  const paymentInProgressRef = useRef(false);
+  const pollingControlRef = useRef(null);
+
+  // Payment method states
+  const [paymentMethods, setPaymentMethods] = useState(null);
+  const [selectedPaymentType, setSelectedPaymentType] = useState(null);
+  const [selectedUpiApp, setSelectedUpiApp] = useState(null);
+  const [selectedSavedUPI, setSelectedSavedUPI] = useState(null);
+  const [selectedWalletApp, setSelectedWalletApp] = useState(null);
+  const [selectedBank, setSelectedBank] = useState(null);
+  const [selectedCardType, setSelectedCardType] = useState(null);
+  const [showPaymentSectionModal, setShowPaymentSectionModal] = useState(false);
+  const [installedUpiApps, setInstalledUpiApps] = useState([]);
+  const [allUpiApps, setAllUpiApps] = useState([]);
+  const [customUpiId, setCustomUpiId] = useState('');
+  const [savedUpiIds, setSavedUpiIds] = useState([]);
+  const [checkingApps, setCheckingApps] = useState(true);
+  const [isSavingUpi, setIsSavingUpi] = useState(false);
+  const [selectedUpiVpa, setSelectedUpiVpa] = useState('');
+  const [selectedUpiPaymentMethodType, setSelectedUpiPaymentMethodType] = useState('');
+
+  // Payment tracking states
+  const [isPaymentInProgress, setIsPaymentInProgress] = useState(false);
+  const [currentTransactionId, setCurrentTransactionId] = useState(null);
+  const [currentOrderRef, setCurrentOrderRef] = useState(null);
+  const [currentPaymentData, setCurrentPaymentData] = useState(null);
+  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [paymentModalStatus, setPaymentModalStatus] = useState('idle');
+  const [paymentAmount, setPaymentAmount] = useState(0);
+  const [pollingAttempts, setPollingAttempts] = useState(0);
+  const [createdOrderNumber, setCreatedOrderNumber] = useState('');
+  const [createdOrderId, setCreatedOrderId] = useState(null);
+  const [createdOrderTotal, setCreatedOrderTotal] = useState('');
 
   const cartScreenBalance = route?.params?.amountToAdd;
-
-  useEffect(() => {
-    if (cartScreenBalance) {
-      setAmount(String(cartScreenBalance));
-    }
-  }, [cartScreenBalance]);
-
   const defaultAmounts = [100, 200, 300, 500, 1000, 2000];
   const MIN_AMOUNT = 1;
   const MAX_AMOUNT = 100000;
 
-  // Handle keyboard with proper scrolling
+  // Keyboard handling
   useEffect(() => {
     const showSubscription = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
       (e) => {
         setKeyboardHeight(e.endCoordinates.height);
         setKeyboardVisible(true);
-        
-        // Scroll to input when keyboard appears
-        setTimeout(() => {
-          scrollToInput();
-        }, 100);
+        setTimeout(() => scrollToInput(), 100);
       }
     );
-    
     const hideSubscription = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
       () => {
@@ -82,49 +139,21 @@ const EatoorMoneyAdd = () => {
         setKeyboardVisible(false);
       }
     );
-
     return () => {
       showSubscription.remove();
       hideSubscription.remove();
     };
   }, []);
 
-  // Function to scroll to input - Fixed version
   const scrollToInput = () => {
     if (scrollViewRef.current && amountInputRef.current) {
-      try {
-        // Get the native node handle
-        const inputHandle = findNodeHandle(amountInputRef.current);
-        
-        if (inputHandle) {
-          // Use measure instead of measureLayout
-          amountInputRef.current.measure((x, y, width, height, pageX, pageY) => {
-            scrollViewRef.current.scrollTo({
-              y: pageY - 100,
-              animated: true
-            });
-          });
-        } else {
-          // Fallback: scroll to a default position
-          scrollViewRef.current.scrollTo({
-            y: 200,
-            animated: true
-          });
-        }
-      } catch (error) {
-        console.log('Scroll error:', error);
-        // Fallback scrolling
-        if (scrollViewRef.current) {
-          scrollViewRef.current.scrollTo({
-            y: 200,
-            animated: true
-          });
-        }
-      }
+      amountInputRef.current.measure((x, y, width, height, pageX, pageY) => {
+        scrollViewRef.current.scrollTo({ y: pageY - 100, animated: true });
+      });
     }
   };
 
-  // Fetch user data on component mount
+  // Load user data
   useEffect(() => {
     fetchUserData();
   }, []);
@@ -139,6 +168,7 @@ const EatoorMoneyAdd = () => {
           email: parsedUser.email || 'user@example.com',
           contact: parsedUser.contact_number || parsedUser.phone || parsedUser.mobile || '9999999999',
           id: parsedUser.id || parsedUser.user_id || '',
+          wallet_balance: parsedUser.wallet_balance || '0',
         });
       }
     } catch (error) {
@@ -146,26 +176,62 @@ const EatoorMoneyAdd = () => {
     }
   };
 
+  // Load payment methods when user is available
+  const loadPaymentMethods = useCallback(async () => {
+    if (!user.id) return;
+    setCheckingApps(true);
+    try {
+      const response = await getAllPaymentMethods(user.id, PAYMENT_PAGE);
+      console.log('Payment methods loaded:', response);
+      setPaymentMethods(response);
+
+      if (response.upi?.isActive && response.upi.apps) {
+        const installedApps = response.upi.apps.filter(app => app.installed === true);
+        const allApps = response.upi.apps;
+        setInstalledUpiApps(installedApps);
+        setAllUpiApps(allApps);
+        if (installedApps.length > 0 && !selectedUpiApp && !selectedSavedUPI) {
+          setSelectedUpiApp(installedApps[0]);
+        }
+      } else {
+        setInstalledUpiApps([]);
+        setAllUpiApps([]);
+      }
+    } catch (error) {
+      console.error('Error loading payment methods:', error);
+    } finally {
+      setCheckingApps(false);
+    }
+  }, [user.id]);
+
+  useEffect(() => {
+    if (user.id) {
+      loadPaymentMethods();
+    }
+  }, [user.id, loadPaymentMethods]);
+
+  // Amount handling
+  useEffect(() => {
+    if (cartScreenBalance) {
+      setAmount(String(cartScreenBalance));
+    }
+  }, [cartScreenBalance]);
+
   const handleDefaultAmountSelect = (value) => {
     setAmount(value.toString());
     setSelectedDefaultAmount(value);
     setPaymentError(null);
     setPaymentSuccess(false);
-    
-    // Focus on input after selecting quick amount
     if (amountInputRef.current) {
       amountInputRef.current.focus();
     }
   };
 
   const handleAmountChange = (text) => {
-    // Allow only numbers
     const numericValue = text.replace(/[^0-9]/g, '');
     setAmount(numericValue);
     setPaymentError(null);
     setPaymentSuccess(false);
-    
-    // Check if the amount matches any default amount
     const parsedAmount = parseInt(numericValue) || 0;
     const matchedDefault = defaultAmounts.find(item => item === parsedAmount);
     setSelectedDefaultAmount(matchedDefault || null);
@@ -185,182 +251,433 @@ const EatoorMoneyAdd = () => {
     return { isValid: true, amount: numAmount };
   };
 
-  const handlePayNow = async () => {
-    // Dismiss keyboard
-    Keyboard.dismiss();
-    
-    const validation = validateAmount(amount);
-    if (!validation.isValid) {
-      Alert.alert('Invalid Amount', validation.message);
-      return;
-    }
-
-    try {
-      setProcessingPayment(true);
-      setPaymentError(null);
-      setPaymentSuccess(false);
-
-      console.log('Creating payment order...');
-      const orderResponse = await createWalletOrder({ 
-        amount: validation.amount,
-        user_id: user.id,
-        user_email: user.email,
-        user_name: user.name,
-      });
-
-      const orderData = orderResponse.data;
-
-      if (!orderData?.order_id) {
-        throw new Error('Failed to create payment order. Please try again.');
-      }
-      
-      const razorpayOptions = {
-        description: 'Add Eatoor Money',
-        method: {
-            upi: true,
-            card: true,
-            netbanking: true,
-            wallet: true,
-        },
-        image: 'https://eatoorprod.s3.amazonaws.com/eatoor-logo/fwdeatoorlogofiles/5.png',
-        currency: 'INR',
-        key: orderData.key || 'rzp_live_FHtZiuvJzjmBrk',
-        amount: validation.amount * 100,
-        name: 'Eatoor Money',
-        order_id: orderData.order_id,
-        prefill: {
-          email: user.email || 'user@example.com',
-          contact: user.contact || '9999999999',
-          name: user.name || 'Eatoor User',
-        },
-        theme: { color: '#FF6B35' },
-        notes: {
-          source: 'eatoor_wallet',
-          user_id: user.id || 'unknown',
-          app_name: 'Eatoor',
-        },
-        timeout: 300,
-      };
-
-      console.log('Opening Razorpay checkout...');
-      const razorpayResponse = await RazorpayCheckout.open(razorpayOptions);
-
-      if (razorpayResponse?.razorpay_payment_id) {
-        console.log('Payment successful, verifying...');
-
-        const successPayload = {
-          razorpay_payment_id: razorpayResponse.razorpay_payment_id,
-          razorpay_order_id: razorpayResponse.razorpay_order_id,
-          razorpay_signature: razorpayResponse.razorpay_signature,
-          amount: validation.amount,
-        };
-
-        const verificationResponse = await walletAddMoneySuccess(successPayload);
-
-        if (verificationResponse.status === 200 || verificationResponse.data?.success) {
-          console.log('Payment verification successful');
-
-          // Update wallet balance in AsyncStorage
-          try {
-            const userData = await AsyncStorage.getItem('user');
-            if (userData) {
-              const parsedUser = JSON.parse(userData);
-              const currentBalance = parseFloat(parsedUser.wallet_balance || 0);
-              parsedUser.wallet_balance = (currentBalance + validation.amount).toString();
-              await AsyncStorage.setItem('user', JSON.stringify(parsedUser));
-            }
-          } catch (storageError) {
-            console.error('Wallet update error:', storageError);
-          }
-
-          setProcessingPayment(false);
-          setSuccessMessage(`₹${validation.amount.toFixed(2)} has been added to your wallet`);
-          setPaymentSuccess(true);
-
-          // Navigate after 2 seconds
-          setTimeout(() => {
-            if (route?.params?.prevScreen === 'CartScreen') {
-              navigation.navigate('CartScreen');
-            } else {
-              navigation.goBack();
-            }
-          }, 2000);
-
-        } else {
-          throw new Error('Payment verification failed. Please contact support.');
-        }
-      } else {
-        setPaymentError('Payment was cancelled');
-        setProcessingPayment(false);
-      }
-
-    } catch (error) {
-      setProcessingPayment(false);
-      setPaymentSuccess(false);
-
-      if (error.code === 2) {
-        setPaymentError('Payment was cancelled. You can try again.');
-      } else if (error.code === 4) {
-        setPaymentError('Network error. Please check your connection and try again.');
-      } else if (error.code === 5) {
-        setPaymentError('Payment failed. Please try again.');
-      } else if (error.message?.includes('verification')) {
-        setPaymentError('Payment verification failed. Please contact support.');
-      } else {
-        setPaymentError(error.message || 'Failed to process payment.');
-      }
-    }
-  };
-
   const isAmountValid = () => {
     if (!amount) return false;
     const numAmount = parseFloat(amount);
     return !isNaN(numAmount) && numAmount >= MIN_AMOUNT && numAmount <= MAX_AMOUNT;
   };
 
-  const renderPayNowButton = () => {
+  // Payment Method Helpers
+  const getPaymentMethodId = (): number => {
+    switch (selectedPaymentType) {
+      case 'upi':
+      case 'saved_upi':
+        return PAYMENT_METHODS.UPI;
+      case 'wallet':
+        return PAYMENT_METHODS.EATOOR_MONEY;
+      case 'netbanking':
+        return 4;
+      case 'cards':
+        if (selectedCardType === 'credit_card') return 1;
+        if (selectedCardType === 'debit_card') return 2;
+        return 1;
+      default:
+        return PAYMENT_METHODS.UPI;
+    }
+  };
+
+  const getPaymentMethodType = (): string => {
+    switch (selectedPaymentType) {
+      case 'upi':
+        return selectedUpiPaymentMethodType || 'APP';
+      case 'saved_upi':
+        return 'VPA';
+      case 'wallet':
+        return 'WALLET';
+      case 'netbanking':
+        return 'NETBANKING';
+      case 'cards':
+        return selectedCardType === 'credit_card' ? 'CREDIT_CARD' : 'DEBIT_CARD';
+      default:
+        return 'UNKNOWN';
+    }
+  };
+
+  const getUpiVpaForPayment = (): string => {
+    if (selectedSavedUPI) {
+      return selectedSavedUPI.raw_vpa || selectedSavedUPI.vpa;
+    }
+    if (selectedUpiApp) {
+      return selectedUpiApp.customUPIID || selectedUpiApp.vpa || selectedUpiApp.id;
+    }
+    return selectedUpiVpa || customUpiId;
+  };
+
+  const selectPaymentMethod = (type, data, vpa, paymentMethodType) => {
+    setSelectedPaymentType(type);
+    setSelectedUpiApp(null);
+    setSelectedSavedUPI(null);
+    setSelectedWalletApp(null);
+    setSelectedBank(null);
+    setSelectedCardType(null);
+    setSelectedUpiVpa('');
+    setSelectedUpiPaymentMethodType('');
+
+    if (type === 'upi' && data) {
+      setSelectedUpiApp(data);
+      setSelectedUpiVpa(vpa || data.customUPIID || data.vpa || data.id);
+      setSelectedUpiPaymentMethodType(paymentMethodType || (data.customUPIID ? 'VPA' : 'APP'));
+    }
+    if (type === 'saved_upi' && data) {
+      setSelectedSavedUPI(data);
+      setSelectedUpiVpa(data.raw_vpa || data.vpa);
+      setSelectedUpiPaymentMethodType('SAVED_UPI');
+    }
+    if (type === 'wallet' && data) {
+      setSelectedWalletApp(data);
+    }
+    if (type === 'netbanking' && data) {
+      setSelectedBank(data);
+    }
+    if (type === 'cards' && data) {
+      setSelectedCardType(data);
+    }
+    setShowPaymentSectionModal(false);
+  };
+
+  // Payment Initiation Flows
+  const resetPaymentState = () => {
+    if (pollingControlRef.current) {
+      pollingControlRef.current.stop();
+      pollingControlRef.current = null;
+    }
+    setPaymentModalStatus('idle');
+    setPollingAttempts(0);
+    setCurrentTransactionId(null);
+    setCurrentPaymentData(null);
+    paymentInProgressRef.current = false;
+    setIsPaymentInProgress(false);
+  };
+
+  // Generic wallet top-up (for netbanking / cards / any non-UPI)
+  const initiateWalletTopUpGeneric = async (amountValue, paymentType) => {
+    if (paymentInProgressRef.current) return;
+    const validation = validateAmount(String(amountValue));
+    if (!validation.isValid) {
+      Alert.alert('Invalid Amount', validation.message);
+      return;
+    }
+
+    paymentInProgressRef.current = true;
+    setIsPaymentInProgress(true);
+    setPaymentAmount(amountValue);
+    setPaymentModalStatus('processing');
+    setPaymentModalVisible(true);
+
+    try {
+      const customerDetails = await getCustomerDetails();
+      const upiVpa = getUpiVpaForPayment();
+      const paymentMethodId = getPaymentMethodId();
+
+      const orderData = {
+        user_id: user.id,
+        amount: amountValue,
+        productinfo: 'Add Eatoor Money',
+        firstname: customerDetails?.full_name || user.name || 'Eatoor User',
+        email: customerDetails?.email || user.email || 'user@example.com',
+        phone: customerDetails?.contact_number || user.contact || '9999999999',
+        payment_method: paymentMethodId,
+        payment_type: PAYMENT_TYPES.ONLINE,
+        payment_status: PAYMENT_STATUS.IN_PROGRESS,
+        payment_gateway: paymentType?.toUpperCase() || 'UPI',
+        upi_id: upiVpa,
+        vpa: upiVpa,
+        payment_method_type: getPaymentMethodType(),
+        bank_code: selectedBank?.code,
+        card_type: selectedCardType,
+        payment_page: PAYMENT_PAGE
+      };
+
+      console.log('Generic payment orderData:', orderData);
+
+      const paymentInit = await initiateBackendPayment(orderData);
+      setCurrentPaymentData(paymentInit);
+      setCurrentTransactionId(paymentInit.txnid);
+      setCurrentOrderRef(paymentInit.txnid);
+      setCreatedOrderId(paymentInit.order_id);
+      setCreatedOrderNumber(paymentInit.order_number);
+      setCreatedOrderTotal(paymentInit.order_total);
+
+      setPaymentModalStatus('pending');
+
+      // Start polling
+      pollingControlRef.current = startPaymentPolling(
+        paymentInit.txnid,
+        paymentMethodId,
+        PAYMENT_PAGE,
+        (statusUpdate) => setPollingAttempts(statusUpdate.attempts),
+        async (result) => {
+          pollingControlRef.current = null;
+          if (result.success) {
+            // Update local wallet balance directly
+            await updateLocalWalletBalance(amountValue);
+            setPaymentModalStatus('success');
+            setSuccessMessage(`₹${amountValue.toFixed(2)} has been added to your wallet`);
+            setPaymentSuccess(true);
+            // Remove the navigation.goBack() here since PaymentModal handles it
+          } else {
+            setPaymentError(result.error || 'Payment verification failed');
+            setPaymentModalStatus('failed');
+          }
+          paymentInProgressRef.current = false;
+          setIsPaymentInProgress(false);
+        },
+        { interval: 5000, maxAttempts: 10, timeout: 120000 }
+      );
+    } catch (error) {
+      console.error('Generic payment error:', error);
+      setPaymentError(error.message || 'Payment initiation failed');
+      setPaymentModalStatus('failed');
+      paymentInProgressRef.current = false;
+      setIsPaymentInProgress(false);
+    }
+  };
+
+  // UPI wallet top-up
+  const initiateWalletTopUpUPI = async (amountValue) => {
+    if (paymentInProgressRef.current) return;
+    const validation = validateAmount(String(amountValue));
+    if (!validation.isValid) {
+      Alert.alert('Invalid Amount', validation.message);
+      return;
+    }
+
+    paymentInProgressRef.current = true;
+    setIsPaymentInProgress(true);
+    setPaymentAmount(amountValue);
+    setPaymentModalStatus('processing');
+    setPaymentModalVisible(true);
+
+    try {
+      const customerDetails = await getCustomerDetails();
+      const upiVpa = getUpiVpaForPayment();
+
+      const orderData = {
+        user_id: user.id,
+        amount: amountValue,
+        productinfo: 'Add Eatoor Money',
+        firstname: customerDetails?.full_name || user.name || 'Eatoor User',
+        email: customerDetails?.email || user.email || 'user@example.com',
+        phone: customerDetails?.contact_number || user.contact || '9999999999',
+        payment_method: PAYMENT_METHODS.UPI,
+        payment_type: PAYMENT_TYPES.ONLINE,
+        payment_status: PAYMENT_STATUS.IN_PROGRESS,
+        payment_gateway: 'UPI',
+        upi_id: upiVpa,
+        vpa: upiVpa,
+        payment_method_type: getPaymentMethodType(),
+        payment_page: PAYMENT_PAGE
+      };
+
+      console.log('UPI payment orderData:', orderData);
+
+      const paymentInit = await initiateBackendPayment(orderData);
+      setCurrentPaymentData(paymentInit);
+      setCurrentTransactionId(paymentInit.txnid);
+      setCurrentOrderRef(paymentInit.txnid);
+      setCreatedOrderId(paymentInit.order_id);
+      setCreatedOrderNumber(paymentInit.order_number);
+      setCreatedOrderTotal(paymentInit.order_total);
+
+      // If UPI app is selected, open the app
+      if (getPaymentMethodType() === 'APP' && selectedUpiApp && !selectedSavedUPI) {
+        const upiResult = await processUPIPayment(paymentInit, selectedUpiApp.id);
+        if (!upiResult.success) {
+          throw new Error(upiResult.error || 'Failed to open UPI app');
+        }
+      }
+
+      setPaymentModalStatus('pending');
+
+      // Start polling
+      pollingControlRef.current = startPaymentPolling(
+        paymentInit.txnid,
+        PAYMENT_METHODS.UPI,
+        PAYMENT_PAGE,
+        (statusUpdate) => setPollingAttempts(statusUpdate.attempts),
+        async (result) => {
+          pollingControlRef.current = null;
+          if (result.success) {
+            // Update local wallet balance directly
+            await updateLocalWalletBalance(amountValue);
+            setPaymentModalStatus('success');
+            setSuccessMessage(`₹${amountValue.toFixed(2)} has been added to your wallet`);
+            setPaymentSuccess(true);
+            // Remove the navigation.goBack() here since PaymentModal handles it
+          } else {
+            setPaymentError(result.error || 'Payment verification failed');
+            setPaymentModalStatus('failed');
+          }
+          paymentInProgressRef.current = false;
+          setIsPaymentInProgress(false);
+        },
+        { interval: 5000, maxAttempts: 10, timeout: 120000 }
+      );
+    } catch (error) {
+      console.error('UPI payment error:', error);
+      setPaymentError(error.message || 'Payment initiation failed');
+      setPaymentModalStatus('failed');
+      paymentInProgressRef.current = false;
+      setIsPaymentInProgress(false);
+    }
+  };
+
+  // Update local wallet balance
+  const updateLocalWalletBalance = async (amountAdded) => {
+    try {
+      const userData = await AsyncStorage.getItem('user');
+      if (userData) {
+        const parsedUser = JSON.parse(userData);
+        const currentBalance = parseFloat(parsedUser.wallet_balance || 0);
+        const newBalance = currentBalance + amountAdded;
+        parsedUser.wallet_balance = newBalance.toString();
+        await AsyncStorage.setItem('user', JSON.stringify(parsedUser));
+        
+        setUser(prev => ({
+          ...prev,
+          wallet_balance: newBalance.toString()
+        }));
+      }
+    } catch (error) {
+      console.error('Error updating local wallet:', error);
+    }
+  };
+
+  // Main initiatePayment
+  const initiatePayment = async () => {
+    Keyboard.dismiss();
+    const validation = validateAmount(amount);
+    if (!validation.isValid) {
+      Alert.alert('Invalid Amount', validation.message);
+      return;
+    }
+
+    if (!selectedPaymentType) {
+      setShowPaymentSectionModal(true);
+      return;
+    }
+
+    if (selectedPaymentType === 'wallet') {
+      Alert.alert('Info', 'You cannot pay with wallet to add money.');
+      return;
+    }
+
+    switch (selectedPaymentType) {
+      case 'upi':
+      case 'saved_upi':
+        if (selectedUpiApp || selectedSavedUPI || customUpiId) {
+          await initiateWalletTopUpUPI(validation.amount);
+        } else {
+          setShowPaymentSectionModal(true);
+        }
+        break;
+      case 'netbanking':
+      case 'cards':
+        await initiateWalletTopUpGeneric(validation.amount, selectedPaymentType);
+        break;
+      default:
+        setShowPaymentSectionModal(true);
+    }
+  };
+
+  // Render Helpers
+  const renderPaymentSelector = () => {
     if (paymentSuccess) return null;
-    
+
+    const getSelectedMethodDisplay = () => {
+      if (!selectedPaymentType) {
+        return { title: 'Select Payment', subtitle: 'Choose a payment method', icon: 'card-outline' };
+      }
+      switch (selectedPaymentType) {
+        case 'upi':
+          const vpaDisplay = selectedUpiVpa ? `VPA: ${selectedUpiVpa}` : '';
+          const methodTypeDisplay = selectedUpiPaymentMethodType === 'VPA' ? ' (UPI ID)' : ' (UPI App)';
+          return {
+            title: selectedUpiApp?.name || 'UPI',
+            subtitle: vpaDisplay || `Pay using UPI${methodTypeDisplay}`,
+            icon: 'phone-portrait-outline'
+          };
+        case 'saved_upi':
+          return {
+            title: selectedSavedUPI?.name || 'Saved UPI',
+            subtitle: `VPA: ${selectedSavedUPI?.vpa || selectedSavedUPI?.raw_vpa || ''}`,
+            icon: 'save-outline'
+          };
+        case 'wallet':
+          return {
+            title: selectedWalletApp?.name || 'Eatoor Money',
+            subtitle: `Balance: ₹${parseFloat(user?.wallet_balance || 0).toFixed(2)}`,
+            icon: 'wallet-outline'
+          };
+        case 'netbanking':
+          return { title: selectedBank?.name || 'Net Banking', subtitle: 'Pay via net banking', icon: 'business-outline' };
+        case 'cards':
+          return { title: selectedCardType === 'credit_card' ? 'Credit Card' : 'Debit Card', subtitle: 'Pay via card', icon: 'card-outline' };
+        default:
+          return { title: 'Select Payment', subtitle: 'Choose a payment method', icon: 'card-outline' };
+      }
+    };
+
+    const display = getSelectedMethodDisplay();
+
     return (
-      <View 
-        style={[
-          styles.payNowContainer,
-          keyboardVisible && styles.payNowContainerWithKeyboard
-        ]}
-      >
+      <View style={styles.paymentRow}>
+        <TouchableOpacity
+          style={styles.paymentDropdown}
+          onPress={() => setShowPaymentSectionModal(true)}
+          disabled={isPaymentInProgress}
+          activeOpacity={0.7}
+        >
+          <View style={styles.paymentContent}>
+            <View style={styles.paymentIconWrap}>
+              <Icon name={display.icon} size={22} color="#FF6B35" />
+            </View>
+            <View style={styles.paymentTextWrap}>
+              <View style={styles.paymentTopRow}>
+                <Text style={styles.payUsingLabel}>PAY USING</Text>
+                <Icon name="chevron-down" size={12} color="#999" />
+              </View>
+              <Text style={styles.paymentMethodName} numberOfLines={1}>
+                {display.title}
+              </Text>
+              <Text style={styles.paymentMethodSubtitle} numberOfLines={1}>
+                {display.subtitle}
+              </Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={[
-            styles.payNowButton,
-            (!isAmountValid() || processingPayment) && styles.payNowButtonDisabled
+            styles.proceedBtn,
+            (!isAmountValid() || isPaymentInProgress || paymentModalStatus === 'processing') && styles.proceedBtnDisabled,
           ]}
-          onPress={handlePayNow}
-          disabled={!isAmountValid() || processingPayment}
+          onPress={initiatePayment}
+          disabled={!isAmountValid() || isPaymentInProgress || paymentModalStatus === 'processing'}
           activeOpacity={0.8}
         >
-          {processingPayment ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <View style={styles.payNowButtonContent}>
-              <Text style={styles.payNowText}>Pay Now</Text>
-              {amount && isAmountValid() && (
-                <Text style={styles.payNowAmount}>
-                  ₹{parseInt(amount).toLocaleString('en-IN')}
-                </Text>
-              )}
-            </View>
-          )}
+          <View style={styles.proceedBtnContent}>
+            {paymentModalStatus === 'processing' || isPaymentInProgress ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.proceedBtnText}>
+                Pay ₹{parseFloat(amount || 0).toFixed(0)}
+              </Text>
+            )}
+          </View>
         </TouchableOpacity>
       </View>
     );
   };
 
+  // Render
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <SafeAreaView style={styles.container}>
         <KeyboardAvoidingView
           style={styles.container}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+          keyboardVerticalOffset={0}
         >
           {/* Header */}
           <View style={styles.header}>
@@ -375,16 +692,15 @@ const EatoorMoneyAdd = () => {
             <View style={styles.headerRightPlaceholder} />
           </View>
 
-          <ScrollView 
+          <ScrollView
             ref={scrollViewRef}
             style={styles.content}
             contentContainerStyle={[
               styles.scrollContent,
-              keyboardVisible && styles.scrollContentWithKeyboard
+              keyboardVisible && styles.scrollContentWithKeyboard,
             ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
-            automaticallyAdjustKeyboardInsets={true}
           >
             {/* Payment Success Message */}
             {paymentSuccess && (
@@ -403,17 +719,11 @@ const EatoorMoneyAdd = () => {
               </View>
             )}
 
-            {/* Amount Input Section */}
             {!paymentSuccess && (
               <>
                 <View style={styles.amountSection}>
                   <Text style={styles.sectionLabel}>Enter Amount</Text>
-                  
-                  <View 
-                    ref={amountContainerRef}
-                    style={styles.amountInputContainer}
-                    collapsable={false}
-                  >
+                  <View ref={amountContainerRef} style={styles.amountInputContainer} collapsable={false}>
                     <Text style={styles.currencySymbol}>₹</Text>
                     <TextInput
                       ref={amountInputRef}
@@ -429,29 +739,19 @@ const EatoorMoneyAdd = () => {
                       blurOnSubmit={true}
                     />
                   </View>
-
-                  {/* Amount Validation Messages */}
                   {amount && parseFloat(amount) < MIN_AMOUNT ? (
                     <View style={styles.amountError}>
                       <Icon name="alert-circle" size={14} color="#EF4444" />
-                      <Text style={styles.amountErrorText}>
-                        Minimum amount: ₹{MIN_AMOUNT}
-                      </Text>
+                      <Text style={styles.amountErrorText}>Minimum amount: ₹{MIN_AMOUNT}</Text>
                     </View>
                   ) : amount && parseFloat(amount) > MAX_AMOUNT ? (
                     <View style={styles.amountError}>
                       <Icon name="alert-circle" size={14} color="#EF4444" />
-                      <Text style={styles.amountErrorText}>
-                        Maximum amount: ₹{MAX_AMOUNT.toLocaleString()}
-                      </Text>
+                      <Text style={styles.amountErrorText}>Maximum amount: ₹{MAX_AMOUNT.toLocaleString()}</Text>
                     </View>
                   ) : (
-                    <Text style={styles.amountHint}>
-                      Enter ₹{MIN_AMOUNT} - ₹{MAX_AMOUNT.toLocaleString()}
-                    </Text>
+                    <Text style={styles.amountHint}>Enter ₹{MIN_AMOUNT} - ₹{MAX_AMOUNT.toLocaleString()}</Text>
                   )}
-
-                  {/* Payment Error Display */}
                   {paymentError && (
                     <View style={styles.paymentErrorContainer}>
                       <Icon name="warning" size={16} color="#EF4444" />
@@ -460,7 +760,6 @@ const EatoorMoneyAdd = () => {
                   )}
                 </View>
 
-                {/* Quick Amount Selection */}
                 <View style={styles.quickAmountSection}>
                   <Text style={styles.sectionLabel}>Quick Add</Text>
                   <View style={styles.defaultAmountsContainer}>
@@ -470,7 +769,7 @@ const EatoorMoneyAdd = () => {
                         style={[
                           styles.defaultAmountButton,
                           selectedDefaultAmount === item && styles.selectedDefaultAmountButton,
-                          processingPayment && styles.buttonDisabled
+                          processingPayment && styles.buttonDisabled,
                         ]}
                         onPress={() => handleDefaultAmountSelect(item)}
                         activeOpacity={0.7}
@@ -479,7 +778,7 @@ const EatoorMoneyAdd = () => {
                         <Text
                           style={[
                             styles.defaultAmountText,
-                            selectedDefaultAmount === item && styles.selectedDefaultAmountText
+                            selectedDefaultAmount === item && styles.selectedDefaultAmountText,
                           ]}
                         >
                           ₹{item}
@@ -489,7 +788,6 @@ const EatoorMoneyAdd = () => {
                   </View>
                 </View>
 
-                {/* Security Info */}
                 <View style={styles.securityInfo}>
                   <Icon name="shield-checkmark" size={16} color="#10B981" />
                   <Text style={styles.securityText}>Secure Payment • 100% Safe</Text>
@@ -497,21 +795,69 @@ const EatoorMoneyAdd = () => {
               </>
             )}
 
-            {/* Spacer for bottom button - Dynamic based on keyboard */}
-            <View style={{ 
-              height: keyboardVisible ? 80 : 120,
-              minHeight: keyboardVisible ? 80 : 120 
-            }} />
+            <View style={{ height: keyboardVisible ? 80 : 120, minHeight: keyboardVisible ? 80 : 120 }} />
           </ScrollView>
 
-          {/* Pay Now Button - Fixed at bottom, appears above keyboard */}
-          {renderPayNowButton()}
+          {/* Payment Selector + Proceed Button */}
+          {!paymentSuccess && renderPaymentSelector()}
         </KeyboardAvoidingView>
+
+        <PaymentModal
+          visible={paymentModalVisible}
+          status={paymentModalStatus}
+          amount={paymentAmount}
+          transactionId={currentTransactionId}
+          errorMessage={paymentError}
+          pollingAttempts={pollingAttempts}
+          maxPollingAttempts={10}
+          paymentPage={PAYMENT_PAGE}
+          onRetry={() => {
+            setPaymentModalVisible(false);
+            resetPaymentState();
+            setTimeout(() => initiatePayment(), 500);
+          }}
+          onCancel={() => {
+            setPaymentModalVisible(false);
+            resetPaymentState();
+          }}
+          onViewOrder={() => {}}
+          orderNumber={createdOrderNumber}
+          orderId={createdOrderId}
+          orderTotal={createdOrderTotal}
+          onDismiss={() => {
+            setPaymentModalVisible(false);
+            resetPaymentState();
+          }}
+        />
+
+        <PaymentMethodModal
+          visible={showPaymentSectionModal}
+          onClose={() => setShowPaymentSectionModal(false)}
+          paymentMethods={paymentMethods}
+          selectedPaymentType={selectedPaymentType}
+          selectedUpiApp={selectedUpiApp}
+          selectedSavedUPI={selectedSavedUPI}
+          selectedWalletApp={selectedWalletApp}
+          selectedBank={selectedBank}
+          selectedCardType={selectedCardType}
+          savedUpiIds={savedUpiIds}
+          checkingApps={checkingApps}
+          onSelectPaymentMethod={selectPaymentMethod}
+          onSelectSavedUPI={(savedUPI) => selectPaymentMethod('saved_upi', savedUPI, savedUPI.raw_vpa || savedUPI.vpa, 'SAVED_UPI')}
+          customUpiId={customUpiId}
+          setCustomUpiId={setCustomUpiId}
+          walletBalance={parseFloat(user?.wallet_balance || 0)}
+          userId={user.id}
+          isSavingUpi={isSavingUpi}
+          refreshPaymentMethods={loadPaymentMethods}
+        />
+        
       </SafeAreaView>
     </TouchableWithoutFeedback>
   );
 };
 
+// Styles
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -546,9 +892,8 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   scrollContentWithKeyboard: {
-    paddingBottom: 100, // Extra padding when keyboard is visible
+    paddingBottom: 100,
   },
-  // Success Message Styles
   successContainer: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
@@ -608,7 +953,6 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontWeight: '500',
   },
-  // Amount Section Styles
   amountSection: {
     marginBottom: 32,
   },
@@ -731,60 +1075,74 @@ const styles = StyleSheet.create({
     color: '#10B981',
     fontWeight: '600',
   },
-  payNowContainer: {
+  paymentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: Platform.OS === 'android' ? 10 : 12,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    backgroundColor: '#F8F9FA',
-    borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
   },
-  payNowContainerWithKeyboard: {
-    paddingBottom: 20,
-    backgroundColor: '#FFFFFF',
+  paymentDropdown: {
+    flex: 1,
+    marginRight: 12,
   },
-  payNowButton: {
-    backgroundColor: '#FF6B35',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    shadowColor: '#FF6B35',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  payNowButtonDisabled: {
-    backgroundColor: '#CCCCCC',
-    shadowColor: '#999',
-  },
-  payNowButtonContent: {
+  paymentContent: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  paymentIconWrap: {
+    marginRight: 12,
+  },
+  paymentTextWrap: {
+    flex: 1,
+  },
+  paymentTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  payUsingLabel: {
+    fontSize: 10,
+    color: '#999',
+    fontWeight: '600',
+    marginRight: 6,
+    letterSpacing: 0.5,
+  },
+  paymentMethodName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: 2,
+  },
+  paymentMethodSubtitle: {
+    fontSize: 11,
+    color: '#999',
+  },
+  proceedBtn: {
+    backgroundColor: '#FF6B35',
+    borderRadius: 12,
+    overflow: 'hidden',
+    minWidth: 110,
+  },
+  proceedBtnContent: {
+    paddingVertical: Platform.OS === 'android' ? 10 : 12,
+    paddingHorizontal: 20,
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
   },
-  payNowText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFFFFF',
+  proceedBtnDisabled: {
+    opacity: 0.7,
   },
-  payNowAmount: {
-    fontSize: 18,
+  proceedBtnText: {
+    color: '#fff',
+    fontSize: 14,
     fontWeight: '700',
-    color: '#FFFFFF',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
   },
 });
 
